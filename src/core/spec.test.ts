@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isApproved, isOwnerTick, latestSpec, ownerReplyAfter, renderSpecComment, specGate, specMissingLabel, type Comment } from "./spec.ts";
+import { isApproved, latestSpec, ownerReplyAfter, renderSpecComment, specGate, specMissingLabel, type Comment } from "./spec.ts";
 import type { PlannerResult } from "./planner.ts";
 
 const BOT = "autopilot[bot]";
@@ -87,18 +87,3 @@ for (const { name, comments, labeledAt, expected } of missingLabelCases) {
   });
 }
 
-const ticked = approval.replace("- [ ] Approve and build", "- [x] Approve and build");
-
-const ownerTickCases: { name: string; body: string; lastEditor: string | undefined; expected: boolean }[] = [
-  { name: "ticked by an owner", body: ticked, lastEditor: "marcaureln", expected: true },
-  { name: "ticked by the bot", body: ticked, lastEditor: "marcaureln-autopilot", expected: false },
-  { name: "ticked by a non-owner", body: ticked, lastEditor: "stranger", expected: false },
-  { name: "ticked with no recorded edit", body: ticked, lastEditor: undefined, expected: false },
-  { name: "edited by an owner but not ticked", body: approval, lastEditor: "marcaureln", expected: false },
-];
-
-for (const { name, body, lastEditor, expected } of ownerTickCases) {
-  test(`owner tick: ${name}`, () => {
-    assert.equal(isOwnerTick(body, lastEditor, OWNERS), expected);
-  });
-}

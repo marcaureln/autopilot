@@ -6,7 +6,8 @@ import type { GitHub, Issue, RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
 import type { PlannerJob, PlannerResult } from "../core/planner.ts";
 import type { Repo } from "../core/repo.ts";
-import { isApproved, isOwnerTick, latestSpec, ownerReplyAfter, renderSpecComment, specGate, specMissingLabel } from "../core/spec.ts";
+import { isApproved, latestSpec, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
+import { isOwnerTick, isVouched, trustedGate, trustedThread } from "../core/trust.ts";
 import { labelsFor, STATES, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
 
 const CONFIG_PATH = ".github/autopilot.json";
@@ -89,20 +90,28 @@ async function reconcile(loop: Loop, repoGitHub: RepoGitHub, repo: Repo, issue: 
 
   if (current === "awaiting-approval") {
     if (!spec || !isApproved(spec.body)) return log(key, `${key}: ${current}`);
-    const editor = await repoGitHub.lastEditor(spec.nodeId);
-    if (!isOwnerTick(spec.body, editor, host.owners)) return log(key, `${key}: ${current}, ticked by ${editor ?? "unknown"}, not an owner`);
+    const editors = await repoGitHub.commentEditors(spec.nodeId);
+    if (!isOwnerTick(spec.body, editors, host.owners)) {
+      return log(key, `${key}: ${current}, ticked but edited by a non-owner (${editors.join(", ")}); remove ${stateLabel(current)} for a new spec`);
+    }
     return move("approve");
   }
 
   if (current !== "spec") return;
   const recorded = specMissingLabel(comments, bot, host.owners, labeled.at);
-  const recordedGate = recorded && specGate(recorded.body);
+  const recordedGate = recorded && trustedGate(recorded.body, await repoGitHub.commentEditors(recorded.nodeId));
   if (recordedGate) return move(recordedGate);
 
   try {
     const config = await readConfig(repoGitHub);
     log(key, `${key}: spec, planning with ${config.agents[config.steps.spec].model}`);
-    const thread = comments.filter((comment) => comment.author === bot || host.owners.includes(comment.author));
+    const provenance = await repoGitHub.provenance(issue.number);
+    if (!isVouched(provenance.title ? [provenance.body, provenance.title] : [provenance.body], host.owners, labeled.at)) {
+      throw new Blocked(
+        `Someone who is not an owner changed the issue title or description after the \`${TRIGGER_LABEL}\` label was added. An owner must edit it, or remove and add the label again, to vouch for the text.`,
+      );
+    }
+    const thread = trustedThread(comments, provenance.commentEdits, bot, host.owners);
     const result = await loop.plan({ github, repoGitHub, repo, host, config, issue, thread }).catch((error: unknown) => {
       log(key, `${key}: planner failed: ${messageOf(error)}${error instanceof Error && error.cause ? `\n${String(error.cause)}` : ""}`);
       throw new Blocked(`The planner failed: ${messageOf(error)}.`);

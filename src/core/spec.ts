@@ -48,11 +48,6 @@ export function isApproved(body: string): boolean {
   return new RegExp(`^- \\[[xX]\\] ${CHECKBOX}$`).test(lastLine.trim());
 }
 
-// GitHub has no record of who ticked a box, only of who edited the comment last.
-export function isOwnerTick(body: string, lastEditor: string | undefined, owners: string[]): boolean {
-  return isApproved(body) && lastEditor !== undefined && owners.includes(lastEditor);
-}
-
 export function latestSpec(comments: Comment[], botLogin: string): Comment | undefined {
   return comments.findLast((comment) => comment.author === botLogin && specGate(comment.body) !== undefined);
 }

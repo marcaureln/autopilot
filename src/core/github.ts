@@ -3,8 +3,11 @@ import { createAppAuth } from "@octokit/auth-app";
 import type { AllowEntry } from "./allow.ts";
 import type { Repo } from "./repo.ts";
 import type { Comment } from "./spec.ts";
+import type { Change, CommentEdit } from "./trust.ts";
 
 export type Issue = { number: number; title: string; body: string; labels: string[] };
+
+export type Provenance = { body: Change; title?: Change; commentEdits: Map<number, CommentEdit> };
 
 export type LabelSpec = { name: string; color: string; description: string };
 
@@ -17,7 +20,8 @@ export type RepoGitHub = {
   ensureLabels(labels: LabelSpec[]): Promise<void>;
   readFile(path: string): Promise<string | undefined>;
   minimizeOutdated(commentNodeId: string): Promise<void>;
-  lastEditor(commentNodeId: string): Promise<string | undefined>;
+  commentEditors(commentNodeId: string): Promise<string[]>;
+  provenance(issue: number): Promise<Provenance>;
   token(): Promise<string>;
 };
 
@@ -58,7 +62,21 @@ function cacheGetsByEtag(octokit: Octokit): Octokit {
   return octokit;
 }
 
-type LastEdit = { node: { userContentEdits: { nodes: ({ editor: { login: string } | null } | null)[] } | null } | null };
+type Edits = { nodes: ({ editedAt: string; editor: { login: string } | null } | null)[] };
+
+type CommentEdits = { node: { userContentEdits: Edits | null } | null };
+
+type IssueProvenance = {
+  repository: {
+    issue: {
+      author: { login: string } | null;
+      createdAt: string;
+      userContentEdits: Edits | null;
+      timelineItems: { nodes: ({ createdAt?: string; actor?: { login: string } | null } | null)[] | null };
+      comments: { nodes: ({ databaseId: number | null; userContentEdits: Edits | null } | null)[] | null };
+    } | null;
+  } | null;
+};
 
 function repoGitHub(octokit: Octokit, { owner, name: repo }: Repo): RepoGitHub {
   const issueParams = (issue: number) => ({ owner, repo, issue_number: issue });
@@ -117,13 +135,43 @@ function repoGitHub(octokit: Octokit, { owner, name: repo }: Repo): RepoGitHub {
         id: commentNodeId,
       });
     },
-    async lastEditor(commentNodeId) {
+    async commentEditors(commentNodeId) {
       // GitHub lists the edits newest first.
-      const { node } = await octokit.graphql<LastEdit>(
-        `query($id: ID!) { node(id: $id) { ... on IssueComment { userContentEdits(first: 1) { nodes { editor { login } } } } } }`,
+      const { node } = await octokit.graphql<CommentEdits>(
+        `query($id: ID!) { node(id: $id) { ... on IssueComment { userContentEdits(first: 100) { nodes { editedAt editor { login } } } } } }`,
         { id: commentNodeId },
       );
-      return node?.userContentEdits?.nodes[0]?.editor?.login;
+      return (node?.userContentEdits?.nodes ?? []).map((edit) => edit?.editor?.login ?? "");
+    },
+    async provenance(issue) {
+      const { repository } = await octokit.graphql<IssueProvenance>(
+        `query($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            issue(number: $number) {
+              author { login }
+              createdAt
+              userContentEdits(first: 1) { nodes { editedAt editor { login } } }
+              timelineItems(itemTypes: [RENAMED_TITLE_EVENT], last: 1) { nodes { ... on RenamedTitleEvent { createdAt actor { login } } } }
+              comments(last: 100) { nodes { databaseId userContentEdits(first: 1) { nodes { editedAt editor { login } } } } }
+            }
+          }
+        }`,
+        { owner, repo, number: issue },
+      );
+      const data = repository?.issue;
+      if (!data) throw new Error(`issue #${issue} not found`);
+      const lastEdit = data.userContentEdits?.nodes[0];
+      const rename = data.timelineItems.nodes?.[0];
+      const commentEdits = new Map<number, CommentEdit>();
+      for (const comment of data.comments.nodes ?? []) {
+        const edit = comment?.userContentEdits?.nodes[0];
+        if (comment?.databaseId) commentEdits.set(comment.databaseId, edit ? { edited: true, by: edit.editor?.login } : { edited: false });
+      }
+      return {
+        body: lastEdit ? { by: lastEdit.editor?.login, at: lastEdit.editedAt } : { by: data.author?.login, at: data.createdAt },
+        ...(rename?.createdAt && { title: { by: rename.actor?.login, at: rename.createdAt } }),
+        commentEdits,
+      };
     },
     async token() {
       const auth: unknown = await octokit.auth({ type: "installation" });

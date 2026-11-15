@@ -17,7 +17,8 @@ function repoWith(issues: Awaited<ReturnType<RepoGitHub["listLabeledIssues"]>>):
     ensureLabels: unused,
     readFile: unused,
     minimizeOutdated: unused,
-    lastEditor: unused,
+    commentEditors: unused,
+    provenance: unused,
     token: unused,
   };
 }
