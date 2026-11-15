@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -10,7 +10,7 @@ import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
 import type { Risk } from "./risk.ts";
 import type { Comment } from "./spec.ts";
-import { fetchClaudeConfig, shallowClone } from "./workspace.ts";
+import { fetchClaudeConfig, readAgentFile, shallowClone } from "./workspace.ts";
 
 export type PlannedFile = { path: string; status: "added" | "modified" | "deleted" } | { path: string; status: "renamed"; previous_path: string };
 
@@ -126,9 +126,9 @@ export async function runPlanner({ github, repoGitHub, repo, host, config, issue
       timeoutMinutes: config.limits.run_timeout_minutes,
     });
 
-    const resultFile = join(work, RESULT_PATH);
-    if (!existsSync(resultFile)) throw new Error(`the planner wrote no ${RESULT_PATH}`);
-    return parsePlannerResult(readFileSync(resultFile, "utf8"));
+    const result = readAgentFile(work, RESULT_PATH, 64 * 1024);
+    if (result === undefined) throw new Error(`the planner wrote no ${RESULT_PATH}`);
+    return parsePlannerResult(result);
   } finally {
     rmSync(job, { recursive: true, force: true });
   }

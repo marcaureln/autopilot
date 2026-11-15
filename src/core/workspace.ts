@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { GitHub } from "./github.ts";
@@ -37,4 +37,28 @@ export async function fetchClaudeConfig(value: string, github: GitHub, dest: str
   const dir = join(dest, source.subdir ?? "");
   if (!existsSync(dir)) throw new Error(`claude.config: ${source.subdir} is not in ${repo.owner}/${repo.name}`);
   return dir;
+}
+
+// The agent controls the workdir, so a result file could be a symlink to a host file or a FIFO
+// that blocks the read.
+export function readAgentFile(workdir: string, path: string, maxBytes: number): string | undefined {
+  const parts = path.split("/");
+  let current = workdir;
+  for (const [index, part] of parts.entries()) {
+    current = join(current, part);
+    const stat = lstatSync(current, { throwIfNoEntry: false });
+    if (!stat) return undefined;
+    const isLast = index === parts.length - 1;
+    if (!isLast && !stat.isDirectory()) throw new Error(`${path}: ${part} is not a directory`);
+    if (isLast && !stat.isFile()) throw new Error(`${path} is not a regular file`);
+  }
+  const fd = openSync(current, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) throw new Error(`${path} is not a regular file`);
+    if (stat.size > maxBytes) throw new Error(`${path} is larger than ${maxBytes} bytes`);
+    return readFileSync(fd, "utf8");
+  } finally {
+    closeSync(fd);
+  }
 }
