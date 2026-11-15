@@ -104,13 +104,13 @@ async function reconcile(loop: Loop, repoGitHub: RepoGitHub, repo: Repo, issue: 
 
   try {
     const config = await readConfig(repoGitHub);
-    log(key, `${key}: spec, planning with ${config.agents[config.steps.spec].model}`);
     const provenance = await repoGitHub.provenance(issue.number);
     if (!isVouched(provenance.title ? [provenance.body, provenance.title] : [provenance.body], host.owners, labeled.at)) {
       throw new Blocked(
         `Someone who is not an owner changed the issue title or description after the \`${TRIGGER_LABEL}\` label was added. An owner must edit it, or remove and add the label again, to vouch for the text.`,
       );
     }
+    log(key, `${key}: spec, planning with ${config.agents[config.steps.spec].model}`);
     const thread = trustedThread(comments, provenance.commentEdits, bot, host.owners);
     const result = await loop.plan({ github, repoGitHub, repo, host, config, issue, thread }).catch((error: unknown) => {
       log(key, `${key}: planner failed: ${messageOf(error)}${error instanceof Error && error.cause ? `\n${String(error.cause)}` : ""}`);
