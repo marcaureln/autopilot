@@ -7,11 +7,12 @@ import { run } from "./commands/run.ts";
 import { loadClient, type Client } from "./core/client.ts";
 import { createGitHub } from "./core/github.ts";
 import { loadHost } from "./core/host.ts";
+import { runPlanner } from "./core/planner.ts";
 
 const USAGE = `Usage: autopilot <command> [options]
 
 Commands:
-  run                          Poll GitHub for autopilot-labeled issues
+  run                          Plan autopilot-labeled issues, one job at a time
   allow <owner>[/<repo>]       Allow it on a host; opens the App install page if needed
   deny <owner>[/<repo>]        Remove it from a host allowlist
   allowed                      List the allowlist of every host
@@ -56,7 +57,8 @@ async function main(): Promise<void> {
   switch (command) {
     case "run": {
       const host = loadHost(values.host);
-      await run(createGitHub({ appId: host.app_id, privateKey: readFileSync(host.private_key_path, "utf8") }), host, { once: values.once });
+      const github = createGitHub({ appId: host.app_id, privateKey: readFileSync(host.private_key_path, "utf8") });
+      await run({ github, host, plan: runPlanner }, { once: values.once });
       break;
     }
     case "allow":

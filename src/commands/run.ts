@@ -1,32 +1,161 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseAllowEntry } from "../core/allow.ts";
-import type { GitHub } from "../core/github.ts";
+import { parseConfig, type Config } from "../core/config.ts";
+import { gate1 } from "../core/gate.ts";
+import type { GitHub, Issue, RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
+import type { PlannerJob, PlannerResult } from "../core/planner.ts";
+import type { Repo } from "../core/repo.ts";
+import { isApproved, isOwnerTick, latestSpec, ownerReplyAfter, renderSpecComment, specGate, specMissingLabel } from "../core/spec.ts";
+import { labelsFor, STATES, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
 
-const TRIGGER_LABEL = "autopilot";
+const CONFIG_PATH = ".github/autopilot.json";
 
-export async function runOnce(github: GitHub, host: Host, log: (line: string) => void): Promise<void> {
+const LABELS = [
+  { name: TRIGGER_LABEL, color: "000000", description: "autopilot: build this issue" },
+  ...Object.entries(STATES).map(([state, label]) => ({ name: `${TRIGGER_LABEL}:${state}`, ...label })),
+];
+
+const PLANNER_STATES: IssueState[] = ["new", "spec", "needs-info", "awaiting-approval"];
+
+export type Log = (key: string, line: string) => void;
+
+export type Loop = {
+  github: GitHub;
+  host: Host;
+  plan: (job: PlannerJob) => Promise<PlannerResult>;
+  log: Log;
+};
+
+class Blocked extends Error {}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function readConfig(repoGitHub: RepoGitHub): Promise<Config> {
+  const text = await repoGitHub.readFile(CONFIG_PATH);
+  if (text === undefined) throw new Blocked(`There is no \`${CONFIG_PATH}\` on the default branch.`);
+  try {
+    return parseConfig(text, CONFIG_PATH);
+  } catch (error) {
+    throw new Blocked(messageOf(error));
+  }
+}
+
+async function reconcile(loop: Loop, repoGitHub: RepoGitHub, repo: Repo, issue: Issue, labelsReady: Set<string>): Promise<void> {
+  const { github, host, log } = loop;
+  const key = `${repo.owner}/${repo.name}#${issue.number}`;
+  const state = stateOf(issue.labels);
+  if (state === "ambiguous") return log(key, `${key}: more than one autopilot:* label, skipped`);
+  if (!PLANNER_STATES.includes(state)) return log(key, `${key}: ${state}`);
+
+  const labeled = await repoGitHub.lastLabeled(issue.number, TRIGGER_LABEL);
+  if (!labeled || !host.owners.includes(labeled.actor)) {
+    return log(key, `${key}: ignored, the ${TRIGGER_LABEL} label was added by ${labeled?.actor ?? "unknown"}, not an owner`);
+  }
+
+  let current: IssueState = state;
+  let labels = issue.labels;
+  async function move(event: Event): Promise<void> {
+    const next: State | undefined = transition(current, event);
+    if (!next) throw new Error(`${key}: no transition from ${current} on ${event}`);
+    labels = labelsFor(labels, next);
+    await repoGitHub.setLabels(issue.number, labels);
+    log(key, `${key}: ${current} -> ${next}`);
+    current = next;
+  }
+
+  if (current === "new") {
+    const repoKey = `${repo.owner}/${repo.name}`;
+    if (!labelsReady.has(repoKey)) {
+      await repoGitHub.ensureLabels(LABELS);
+      labelsReady.add(repoKey);
+    }
+    await move("start");
+  }
+
+  const bot = await github.appLogin();
+  const comments = await repoGitHub.listComments(issue.number);
+  const spec = latestSpec(comments, bot);
+
+  if (current === "needs-info") {
+    const reply = spec && ownerReplyAfter(comments, host.owners, spec);
+    if (!spec || !reply) return log(key, `${key}: ${current}`);
+    // Hidden before the label change: after a crash in between, the reply is still newer than the spec, so the next loop retries.
+    await repoGitHub.minimizeOutdated(spec.nodeId);
+    await move("reply");
+  }
+
+  if (current === "awaiting-approval") {
+    if (!spec || !isApproved(spec.body)) return log(key, `${key}: ${current}`);
+    const editor = await repoGitHub.lastEditor(spec.nodeId);
+    if (!isOwnerTick(spec.body, editor, host.owners)) return log(key, `${key}: ${current}, ticked by ${editor ?? "unknown"}, not an owner`);
+    return move("approve");
+  }
+
+  if (current !== "spec") return;
+  const recorded = specMissingLabel(comments, bot, host.owners, labeled.at);
+  const recordedGate = recorded && specGate(recorded.body);
+  if (recordedGate) return move(recordedGate);
+
+  try {
+    const config = await readConfig(repoGitHub);
+    log(key, `${key}: spec, planning with ${config.agents[config.steps.spec].model}`);
+    const thread = comments.filter((comment) => comment.author === bot || host.owners.includes(comment.author));
+    const result = await loop.plan({ github, repoGitHub, repo, host, config, issue, thread }).catch((error: unknown) => {
+      log(key, `${key}: planner failed: ${messageOf(error)}${error instanceof Error && error.cause ? `\n${String(error.cause)}` : ""}`);
+      throw new Blocked(`The planner failed: ${messageOf(error)}.`);
+    });
+    const gate = gate1(result, config.risk);
+    await repoGitHub.postComment(issue.number, renderSpecComment(result, gate));
+    await move(gate.event);
+  } catch (error) {
+    if (!(error instanceof Blocked)) throw error;
+    await repoGitHub.postComment(
+      issue.number,
+      `autopilot stopped: ${error.message}\n\nFix it, then remove the \`${stateLabel("blocked")}\` label to try again.`,
+    );
+    await move("fail");
+  }
+}
+
+export async function runOnce(loop: Loop, labelsReady = new Set<string>()): Promise<void> {
+  const { github, host, log } = loop;
   for (const value of host.allow) {
     const entry = parseAllowEntry(value);
     const installationId = await github.findInstallation(entry);
     if (installationId === undefined) {
-      log(`not installed: ${value}`);
+      log(value, `not installed: ${value}`);
       continue;
     }
     const repos = entry.repo ? [{ owner: entry.owner, name: entry.repo }] : await github.listRepos(installationId, entry.owner);
     for (const repo of repos) {
-      for (const issue of await github.listLabeledIssues(installationId, repo, TRIGGER_LABEL)) {
-        log(`${repo.owner}/${repo.name}#${issue.number} ${JSON.stringify(issue.title)}`);
+      const repoGitHub = github.repo(installationId, repo);
+      for (const issue of await repoGitHub.listLabeledIssues(TRIGGER_LABEL)) {
+        await reconcile(loop, repoGitHub, repo, issue, labelsReady).catch((error: unknown) =>
+          log(`${repo.owner}/${repo.name}#${issue.number}`, `${repo.owner}/${repo.name}#${issue.number}: error: ${messageOf(error)}`),
+        );
       }
     }
   }
 }
 
-export async function run(github: GitHub, host: Host, options: { once: boolean }): Promise<void> {
-  const log = (line: string) => console.log(line);
-  await runOnce(github, host, log);
+export function changesOnly(print: (line: string) => void): Log {
+  const last = new Map<string, string>();
+  return (key, line) => {
+    if (last.get(key) === line) return;
+    last.set(key, line);
+    print(line);
+  };
+}
+
+export async function run(loop: Omit<Loop, "log">, options: { once: boolean }): Promise<void> {
+  const full: Loop = { ...loop, log: changesOnly((line) => console.log(line)) };
+  const labelsReady = new Set<string>();
+  await runOnce(full, labelsReady);
   while (!options.once) {
-    await sleep(host.poll_interval_seconds * 1000);
-    await runOnce(github, host, log);
+    await sleep(loop.host.poll_interval_seconds * 1000);
+    await runOnce(full, labelsReady);
   }
 }
