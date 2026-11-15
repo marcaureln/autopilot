@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/autopilot.schema.json" with { type: "json" };
 
@@ -33,10 +32,15 @@ export type Config = {
 const ajv = new Ajv2020({ allErrors: true, useDefaults: true });
 const validate = ajv.compile<Config>(schema);
 
-export function loadConfig(path: string): Config {
-  const data: unknown = JSON.parse(readFileSync(path, "utf8"));
+export function parseConfig(text: string, source: string): Config {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Invalid config ${source}: ${error instanceof Error ? error.message : error}`);
+  }
   if (!validate(data)) {
-    throw new Error(`Invalid config ${path}: ${ajv.errorsText(validate.errors, { dataVar: "config" })}`);
+    throw new Error(`Invalid config ${source}: ${ajv.errorsText(validate.errors, { dataVar: "config" })}`);
   }
   return data;
 }
