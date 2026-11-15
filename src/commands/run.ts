@@ -1,12 +1,14 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseAllowEntry } from "../core/allow.ts";
+import type { Audit } from "../core/audit.ts";
+import { claimComment, claimOf, ownClaims } from "../core/claim.ts";
 import { parseConfig, type Config } from "../core/config.ts";
 import { gate1 } from "../core/gate.ts";
 import type { GitHub, Issue, RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
 import type { PlannerJob, PlannerResult } from "../core/planner.ts";
 import type { Repo } from "../core/repo.ts";
-import { isApproved, latestSpec, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
+import { isApproved, latestSpec, type Comment, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
 import { isOwnerTick, isVouched, trustedGate, trustedThread } from "../core/trust.ts";
 import { labelsFor, STATES, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
 
@@ -19,6 +21,8 @@ const LABELS = [
 
 const PLANNER_STATES: IssueState[] = ["new", "spec", "needs-info", "awaiting-approval"];
 
+const CLAIM_SETTLE_MS = 3000;
+
 export type Log = (key: string, line: string) => void;
 
 export type Loop = {
@@ -26,6 +30,7 @@ export type Loop = {
   host: Host;
   plan: (job: PlannerJob) => Promise<PlannerResult>;
   log: Log;
+  audit: Audit;
 };
 
 class Blocked extends Error {}
@@ -44,8 +49,30 @@ async function readConfig(repoGitHub: RepoGitHub): Promise<Config> {
   }
 }
 
+async function claim(loop: Loop, repoGitHub: RepoGitHub, issue: Issue, key: string, bot: string, comments: Comment[]): Promise<Comment[] | undefined> {
+  const { host, log, audit } = loop;
+  let current = claimOf(comments, bot, host.name);
+  if (current.kind === "mine") return comments;
+  if (current.kind === "free") {
+    await repoGitHub.postComment(issue.number, claimComment(host.name));
+    await sleep(CLAIM_SETTLE_MS);
+    comments = await repoGitHub.listComments(issue.number);
+    current = claimOf(comments, bot, host.name);
+    if (current.kind === "mine") {
+      audit({ event: "issue.claimed", issue: key, host: host.name });
+      log(key, `${key}: claimed by host ${host.name}`);
+      return comments;
+    }
+  }
+  const lost = ownClaims(comments, bot, host.name);
+  for (const own of lost) await repoGitHub.deleteComment(own.id);
+  const winner = current.kind === "theirs" ? current.host : "unknown";
+  log(key, `${key}: claimed by host ${winner}, skipped${lost.length > 0 ? ` (lost the race, deleted ${lost.length} own claim)` : ""}`);
+  return undefined;
+}
+
 async function reconcile(loop: Loop, repoGitHub: RepoGitHub, repo: Repo, issue: Issue, labelsReady: Set<string>): Promise<void> {
-  const { github, host, log } = loop;
+  const { github, host, log, audit } = loop;
   const key = `${repo.owner}/${repo.name}#${issue.number}`;
   const state = stateOf(issue.labels);
   if (state === "ambiguous") return log(key, `${key}: more than one autopilot:* label, skipped`);
@@ -56,6 +83,10 @@ async function reconcile(loop: Loop, repoGitHub: RepoGitHub, repo: Repo, issue: 
     return log(key, `${key}: ignored, the ${TRIGGER_LABEL} label was added by ${labeled?.actor ?? "unknown"}, not an owner`);
   }
 
+  const bot = await github.appLogin();
+  const comments = await claim(loop, repoGitHub, issue, key, bot, await repoGitHub.listComments(issue.number));
+  if (!comments) return;
+
   let current: IssueState = state;
   let labels = issue.labels;
   async function move(event: Event): Promise<void> {
@@ -63,6 +94,7 @@ async function reconcile(loop: Loop, repoGitHub: RepoGitHub, repo: Repo, issue: 
     if (!next) throw new Error(`${key}: no transition from ${current} on ${event}`);
     labels = labelsFor(labels, next);
     await repoGitHub.setLabels(issue.number, labels);
+    audit({ event: "state.changed", issue: key, from: current, to: next });
     log(key, `${key}: ${current} -> ${next}`);
     current = next;
   }
@@ -76,8 +108,6 @@ async function reconcile(loop: Loop, repoGitHub: RepoGitHub, repo: Repo, issue: 
     await move("start");
   }
 
-  const bot = await github.appLogin();
-  const comments = await repoGitHub.listComments(issue.number);
   const spec = latestSpec(comments, bot);
 
   if (current === "needs-info") {
@@ -92,8 +122,10 @@ async function reconcile(loop: Loop, repoGitHub: RepoGitHub, repo: Repo, issue: 
     if (!spec || !isApproved(spec.body)) return log(key, `${key}: ${current}`);
     const editors = await repoGitHub.commentEditors(spec.nodeId);
     if (!isOwnerTick(spec.body, editors, host.owners)) {
+      audit({ event: "approval.refused", issue: key, editors });
       return log(key, `${key}: ${current}, ticked but edited by a non-owner (${editors.join(", ")}); remove ${stateLabel(current)} for a new spec`);
     }
+    audit({ event: "approval.accepted", issue: key, editors });
     return move("approve");
   }
 
@@ -117,6 +149,7 @@ async function reconcile(loop: Loop, repoGitHub: RepoGitHub, repo: Repo, issue: 
       throw new Blocked(`The planner failed: ${messageOf(error)}.`);
     });
     const gate = gate1(result, config.risk);
+    audit({ event: "gate.decided", issue: key, gate: "gate1", planner: result.risk, rules: gate.rulesRisk, final: gate.risk, scope: result.scope, decision: gate.event });
     await repoGitHub.postComment(issue.number, renderSpecComment(result, gate));
     await move(gate.event);
   } catch (error) {

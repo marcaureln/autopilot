@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/host.schema.json",
   "title": "Autopilot host config",
-  "description": "Tells the host where and how to run. Lives at ~/.config/autopilot/host.json.",
+  "description": "Tells the host where and how to run. Lives at /etc/autopilot/host.json on the host.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "app_id",
-    "private_key_path",
+    "secrets",
     "owners",
     "allow"
   ],
@@ -15,15 +15,37 @@
     "$schema": {
       "type": "string"
     },
+    "name": {
+      "description": "Name of this host in the issue claim label autopilot:host:<name>. Default: the short hostname.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "maxLength": 35
+    },
     "app_id": {
       "description": "ID of the GitHub App that acts for autopilot.",
       "type": "integer",
       "minimum": 1
     },
-    "private_key_path": {
-      "description": "Path to the GitHub App private key (PEM).",
-      "type": "string",
-      "minLength": 1
+    "secrets": {
+      "description": "1Password references that the host reads with op when the service starts.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "app_key",
+        "claude_token"
+      ],
+      "properties": {
+        "app_key": {
+          "description": "GitHub App private key (PEM).",
+          "type": "string",
+          "pattern": "^op://"
+        },
+        "claude_token": {
+          "description": "Claude Code OAuth token for the agent containers.",
+          "type": "string",
+          "pattern": "^op://"
+        }
+      }
     },
     "owners": {
       "description": "GitHub logins allowed to start a job by adding the autopilot label.",

@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import managedSettings from "../../harness/claude/managed-settings.json" with { type: "json" };
+import type { Audit } from "../core/audit.ts";
 import type { Agent } from "../core/config.ts";
 import type { Host } from "../core/host.ts";
 
@@ -28,13 +29,9 @@ export type HarnessRun = {
   claudeConfigDir?: string;
   limits: Host["limits"];
   timeoutMinutes: number;
+  claudeToken: string;
+  audit: Audit;
 };
-
-export function claudeTokenFile(): string {
-  if (process.env.CREDENTIALS_DIRECTORY) return join(process.env.CREDENTIALS_DIRECTORY, "claude-token");
-  if (process.env.AUTOPILOT_CLAUDE_TOKEN_FILE) return process.env.AUTOPILOT_CLAUDE_TOKEN_FILE;
-  throw new Error("no Claude token: run under the autopilot service, or set AUTOPILOT_CLAUDE_TOKEN_FILE");
-}
 
 function imageTag(): string {
   const hash = createHash("sha256");
@@ -61,8 +58,14 @@ export async function runClaude(job: HarnessRun): Promise<void> {
 
   const configDir = job.claudeConfigDir;
   const personal = configDir
-    ? PERSONAL_ENTRIES.filter((entry) => existsSync(join(configDir, entry))).flatMap((entry) => ["--volume", `${join(configDir, entry)}:/root/.claude/${entry}:ro`])
+    ? PERSONAL_ENTRIES.filter((entry) => existsSync(join(configDir, entry))).map((entry) => ({ source: join(configDir, entry), target: `/root/.claude/${entry}`, options: ":ro" }))
     : [];
+  const mounts = [{ source: job.workdir, target: "/work", options: "" }, { source: job.skillsDir, target: "/root/.claude/skills", options: ":ro" }, ...personal];
+  // CLAUDE_CODE_OAUTH_TOKEN is only a name: docker reads the value from its own environment, so it
+  // stays out of the process list. IS_SANDBOX: Claude Code refuses to bypass permissions as root
+  // unless it is told it runs in a sandbox. Root is needed: with rootless Docker it is the host user
+  // that owns /work.
+  const env: Record<string, string | undefined> = { CLAUDE_CODE_OAUTH_TOKEN: undefined, IS_SANDBOX: "1" };
   const args = [
     "run",
     "--rm",
@@ -81,18 +84,8 @@ export async function runClaude(job: HarnessRun): Promise<void> {
     "ALL",
     "--security-opt",
     "no-new-privileges",
-    // Only the variable name: docker reads the value from its own environment, so it stays out of the process list.
-    "--env",
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    // Claude Code refuses to bypass permissions as root unless it is told it runs in a sandbox.
-    // Root is needed: with rootless Docker it is the host user that owns /work.
-    "--env",
-    "IS_SANDBOX=1",
-    "--volume",
-    `${job.workdir}:/work`,
-    "--volume",
-    `${job.skillsDir}:/root/.claude/skills:ro`,
-    ...personal,
+    ...Object.entries(env).flatMap(([name, value]) => ["--env", value === undefined ? name : `${name}=${value}`]),
+    ...mounts.flatMap(({ source, target, options }) => ["--volume", `${source}:${target}${options}`]),
     tag,
     "claude",
     "--print",
@@ -105,11 +98,18 @@ export async function runClaude(job: HarnessRun): Promise<void> {
     SETTINGS,
   ];
 
-  const token = readFileSync(claudeTokenFile(), "utf8").trim();
-  if (!token) throw new Error(`the Claude token file ${claudeTokenFile()} is empty`);
+  job.audit({
+    event: "container.started",
+    name: job.name,
+    image: tag,
+    mounts: mounts.map((mount) => mount.target),
+    env: Object.keys(env),
+    caps: { memory: job.limits.memory, cpus: job.limits.cpus, pids: job.limits.pids, timeout_minutes: job.timeoutMinutes, cap_drop: "ALL" },
+  });
+  const started = Date.now();
   const child = spawn("docker", args, {
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: token },
+    env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: job.claudeToken },
   });
   child.stdin.end(readFileSync(job.promptFile));
   let output = "";
@@ -128,6 +128,7 @@ export async function runClaude(job: HarnessRun): Promise<void> {
     child.on("error", reject);
     child.on("close", (exitCode) => resolve(exitCode ?? 1));
   }).finally(() => clearTimeout(timer));
+  job.audit({ event: "container.ended", name: job.name, exit: code, timed_out: timedOut, duration_seconds: Math.round((Date.now() - started) / 1000) });
 
   if (timedOut) throw new Error(`the agent timed out after ${job.timeoutMinutes} minutes`);
   if (code !== 0) throw new Error(`the agent exited with code ${code}`, { cause: output });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/planner-result.schema.json" with { type: "json" };
 import { runClaude } from "../harness/claude.ts";
+import type { Audit } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
@@ -97,7 +98,9 @@ export type PlannerJob = {
   thread: Comment[];
 };
 
-export async function runPlanner({ github, repoGitHub, repo, host, config, issue, thread }: PlannerJob): Promise<PlannerResult> {
+export type Harness = { claudeToken: string; audit: Audit };
+
+export async function runPlanner({ github, repoGitHub, repo, host, config, issue, thread }: PlannerJob, harness: Harness): Promise<PlannerResult> {
   const job = mkdtempSync(join(tmpdir(), "autopilot-job-"));
   try {
     const work = join(job, "work");
@@ -124,6 +127,7 @@ export async function runPlanner({ github, repoGitHub, repo, host, config, issue
       claudeConfigDir,
       limits: host.limits,
       timeoutMinutes: config.limits.run_timeout_minutes,
+      ...harness,
     });
 
     const result = readAgentFile(work, RESULT_PATH, 64 * 1024);

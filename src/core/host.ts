@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { hostname } from "node:os";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/host.schema.json" with { type: "json" };
 
 export type Host = {
   $schema?: string;
+  name: string;
   app_id: number;
-  private_key_path: string;
+  secrets: { app_key: string; claude_token: string };
   owners: string[];
   allow: string[];
   docker: "rootless" | "rootful";
@@ -18,20 +18,24 @@ export type Host = {
 
 export type ClaudeConfigSource = { kind: "path"; path: string } | { kind: "github"; owner: string; repo: string; subdir?: string; ref?: string };
 
-export const DEFAULT_HOST_PATH = join(homedir(), ".config", "autopilot", "host.json");
+export const HOST_FILE = "/etc/autopilot/host.json";
 
 const ajv = new Ajv2020({ allErrors: true, useDefaults: true });
-const validate = ajv.compile<Host>(schema);
+const validate = ajv.compile<Omit<Host, "name"> & { name?: string }>(schema);
+
+export function defaultHostName(): string {
+  return (hostname().split(".")[0] ?? "").toLowerCase();
+}
 
 export function parseHost(text: string, source: string): Host {
   const data: unknown = JSON.parse(text);
   if (!validate(data)) {
     throw new Error(`Invalid host file ${source}: ${ajv.errorsText(validate.errors, { dataVar: "host" })}`);
   }
-  return data;
+  return { ...data, name: data.name ?? defaultHostName() };
 }
 
-export function loadHost(path = DEFAULT_HOST_PATH): Host {
+export function loadHost(path = HOST_FILE): Host {
   return parseHost(readFileSync(path, "utf8"), path);
 }
 

@@ -13,6 +13,7 @@ function repoWith(issues: Awaited<ReturnType<RepoGitHub["listLabeledIssues"]>>):
     lastLabeled: unused,
     listComments: unused,
     postComment: unused,
+    deleteComment: unused,
     setLabels: unused,
     ensureLabels: unused,
     readFile: unused,
@@ -24,6 +25,7 @@ function repoWith(issues: Awaited<ReturnType<RepoGitHub["listLabeledIssues"]>>):
 }
 
 const github: GitHub = {
+  appSlug: async () => "autopilot",
   appLogin: async () => "autopilot[bot]",
   findInstallation: async (entry) => (entry.owner === "marcaureln" || entry.owner === "org" ? 1 : undefined),
   listRepos: async (_, owner) => [
@@ -34,8 +36,9 @@ const github: GitHub = {
 };
 
 const host = {
+  name: "pi",
   app_id: 1,
-  private_key_path: "/k.pem",
+  secrets: { app_key: "op://v/k/f", claude_token: "op://v/c/f" },
   owners: ["marcaureln"],
   allow: [],
   docker: "rootless" as const,
@@ -45,7 +48,7 @@ const host = {
 
 async function linesFor(allow: string[]): Promise<string[]> {
   const lines: string[] = [];
-  await runOnce({ github, host: { ...host, allow }, plan: unused, log: (_, line) => lines.push(line) });
+  await runOnce({ github, host: { ...host, allow }, plan: unused, log: (_, line) => lines.push(line), audit: unused });
   return lines;
 }
 

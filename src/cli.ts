@@ -1,87 +1,112 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { allow, deny, listAllowed, type Hosts } from "./commands/allow.ts";
-import { hostSetup, hostStatus, localAccess, remoteAccess, sshRemote, type HostAccess } from "./commands/host.ts";
+import { allow, allowed, deny } from "./commands/allow.ts";
+import { forward, hostSetup } from "./commands/client.ts";
+import { showAudit, showLogs, showStatus, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
-import { loadClient, type Client } from "./core/client.ts";
+import { auditLog } from "./core/audit.ts";
 import { createGitHub } from "./core/github.ts";
-import { loadHost } from "./core/host.ts";
+import { HOST_FILE, loadHost } from "./core/host.ts";
 import { runPlanner } from "./core/planner.ts";
+import { readSecret } from "./core/secrets.ts";
 
 const USAGE = `Usage: autopilot <command> [options]
 
-Commands:
-  run                          Plan autopilot-labeled issues, one job at a time
-  allow <owner>[/<repo>]       Allow it on a host; opens the App install page if needed
-  deny <owner>[/<repo>]        Remove it from a host allowlist
-  allowed                      List the allowlist of every host
-  host setup                   Install or upgrade autopilot on a host
-  host update                  Same as setup
-  host status                  Show the service, release, allowlist and last logs
+Commands that run on a host. With --host or AUTOPILOT_HOST, the client forwards them over SSH:
+  allow <owner>[/<repo>]      Allow it; prints the App install page if the App is not installed there
+  deny <owner>[/<repo>]       Remove it from the allowlist
+  allowed                     Show the allowlist
+  status                      Show the service, release, allowlist and last logs
+  logs [--since <time>]       Show the service log (default: last 100 lines)
+  audit [--since <time>]      Show the audit trail (default: --since 1d)
+  update [--version <tag>]    Install a release from GitHub (default: the latest) and restart
+  run [--once]                Plan autopilot-labeled issues, one job at a time (never forwarded)
 
-Hosts are named in ~/.config/autopilot/config.json.
+Commands that run on the client:
+  host setup --host <ssh-target> [--owner <login> --app-id <id>] [--version <tag> | --from-checkout]
+                              Push the 1Password service account token, write host.json if it is
+                              missing, and install a release (or the current commit)
 
 Options:
-  --on <host>         Host name to act on (default: default_host)
-  --host <path>       run: host file (default ~/.config/autopilot/host.json)
-  --once              run: do one loop, then exit`;
+  --host <ssh-target>  Host to act on (default: $AUTOPILOT_HOST)
+  --config <path>      Host file, on the host (default: ${HOST_FILE})`;
+
+const HOST_COMMANDS = ["allow", "deny", "allowed", "status", "logs", "audit", "update"];
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     host: { type: "string" },
-    on: { type: "string" },
+    config: { type: "string", default: HOST_FILE },
     once: { type: "boolean", default: false },
+    since: { type: "string" },
+    version: { type: "string" },
+    owner: { type: "string" },
+    "app-id": { type: "string" },
+    "from-checkout": { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 });
 
-function accessTo(target: string): HostAccess {
-  return target === "local" ? localAccess() : remoteAccess(sshRemote(target));
-}
-
-function hostsOf(client: Client): Hosts {
-  return new Map(Object.entries(client.hosts).map(([name, target]) => [name, accessTo(target)]));
-}
-
-function sshTargetOf(client: Client, name: string): string {
-  const target = client.hosts[name];
-  if (!target) throw new Error(`unknown host ${name}`);
-  if (target === "local") throw new Error("host setup on this machine comes with step 3b");
+function sshTarget(): string | undefined {
+  const target = values.host ?? process.env.AUTOPILOT_HOST;
+  if (target?.startsWith("-")) throw new Error(`"${target}" is not an SSH target`);
   return target;
 }
 
+function argument(command: string): string {
+  const value = positionals[1];
+  if (!value) throw new Error(`usage: autopilot ${command} <owner>[/<repo>]`);
+  return value;
+}
+
 async function main(): Promise<void> {
-  const [command, argument] = positionals;
+  const [command = ""] = positionals;
+  const target = sshTarget();
+  if (HOST_COMMANDS.includes(command)) {
+    if (target) {
+      const options = [...(values.since ? ["--since", values.since] : []), ...(values.version ? ["--version", values.version] : [])];
+      process.exitCode = await forward(target, [...positionals, ...options]);
+      return;
+    }
+    if (!existsSync(values.config)) throw new Error(`no host file at ${values.config}: to manage a host, set AUTOPILOT_HOST=<ssh-target> or pass --host`);
+  }
   switch (command) {
     case "run": {
-      const host = loadHost(values.host);
-      const github = createGitHub({ appId: host.app_id, privateKey: readFileSync(host.private_key_path, "utf8") });
-      await run({ github, host, plan: runPlanner }, { once: values.once });
+      const host = loadHost(values.config);
+      const privateKey = readSecret(host.secrets.app_key, "run: GitHub App key", auditLog);
+      const claudeToken = readSecret(host.secrets.claude_token, "run: token for the agent containers", auditLog);
+      const github = createGitHub({ appId: host.app_id, privateKey }, auditLog);
+      await run({ github, host, audit: auditLog, plan: (job) => runPlanner(job, { claudeToken, audit: auditLog }) }, { once: values.once });
       break;
     }
     case "allow":
-    case "deny": {
-      if (!argument) throw new Error(`usage: autopilot ${command} <owner>[/<repo>]`);
-      const client = loadClient();
-      const target = values.on ?? client.default_host;
-      await (command === "allow" ? allow(hostsOf(client), target, client, argument) : deny(hostsOf(client), target, argument));
+      await allow(values.config, argument(command), auditLog);
       break;
-    }
+    case "deny":
+      deny(values.config, argument(command), auditLog);
+      break;
     case "allowed":
-      await listAllowed(hostsOf(loadClient()));
+      allowed(values.config);
+      break;
+    case "status":
+      showStatus(values.config);
+      break;
+    case "logs":
+      showLogs(values.since);
+      break;
+    case "audit":
+      showAudit(values.since);
+      break;
+    case "update":
+      await update(values.config, values.version);
       break;
     case "host": {
-      const client = loadClient();
-      const target = sshTargetOf(client, values.on ?? client.default_host);
-      if (argument === "setup" || argument === "update") {
-        await hostSetup(sshRemote(target), client);
-      } else if (argument === "status") {
-        await hostStatus(sshRemote(target));
-      } else {
-        throw new Error("usage: autopilot host <setup|update|status> [--on <host>]");
-      }
+      if (positionals[1] !== "setup" || !target) throw new Error("usage: autopilot host setup --host <ssh-target> [--owner <login> --app-id <id>]");
+      const appId = values["app-id"] === undefined ? undefined : Number(values["app-id"]);
+      if (appId !== undefined && !Number.isInteger(appId)) throw new Error(`--app-id "${values["app-id"]}" is not a number`);
+      await hostSetup(target, { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"] });
       break;
     }
     default:

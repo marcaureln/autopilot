@@ -14,6 +14,9 @@ command -v docker >/dev/null || missing+=("Docker Engine: https://docs.docker.co
 if ! command -v mise >/dev/null && ! command -v apt-get >/dev/null; then
   missing+=("mise: https://mise.jdx.dev/installing-mise.html")
 fi
+if ! command -v op >/dev/null && ! command -v apt-get >/dev/null; then
+  missing+=("1Password CLI: https://developer.1password.com/docs/cli/get-started/")
+fi
 if [ "$docker_mode" = rootless ]; then
   command -v dockerd-rootless-setuptool.sh >/dev/null || missing+=("Docker rootless extras: https://docs.docker.com/engine/security/rootless/")
   command -v newuidmap >/dev/null || missing+=("newuidmap (package uidmap): https://docs.docker.com/engine/security/rootless/#prerequisites")
@@ -34,6 +37,19 @@ if ! command -v mise >/dev/null; then
   apt-get install -y -q mise
 fi
 
+if ! command -v op >/dev/null; then
+  step "1password cli"
+  echo "INFO: op is missing, installing it from 1Password's signed apt repository (https://developer.1password.com/docs/cli/get-started/)"
+  arch=$(dpkg --print-architecture)
+  curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --dearmor --yes -o /usr/share/keyrings/1password-archive-keyring.gpg
+  echo "deb [arch=$arch signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$arch stable main" >/etc/apt/sources.list.d/1password.list
+  install -dm 755 /etc/debsig/policies/AC2D62742012EA22 /usr/share/debsig/keyrings/AC2D62742012EA22
+  curl -fsSL https://downloads.1password.com/linux/debian/debsig/1password.pol -o /etc/debsig/policies/AC2D62742012EA22/1password.pol
+  curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --dearmor --yes -o /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg
+  apt-get update -q
+  apt-get install -y -q 1password-cli
+fi
+
 step "user $user"
 if ! id "$user" >/dev/null 2>&1; then
   useradd --create-home --shell /usr/sbin/nologin "$user"
@@ -46,7 +62,7 @@ if [ "$(loginctl show-user "$user" -p Linger --value 2>/dev/null)" != "yes" ]; t
 fi
 for _ in $(seq 20); do [ -d "/run/user/$uid" ] && break; sleep 0.5; done
 
-as_user() { sudo -u "$user" -H env XDG_RUNTIME_DIR="/run/user/$uid" MISE_TRUSTED_CONFIG_PATHS=/opt "$@"; }
+as_user() { sudo -u "$user" -H env XDG_RUNTIME_DIR="/run/user/$uid" "$@"; }
 
 if [ "$docker_mode" = rootless ]; then
   step "rootless docker"
@@ -64,9 +80,13 @@ else
 fi
 
 step "cli $release"
-chown -R "$user:$user" "$release"
-as_user mise --cd "$release" install --yes
-as_user mise --cd "$release" exec -- pnpm install --prod --frozen-lockfile --silent
+# Root runs this release through `sudo autopilot`, so $user, who runs the agent containers, must not be able to change it.
+tools=/opt/autopilot-tools
+install -d -m 755 -o root -g root "$tools"
+root_mise() { env MISE_DATA_DIR="$tools" MISE_TRUSTED_CONFIG_PATHS="$release" mise --cd "$release" "$@"; }
+root_mise install --yes
+root_mise exec -- pnpm install --prod --frozen-lockfile --silent
+node=$(root_mise which node)
 ln -sfn "$release" /opt/autopilot
 
 step "service"
@@ -80,11 +100,9 @@ Wants=network-online.target
 User=$user
 WorkingDirectory=/opt/autopilot
 Environment=DOCKER_HOST=$docker_host
-Environment=MISE_TRUSTED_CONFIG_PATHS=/opt
-ExecStart=$(command -v mise) --cd /opt/autopilot exec -- node src/cli.ts run --host /etc/autopilot/host.json
-LoadCredential=app-key:/etc/autopilot/app-key
-LoadCredential=claude-token:/etc/autopilot/claude-token
+ExecStart=$node /opt/autopilot/src/cli.ts run
 LoadCredential=op-token:/etc/autopilot/op-token
+SyslogIdentifier=autopilot
 Restart=always
 RestartSec=10
 
@@ -97,5 +115,19 @@ if [ "$(cat /etc/systemd/system/autopilot.service 2>/dev/null)" != "$unit" ]; th
   systemctl daemon-reload
 fi
 systemctl enable --quiet autopilot
+
+step "command /usr/local/bin/autopilot"
+wrapper=$(cat <<EOF
+#!/bin/sh
+exec $node /opt/autopilot/src/cli.ts "\$@"
+EOF
+)
+if [ "$(cat /usr/local/bin/autopilot 2>/dev/null)" != "$wrapper" ]; then
+  printf '%s\n' "$wrapper" >/usr/local/bin/autopilot.tmp
+  chmod 755 /usr/local/bin/autopilot.tmp
+  mv /usr/local/bin/autopilot.tmp /usr/local/bin/autopilot
+fi
+
 systemctl restart autopilot
+printf '{"at":"%s","event":"host.updated","release":"%s","by":"%s"}\n' "$(date -u +%FT%TZ)" "$release" "${SUDO_USER:-root}" | systemd-cat --identifier autopilot-audit
 step "done: $(systemctl is-active autopilot)"

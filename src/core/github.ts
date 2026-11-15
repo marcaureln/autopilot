@@ -1,6 +1,7 @@
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import type { AllowEntry } from "./allow.ts";
+import type { Audit } from "./audit.ts";
 import type { Repo } from "./repo.ts";
 import type { Comment } from "./spec.ts";
 import type { Change, CommentEdit } from "./trust.ts";
@@ -16,6 +17,7 @@ export type RepoGitHub = {
   lastLabeled(issue: number, label: string): Promise<{ actor: string; at: string } | undefined>;
   listComments(issue: number): Promise<Comment[]>;
   postComment(issue: number, body: string): Promise<void>;
+  deleteComment(id: number): Promise<void>;
   setLabels(issue: number, labels: string[]): Promise<void>;
   ensureLabels(labels: LabelSpec[]): Promise<void>;
   readFile(path: string): Promise<string | undefined>;
@@ -26,6 +28,7 @@ export type RepoGitHub = {
 };
 
 export type GitHub = {
+  appSlug(): Promise<string>;
   appLogin(): Promise<string>;
   findInstallation(entry: AllowEntry): Promise<number | undefined>;
   listRepos(installationId: number, owner: string): Promise<Repo[]>;
@@ -38,9 +41,10 @@ function hasStatus(error: unknown, status: number): boolean {
   return typeof error === "object" && error !== null && "status" in error && error.status === status;
 }
 
-function hasToken(value: unknown): value is { token: string } {
-  return typeof value === "object" && value !== null && "token" in value && typeof value.token === "string";
+function hasToken(value: unknown): value is { token: string; expiresAt: string } {
+  return typeof value === "object" && value !== null && "token" in value && typeof value.token === "string" && "expiresAt" in value && typeof value.expiresAt === "string";
 }
+
 
 // A 304 answer to a conditional request does not count against the rate limit, so an unchanged poll is free.
 function cacheGetsByEtag(octokit: Octokit): Octokit {
@@ -78,7 +82,7 @@ type IssueProvenance = {
   } | null;
 };
 
-function repoGitHub(octokit: Octokit, { owner, name: repo }: Repo): RepoGitHub {
+function repoGitHub(octokit: Octokit, installationId: number, { owner, name: repo }: Repo, audit: Audit): RepoGitHub {
   const issueParams = (issue: number) => ({ owner, repo, issue_number: issue });
   return {
     async listLabeledIssues(label) {
@@ -110,6 +114,9 @@ function repoGitHub(octokit: Octokit, { owner, name: repo }: Repo): RepoGitHub {
     },
     async postComment(issue, body) {
       await octokit.issues.createComment({ ...issueParams(issue), body });
+    },
+    async deleteComment(id) {
+      await octokit.issues.deleteComment({ owner, repo, comment_id: id });
     },
     async setLabels(issue, labels) {
       await octokit.issues.setLabels({ ...issueParams(issue), labels });
@@ -176,16 +183,17 @@ function repoGitHub(octokit: Octokit, { owner, name: repo }: Repo): RepoGitHub {
     async token() {
       const auth: unknown = await octokit.auth({ type: "installation" });
       if (!hasToken(auth)) throw new Error("GitHub App auth returned no installation token");
+      audit({ event: "token.minted", installation: installationId, repo: `${owner}/${repo}`, expires: auth.expiresAt });
       return auth.token;
     },
   };
 }
 
-export function createGitHub(auth: { appId: number; privateKey: string }): GitHub {
+export function createGitHub(auth: { appId: number; privateKey: string }, audit: Audit): GitHub {
   const app = new Octokit({ authStrategy: createAppAuth, auth, log: quiet });
   const clients = new Map<number, Octokit>();
   const installationIds = new Map<string, number>();
-  let login: string | undefined;
+  let slug: string | undefined;
 
   function asInstallation(installationId: number): Octokit {
     let octokit = clients.get(installationId);
@@ -196,15 +204,18 @@ export function createGitHub(auth: { appId: number; privateKey: string }): GitHu
     return octokit;
   }
 
+  async function appSlug(): Promise<string> {
+    if (!slug) {
+      const { data } = await app.apps.getAuthenticated();
+      if (!data?.slug) throw new Error("GitHub App has no slug");
+      slug = data.slug;
+    }
+    return slug;
+  }
+
   return {
-    async appLogin() {
-      if (!login) {
-        const { data } = await app.apps.getAuthenticated();
-        if (!data?.slug) throw new Error("GitHub App has no slug");
-        login = `${data.slug}[bot]`;
-      }
-      return login;
-    },
+    appSlug,
+    appLogin: async () => `${await appSlug()}[bot]`,
     async findInstallation(entry) {
       const key = entry.repo ? `${entry.owner}/${entry.repo}` : entry.owner;
       const known = installationIds.get(key);
@@ -225,6 +236,6 @@ export function createGitHub(auth: { appId: number; privateKey: string }): GitHu
       const repos = await octokit.paginate(octokit.apps.listReposAccessibleToInstallation, { per_page: 100 });
       return repos.filter((repo) => repo.owner.login === owner).map((repo) => ({ owner: repo.owner.login, name: repo.name }));
     },
-    repo: (installationId, repo) => repoGitHub(asInstallation(installationId), repo),
+    repo: (installationId, repo) => repoGitHub(asInstallation(installationId), installationId, repo, audit),
   };
 }
