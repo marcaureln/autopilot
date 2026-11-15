@@ -11,7 +11,9 @@ step "prerequisites"
 missing=()
 command -v systemctl >/dev/null || missing+=("systemd: autopilot runs as a systemd service")
 command -v docker >/dev/null || missing+=("Docker Engine: https://docs.docker.com/engine/install/")
-command -v mise >/dev/null || missing+=("mise: https://mise.jdx.dev/installing-mise.html")
+if ! command -v mise >/dev/null && ! command -v apt-get >/dev/null; then
+  missing+=("mise: https://mise.jdx.dev/installing-mise.html")
+fi
 if [ "$docker_mode" = rootless ]; then
   command -v dockerd-rootless-setuptool.sh >/dev/null || missing+=("Docker rootless extras: https://docs.docker.com/engine/security/rootless/")
   command -v newuidmap >/dev/null || missing+=("newuidmap (package uidmap): https://docs.docker.com/engine/security/rootless/#prerequisites")
@@ -20,6 +22,16 @@ fi
 if [ "${#missing[@]}" -gt 0 ]; then
   printf 'missing: %s\n' "${missing[@]}" >&2
   exit 1
+fi
+
+if ! command -v mise >/dev/null; then
+  step "mise"
+  echo "INFO: mise is missing, installing it from its signed apt repository (https://mise.jdx.dev/installing-mise.html#apt)"
+  install -dm 755 /etc/apt/keyrings
+  curl -fsSL https://mise.jdx.dev/gpg-key.pub | gpg --dearmor -o /etc/apt/keyrings/mise-archive-keyring.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/mise-archive-keyring.gpg] https://mise.jdx.dev/deb stable main" >/etc/apt/sources.list.d/mise.list
+  apt-get update -q
+  apt-get install -y -q mise
 fi
 
 step "user $user"
