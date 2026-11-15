@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 
 const wordmark = readFileSync(new URL("../../assets/autopilot-wordmark-black.svg", import.meta.url), "utf8").replaceAll("#111111", "currentColor");
 
+const favicon = `data:image/svg+xml,${encodeURIComponent(readFileSync(new URL("../../assets/favicon.svg", import.meta.url), "utf8"))}`;
+
 const REPO_URL = "https://github.com/marcaureln/autopilot";
 
 const STYLE = `
@@ -56,6 +58,7 @@ function layout(title: string, body: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)} · autopilot</title>
+<link rel="icon" type="image/svg+xml" href="${favicon}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>${STYLE}</style>
