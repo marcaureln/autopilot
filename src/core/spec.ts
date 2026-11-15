@@ -1,9 +1,11 @@
 import type { Gate1 } from "./gate.ts";
 import type { PlannerResult } from "./planner.ts";
+import type { Risk } from "./risk.ts";
 
 export type Comment = { id: number; nodeId: string; author: string; body: string; createdAt: string };
 
-const MARKER = /^<!-- autopilot:spec gate=([a-z_]+) -->/;
+// Older spec comments have no planner risk.
+const MARKER = /^<!-- autopilot:spec gate=([a-z_]+)(?: planner=(low|high))? -->/;
 const CHECKBOX = "Approve and build";
 
 const NEXT_STEP: Record<Gate1["event"], string> = {
@@ -19,7 +21,7 @@ function fileLine(file: PlannerResult["planned_files"][number]): string {
 export function renderSpecComment(result: PlannerResult, gate: Gate1): string {
   const riskLine = gate.risk === result.risk && gate.risk === gate.rulesRisk ? gate.risk : `${gate.risk} (planner: ${result.risk}, rules: ${gate.rulesRisk})`;
   const lines = [
-    `<!-- autopilot:spec gate=${gate.event} -->`,
+    `<!-- autopilot:spec gate=${gate.event} planner=${result.risk} -->`,
     result.spec.trim(),
     "",
     "## Assessment",
@@ -41,6 +43,11 @@ const GATE_EVENTS: Gate1["event"][] = ["needs_info", "approval_required", "go"];
 export function specGate(body: string): Gate1["event"] | undefined {
   const event = MARKER.exec(body)?.[1];
   return GATE_EVENTS.find((known) => known === event);
+}
+
+export function specPlannerRisk(body: string): Risk | undefined {
+  const risk = MARKER.exec(body)?.[2];
+  return risk === "low" || risk === "high" ? risk : undefined;
 }
 
 export function isApproved(body: string): boolean {
