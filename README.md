@@ -59,9 +59,9 @@ A host runs `autopilot run` as a systemd service and holds everything it needs: 
 
 ```sh
 # Once per host: push the 1Password token, write host.json, install the latest release
-autopilot host setup --host alex@raspberrypi --owner <login> --app-id <id>
+autopilot host setup --host user@my-host --owner <login> --app-id <id>
 
-export AUTOPILOT_HOST=alex@raspberrypi
+export AUTOPILOT_HOST=user@my-host
 autopilot allow <owner>/<repo>   # opens the App install page if the App is not installed there
 autopilot status
 autopilot logs

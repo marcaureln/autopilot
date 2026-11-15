@@ -5,8 +5,8 @@ import { addAllowEntry, parseAllowEntry, removeAllowEntry } from "./allow.ts";
 const host = { name: "pi", app_id: 1, secrets: { app_key: "op://v/k/f", claude_token: "op://v/c/f" }, owners: ["me"], allow: ["me"], docker: "rootless" as const, poll_interval_seconds: 60, limits: { memory: "6g", cpus: 2, pids: 1024 } };
 
 test("parses owner and owner/repo entries", () => {
-  assert.deepEqual(parseAllowEntry("aresmusicgroup"), { owner: "aresmusicgroup" });
-  assert.deepEqual(parseAllowEntry("aresmusicgroup/amg-monorepo"), { owner: "aresmusicgroup", repo: "amg-monorepo" });
+  assert.deepEqual(parseAllowEntry("example-org"), { owner: "example-org" });
+  assert.deepEqual(parseAllowEntry("example-org/app"), { owner: "example-org", repo: "amg-monorepo" });
 });
 
 for (const value of ["", "a/b/c", "/repo", "owner/", "bad owner"]) {
