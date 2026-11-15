@@ -12,7 +12,7 @@ const github: GitHub = {
   listLabeledIssues: async (_, repo) => (repo.name === "app-a" ? [{ number: 7, title: "Add CONTRIBUTING.md" }] : []),
 };
 
-const host = { app_id: 1, private_key_path: "/k.pem", owners: ["marcaureln"], allow: [], docker: "rootless" as const, poll_interval_seconds: 60 };
+const host = { app_id: 1, private_key_path: "/k.pem", owners: ["marcaureln"], allow: [], docker: "rootless" as const, poll_interval_seconds: 60, limits: { memory: "6g", cpus: 2, pids: 1024 } };
 
 async function linesFor(allow: string[]): Promise<string[]> {
   const lines: string[] = [];

@@ -56,6 +56,44 @@
       "type": "integer",
       "minimum": 10,
       "default": 60
+    },
+    "limits": {
+      "description": "Caps for each agent container.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory": {
+          "description": "Memory cap, as Docker reads it (for example 6g).",
+          "type": "string",
+          "pattern": "^[0-9]+[kmg]$",
+          "default": "6g"
+        },
+        "cpus": {
+          "description": "CPU cap, in cores.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 2
+        },
+        "pids": {
+          "description": "Maximum number of processes.",
+          "type": "integer",
+          "minimum": 64,
+          "default": 1024
+        }
+      },
+      "default": {}
+    },
+    "claude": {
+      "description": "Claude Code settings for the agent containers.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "description": "Personal Claude config, mounted read-only as the agent's ~/.claude: github.com/<owner>/<repo>[//<subdir>][#<ref>] (fetched per job with the App token, so the App must be installed on that repo) or an absolute path on the host.",
+          "type": "string",
+          "pattern": "^(/.*|github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(//[^#]+)?(#.+)?)$"
+        }
+      }
     }
   }
 }

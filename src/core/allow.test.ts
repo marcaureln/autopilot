@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { addAllowEntry, overlaps, parseAllowEntry, removeAllowEntry } from "./allow.ts";
 
-const host = { app_id: 1, private_key_path: "/k.pem", owners: ["me"], allow: ["me"], docker: "rootless" as const, poll_interval_seconds: 60 };
+const host = { app_id: 1, private_key_path: "/k.pem", owners: ["me"], allow: ["me"], docker: "rootless" as const, poll_interval_seconds: 60, limits: { memory: "6g", cpus: 2, pids: 1024 } };
 
 test("parses owner and owner/repo entries", () => {
   assert.deepEqual(parseAllowEntry("aresmusicgroup"), { owner: "aresmusicgroup" });

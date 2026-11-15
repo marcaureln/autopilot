@@ -83,6 +83,7 @@ export function initialHostFile(client: Client): Host {
     allow: [],
     docker: "rootless",
     poll_interval_seconds: 60,
+    limits: { memory: "6g", cpus: 2, pids: 1024 },
   };
 }
 
