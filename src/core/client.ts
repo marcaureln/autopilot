@@ -6,7 +6,8 @@ import schema from "../../schema/client.schema.json" with { type: "json" };
 
 export type Client = {
   $schema?: string;
-  host: string;
+  hosts: Record<string, string>;
+  default_host: string;
   app: { id: number; slug: string };
   owner: string;
 };
@@ -21,5 +22,6 @@ export function loadClient(path = CLIENT_PATH): Client {
   if (!validate(data)) {
     throw new Error(`Invalid client config ${path}: ${ajv.errorsText(validate.errors, { dataVar: "config" })}`);
   }
+  if (!data.hosts[data.default_host]) throw new Error(`Invalid client config ${path}: default_host "${data.default_host}" is not in hosts`);
   return data;
 }

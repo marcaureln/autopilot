@@ -1,8 +1,6 @@
-import { readFileSync } from "node:fs";
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import type { AllowEntry } from "./allow.ts";
-import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
 
 export type Issue = { number: number; title: string };
@@ -39,8 +37,7 @@ function cacheGetsByEtag(octokit: Octokit): Octokit {
   return octokit;
 }
 
-export function createGitHub(host: Host): GitHub {
-  const auth = { appId: host.app_id, privateKey: readFileSync(host.private_key_path, "utf8") };
+export function createGitHub(auth: { appId: number; privateKey: string }): GitHub {
   const app = new Octokit({ authStrategy: createAppAuth, auth, log: quiet });
   const clients = new Map<number, Octokit>();
   const installationIds = new Map<string, number>();

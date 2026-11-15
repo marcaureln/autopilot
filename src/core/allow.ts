@@ -19,3 +19,7 @@ export function removeAllowEntry(host: Host, value: string): Host {
   if (!host.allow.includes(value)) throw new Error(`${value} is not in the allowlist`);
   return { ...host, allow: host.allow.filter((entry) => entry !== value) };
 }
+
+export function overlaps(a: AllowEntry, b: AllowEntry): boolean {
+  return a.owner === b.owner && (a.repo === undefined || b.repo === undefined || a.repo === b.repo);
+}

@@ -5,21 +5,48 @@
   "description": "Tells the CLI on your machine which host and which GitHub App to use. Lives at ~/.config/autopilot/config.json.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["host", "app", "owner"],
+  "required": [
+    "hosts",
+    "default_host",
+    "app",
+    "owner"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
-    "host": {
-      "description": "SSH target of the host, or \"local\" when this machine is the host.",
+    "$schema": {
+      "type": "string"
+    },
+    "hosts": {
+      "description": "Hosts by name. Each value is an SSH target, or \"local\" when this machine is the host.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "default_host": {
+      "description": "Name of the host that commands use when --on is not given.",
       "type": "string",
       "minLength": 1
     },
     "app": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "slug"],
+      "required": [
+        "id",
+        "slug"
+      ],
       "properties": {
-        "id": { "description": "GitHub App ID.", "type": "integer", "minimum": 1 },
-        "slug": { "description": "GitHub App slug, as in github.com/apps/<slug>.", "type": "string", "minLength": 1 }
+        "id": {
+          "description": "GitHub App ID.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "slug": {
+          "description": "GitHub App slug, as in github.com/apps/<slug>.",
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "owner": {
