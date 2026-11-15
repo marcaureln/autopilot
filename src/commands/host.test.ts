@@ -1,8 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { remoteHostFile } from "./host.ts";
+import { initialHostFile } from "./host.ts";
 
-test("the host file on the host reads the App key from the systemd credential", () => {
-  const laptop = { app_id: 1, private_key_path: "/Users/me/.config/autopilot/app.pem", owners: ["me"], installations: ["me"], docker: "rootless" as const, poll_interval_seconds: 60 };
-  assert.deepEqual(remoteHostFile(laptop), { ...laptop, private_key_path: "/run/credentials/autopilot.service/app-key" });
+test("a new host file trusts only the client owner, allows nothing, and reads the key from the systemd credential", () => {
+  const host = initialHostFile({ host: "rpi", app: { id: 42, slug: "me-autopilot" }, owner: "me" });
+  assert.equal(host.app_id, 42);
+  assert.deepEqual(host.owners, ["me"]);
+  assert.deepEqual(host.allow, []);
+  assert.equal(host.private_key_path, "/run/credentials/autopilot.service/app-key");
 });

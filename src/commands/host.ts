@@ -1,10 +1,12 @@
 import { execFileSync, spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
-import type { Host } from "../core/host.ts";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import type { Client } from "../core/client.ts";
+import { DEFAULT_HOST_PATH, parseHost, type Host } from "../core/host.ts";
 
 const CLI_ROOT = new URL("../../", import.meta.url).pathname;
 const SETUP_SCRIPT = new URL("../../host/setup.sh", import.meta.url).pathname;
-const CREDENTIALS_DIR = "/run/credentials/autopilot.service";
+const HOST_FILE = "/etc/autopilot/host.json";
+const HOST_SCHEMA = "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/host.schema.json";
 
 const SECRETS = [
   { file: "app-key", op: ["document", "get", "github-app-private-key", "--vault", "autopilot"] },
@@ -14,23 +16,24 @@ const SECRETS = [
 
 export type Remote = {
   run(command: string, input?: Buffer | string): Promise<number>;
+  capture(command: string): Promise<{ code: number; stdout: string }>;
 };
 
 export function sshRemote(target: string): Remote {
+  function ssh(command: string, input: Buffer | string | undefined, capture: boolean): Promise<{ code: number; stdout: string }> {
+    return new Promise((resolve, reject) => {
+      const child = spawn("ssh", [target, command], { stdio: ["pipe", capture ? "pipe" : "inherit", "inherit"] });
+      let stdout = "";
+      child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+      child.on("error", reject);
+      child.on("close", (code) => resolve({ code: code ?? 1, stdout }));
+      child.stdin?.end(input);
+    });
+  }
   return {
-    run(command, input) {
-      return new Promise((resolve, reject) => {
-        const ssh = spawn("ssh", [target, command], { stdio: ["pipe", "inherit", "inherit"] });
-        ssh.on("error", reject);
-        ssh.on("close", (code) => resolve(code ?? 1));
-        ssh.stdin.end(input);
-      });
-    },
+    run: async (command, input) => (await ssh(command, input, false)).code,
+    capture: (command) => ssh(command, undefined, true),
   };
-}
-
-export function remoteHostFile(host: Host): Host {
-  return { ...host, private_key_path: `${CREDENTIALS_DIR}/app-key` };
 }
 
 async function must(remote: Remote, step: string, command: string, input?: Buffer | string): Promise<void> {
@@ -42,7 +45,48 @@ function writeRootFile(path: string, mode: "600" | "644"): string {
   return `sudo sh -c 'set -e; install -d -m 755 /etc/autopilot; umask 077; cat > ${path}.tmp; chmod ${mode} ${path}.tmp; mv ${path}.tmp ${path}'`;
 }
 
-export async function hostSetup(remote: Remote, host: Host): Promise<void> {
+function serialize(host: Host): string {
+  return JSON.stringify(host, null, 2) + "\n";
+}
+
+export type HostAccess = {
+  readHostFile(): Promise<Host | undefined>;
+  writeHostFile(host: Host): Promise<void>;
+  restart(): Promise<void>;
+};
+
+export function remoteAccess(remote: Remote): HostAccess {
+  return {
+    async readHostFile() {
+      const { code, stdout } = await remote.capture(`sudo cat ${HOST_FILE} 2>/dev/null`);
+      return code === 0 ? parseHost(stdout, HOST_FILE) : undefined;
+    },
+    writeHostFile: (host) => must(remote, "host.json", writeRootFile(HOST_FILE, "644"), serialize(host)),
+    restart: () => must(remote, "restart", "sudo systemctl restart autopilot"),
+  };
+}
+
+export function localAccess(path = DEFAULT_HOST_PATH): HostAccess {
+  return {
+    readHostFile: async () => (existsSync(path) ? parseHost(readFileSync(path, "utf8"), path) : undefined),
+    writeHostFile: async (host) => writeFileSync(path, serialize(host)),
+    restart: async () => console.log("restart `autopilot run` to apply the change"),
+  };
+}
+
+export function initialHostFile(client: Client): Host {
+  return {
+    $schema: HOST_SCHEMA,
+    app_id: client.app.id,
+    private_key_path: "/run/credentials/autopilot.service/app-key",
+    owners: [client.owner],
+    allow: [],
+    docker: "rootless",
+    poll_interval_seconds: 60,
+  };
+}
+
+export async function hostSetup(remote: Remote, client: Client): Promise<void> {
   if (execFileSync("git", ["status", "--porcelain"], { cwd: CLI_ROOT, encoding: "utf8" }).trim()) {
     console.warn("warning: uncommitted changes are not deployed, only HEAD is");
   }
@@ -62,16 +106,23 @@ export async function hostSetup(remote: Remote, host: Host): Promise<void> {
     await must(remote, `secret ${secret.file}`, writeRootFile(`/etc/autopilot/${secret.file}`, "600"), value);
   }
 
-  console.log("==> host.json");
-  await must(remote, "host.json", writeRootFile("/etc/autopilot/host.json", "644"), JSON.stringify(remoteHostFile(host), null, 2) + "\n");
+  const access = remoteAccess(remote);
+  let host = await access.readHostFile();
+  if (!host) {
+    console.log("==> host.json (new)");
+    host = initialHostFile(client);
+    await access.writeHostFile(host);
+  }
 
   await must(remote, "setup.sh", `sudo bash -s -- ${release} ${host.docker}`, readFileSync(SETUP_SCRIPT));
 }
 
 export async function hostStatus(remote: Remote): Promise<void> {
+  const host = await remoteAccess(remote).readHostFile();
+  console.log(`allow:   ${host?.allow.join(", ") || "(empty)"}`);
   await must(
     remote,
     "status",
-    `printf 'service: '; systemctl is-active autopilot; printf 'release: '; readlink /opt/autopilot; printf 'node:    '; sudo -u autopilot -H env MISE_TRUSTED_CONFIG_PATHS=/opt mise --cd /opt/autopilot exec -- node --version; sudo journalctl -u autopilot -n 20 --no-pager --output cat`,
+    `printf 'service: '; systemctl is-active autopilot; printf 'release: '; readlink /opt/autopilot; sudo journalctl -u autopilot -n 20 --no-pager --output cat`,
   );
 }
