@@ -9,7 +9,7 @@ export type Host = {
   app_id: number;
   private_key_path: string;
   owners: string[];
-  installations: string[];
+  allow: string[];
   docker: "rootless" | "rootful";
   poll_interval_seconds: number;
 };
@@ -19,10 +19,14 @@ export const DEFAULT_HOST_PATH = join(homedir(), ".config", "autopilot", "host.j
 const ajv = new Ajv2020({ allErrors: true, useDefaults: true });
 const validate = ajv.compile<Host>(schema);
 
-export function loadHost(path = DEFAULT_HOST_PATH): Host {
-  const data: unknown = JSON.parse(readFileSync(path, "utf8"));
+export function parseHost(text: string, source: string): Host {
+  const data: unknown = JSON.parse(text);
   if (!validate(data)) {
-    throw new Error(`Invalid host file ${path}: ${ajv.errorsText(validate.errors, { dataVar: "host" })}`);
+    throw new Error(`Invalid host file ${source}: ${ajv.errorsText(validate.errors, { dataVar: "host" })}`);
   }
   return data;
+}
+
+export function loadHost(path = DEFAULT_HOST_PATH): Host {
+  return parseHost(readFileSync(path, "utf8"), path);
 }

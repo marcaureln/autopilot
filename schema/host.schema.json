@@ -5,9 +5,16 @@
   "description": "Tells the host where and how to run. Lives at ~/.config/autopilot/host.json.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["app_id", "private_key_path", "owners", "installations"],
+  "required": [
+    "app_id",
+    "private_key_path",
+    "owners",
+    "allow"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string"
+    },
     "app_id": {
       "description": "ID of the GitHub App that acts for autopilot.",
       "type": "integer",
@@ -23,17 +30,26 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
-    "installations": {
-      "description": "Accounts and orgs whose App installation the host processes. Every other installation is ignored.",
+    "allow": {
+      "description": "Owners (an org or a user) and owner/repo entries that the host works on. The host ignores every other installation of the App. Change it with `autopilot allow` and `autopilot deny`.",
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9-]+(/[A-Za-z0-9._-]+)?$"
+      }
     },
     "docker": {
       "description": "rootless: a Docker daemon for the autopilot user only. rootful: the system Docker, which gives the autopilot user root-level control of Docker.",
-      "enum": ["rootless", "rootful"],
+      "enum": [
+        "rootless",
+        "rootful"
+      ],
       "default": "rootless"
     },
     "poll_interval_seconds": {
