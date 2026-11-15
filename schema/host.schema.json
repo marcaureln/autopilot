@@ -31,6 +31,11 @@
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1 }
     },
+    "docker": {
+      "description": "rootless: a Docker daemon for the autopilot user only. rootful: the system Docker, which gives the autopilot user root-level control of Docker.",
+      "enum": ["rootless", "rootful"],
+      "default": "rootless"
+    },
     "poll_interval_seconds": {
       "type": "integer",
       "minimum": 10,

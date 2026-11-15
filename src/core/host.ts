@@ -10,6 +10,7 @@ export type Host = {
   private_key_path: string;
   owners: string[];
   installations: string[];
+  docker: "rootless" | "rootful";
   poll_interval_seconds: number;
 };
 

@@ -18,7 +18,7 @@ const github: GitHub = {
   listLabeledIssues: async (_, repo) => (repo.name === "app-a" ? [{ number: 7, title: "Add CONTRIBUTING.md" }] : []),
 };
 
-const host = { app_id: 1, private_key_path: "/k.pem", owners: ["marcaureln"], installations: ["marcaureln"], poll_interval_seconds: 60 };
+const host = { app_id: 1, private_key_path: "/k.pem", owners: ["marcaureln"], installations: ["marcaureln"], docker: "rootless" as const, poll_interval_seconds: 60 };
 
 test("lists labeled issues on allowed installations and ignores the others", async () => {
   const lines: string[] = [];

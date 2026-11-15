@@ -11,9 +11,10 @@ function writeHost(content: string): string {
   return path;
 }
 
-test("loads a host file and fills the poll interval", () => {
+test("loads a host file and fills the defaults", () => {
   const host = loadHost(writeHost(`{ "app_id": 123456, "private_key_path": "/etc/autopilot/app.pem", "owners": ["marcaureln"], "installations": ["marcaureln"] }`));
   assert.equal(host.poll_interval_seconds, 60);
+  assert.equal(host.docker, "rootless");
 });
 
 test("rejects a host file with no owners", () => {
