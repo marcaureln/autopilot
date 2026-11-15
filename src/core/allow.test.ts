@@ -6,7 +6,7 @@ const host = { name: "pi", app_id: 1, secrets: { app_key: "op://v/k/f", claude_t
 
 test("parses owner and owner/repo entries", () => {
   assert.deepEqual(parseAllowEntry("example-org"), { owner: "example-org" });
-  assert.deepEqual(parseAllowEntry("example-org/app"), { owner: "example-org", repo: "amg-monorepo" });
+  assert.deepEqual(parseAllowEntry("example-org/app"), { owner: "example-org", repo: "app" });
 });
 
 for (const value of ["", "a/b/c", "/repo", "owner/", "bad owner"]) {
