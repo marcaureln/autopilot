@@ -69,6 +69,35 @@ const cases: { name: string; changes: FileChange[]; risk?: { high_paths: string[
     expected: "high" as const,
   })),
 
+  ...[
+    "package.json",
+    "apps/web/package.json",
+    "pyproject.toml",
+    "Cargo.toml",
+    "go.mod",
+    "Gemfile",
+    "Makefile",
+    "mise.toml",
+    "justfile",
+    ".husky/pre-commit",
+    ".githooks/pre-push",
+    ".gitattributes",
+    ".gitmodules",
+    "CODEOWNERS",
+    "docs/CODEOWNERS",
+  ].map((path) => ({ name: `build or repo file: ${path}`, changes: [modified(path)], expected: "high" as const })),
+  ...["CLAUDE.md", "src/CLAUDE.md", "CLAUDE.local.md", "agents.md", ".claude/settings.json", "packages/x/.claude/skills/a.md", ".mcp.json", ".cursor/rules/a.mdc"].map(
+    (path) => ({ name: `agent file: ${path}`, changes: [modified(path)], expected: "high" as const }),
+  ),
+  ...["src/JWTSecret.ts", "src/APIToken.ts", "src/auth2.ts", "src/OAUTHClient.ts"].map((path) => ({
+    name: `sensitive word in a mixed-case name: ${path}`,
+    changes: [modified(path)],
+    expected: "high" as const,
+  })),
+
+  { name: "binary file (no lines counted)", changes: [modified("assets/logo.png", 0)], expected: "high" },
+  { name: "planned file at Gate 1 (no line counts)", changes: [{ status: "modified", path: "src/index.ts" }], expected: "low" },
+  { name: "unknown GitHub status", changes: [{ status: "unknown", path: "src/a.ts", additions: 0, deletions: 0 }], expected: "high" },
   { name: "deleted file", changes: [{ status: "deleted", path: "src/old.ts", additions: 0, deletions: 3 }], expected: "high" },
   {
     name: "rename into a sensitive path",
