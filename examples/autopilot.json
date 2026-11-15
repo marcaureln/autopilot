@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/autopilot.schema.json",
+  "version": 1,
+  "stack": ["node"],
+  "agents": {
+    "planner": { "harness": "claude", "model": "claude-opus-5-5", "effort": "high" },
+    "builder": { "harness": "claude", "model": "claude-sonnet-5-5" }
+  },
+  "steps": { "spec": "planner", "build": "builder", "fix": "builder" },
+  "skills": {
+    "planner": ["pstack/architect"],
+    "builder": ["pstack/poteto-mode", "pstack/unslop", "pstack/no-comment", "obra/test-driven-development", "obra/systematic-debugging"]
+  },
+  "verify": {
+    "mode": "local",
+    "required": ["lint", "types", "test", "sast", "deps-scan", "secrets-scan"],
+    "commands": { "lint": "npm run lint", "types": "npx tsc --noEmit", "test": "npm test" },
+    "timeout_minutes": 10
+  },
+  "preview": { "command": "npm run dev", "url": "http://localhost:3000" },
+  "merge": "auto",
+  "risk": { "high_paths": ["src/auth/**"], "max_diff_lines": 500 },
+  "secrets": { "STRIPE_KEY": "op://autopilot/app-a/STRIPE_KEY" },
+  "limits": { "fix_rounds": 3, "run_timeout_minutes": 45 }
+}

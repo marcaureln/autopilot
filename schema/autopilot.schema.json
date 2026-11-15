@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/autopilot.schema.json",
+  "title": "Autopilot repo config",
+  "description": "Tells autopilot what to do in this repo. Lives at .github/autopilot.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "stack"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "description": "Config format version.",
+      "const": 1
+    },
+    "stack": {
+      "description": "Stack packs that apply to this repo.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["node"] }
+    },
+    "agents": {
+      "description": "The harness and model for each role.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planner", "builder"],
+      "properties": {
+        "planner": { "$ref": "#/$defs/agent" },
+        "builder": { "$ref": "#/$defs/agent" }
+      },
+      "default": {
+        "planner": { "harness": "claude", "model": "claude-opus-5-5", "effort": "high" },
+        "builder": { "harness": "claude", "model": "claude-sonnet-5-5" }
+      }
+    },
+    "steps": {
+      "description": "Which role runs each step.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "spec": { "$ref": "#/$defs/role", "default": "planner" },
+        "build": { "$ref": "#/$defs/role", "default": "builder" },
+        "fix": { "$ref": "#/$defs/role", "default": "builder" }
+      },
+      "default": {}
+    },
+    "skills": {
+      "description": "Skills installed for each role, as owner/skill.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "planner": { "$ref": "#/$defs/skillList", "default": [] },
+        "builder": { "$ref": "#/$defs/skillList", "default": [] }
+      },
+      "default": {}
+    },
+    "verify": {
+      "description": "How checks run before merge.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "description": "local: the host runs checks and posts autopilot/<check> statuses. remote: wait for these check names from the repo's own CI.",
+          "enum": ["local", "remote"],
+          "default": "local"
+        },
+        "required": {
+          "description": "Checks that must pass before merge.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "default": ["lint", "types", "test", "sast", "deps-scan", "secrets-scan"]
+        },
+        "commands": {
+          "description": "Shell command for each stack check, such as lint, types and test.",
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 },
+          "default": {}
+        },
+        "timeout_minutes": {
+          "description": "Time limit for all checks together.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 10
+        }
+      },
+      "default": {}
+    },
+    "preview": {
+      "description": "Declares that screenshots are possible. The builder decides per task.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "url"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "minLength": 1 }
+      }
+    },
+    "merge": {
+      "description": "auto: merge when checks pass and risk is low. manual: always leave the merge to a human.",
+      "enum": ["auto", "manual"],
+      "default": "manual"
+    },
+    "risk": {
+      "description": "Extra risk rules on top of the built-in ones.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "high_paths": {
+          "description": "Globs that make a change high risk.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "max_diff_lines": {
+          "description": "A diff with more added + deleted lines than this is high risk.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 500
+        }
+      },
+      "default": {}
+    },
+    "secrets": {
+      "description": "Runtime secrets as references. The host resolves the values.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Z_][A-Z0-9_]*$" },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^op://[^/]+/[^/]+/[^/]+$"
+      },
+      "default": {}
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fix_rounds": {
+          "description": "Maximum fix rounds after failed checks.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 3
+        },
+        "run_timeout_minutes": {
+          "description": "Time limit for one job.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 45
+        }
+      },
+      "default": {}
+    }
+  },
+  "$defs": {
+    "role": { "enum": ["planner", "builder"] },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["harness", "model"],
+      "properties": {
+        "harness": { "enum": ["claude"] },
+        "model": {
+          "description": "Passed to the harness verbatim.",
+          "type": "string",
+          "minLength": 1
+        },
+        "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+      }
+    },
+    "skillList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[^/]+/[^/]+$" }
+    }
+  }
+}
