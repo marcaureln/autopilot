@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultHostName, loadHost, parseClaudeConfigSource, type ClaudeConfigSource } from "./host.ts";
+import { defaultHostName, loadHost, parseSource, type Source } from "./host.ts";
 
 const SECRETS = `"secrets": { "app_key": "op://v/key/app.pem", "claude_token": "op://v/claude/credential" }`;
 
@@ -41,7 +41,7 @@ test("fills the container limits", () => {
   assert.deepEqual(host.limits, { memory: "6g", cpus: 2, pids: 1024 });
 });
 
-const sources: { value: string; expected: ClaudeConfigSource }[] = [
+const sources: { value: string; expected: Source }[] = [
   { value: "/srv/claude", expected: { kind: "path", path: "/srv/claude" } },
   { value: "github.com/me/dotfiles", expected: { kind: "github", owner: "me", repo: "dotfiles" } },
   { value: "github.com/me/dotfiles//claude", expected: { kind: "github", owner: "me", repo: "dotfiles", subdir: "claude" } },
@@ -51,12 +51,12 @@ const sources: { value: string; expected: ClaudeConfigSource }[] = [
 
 for (const { value, expected } of sources) {
   test(`claude config source ${value}`, () => {
-    assert.deepEqual(parseClaudeConfigSource(value), expected);
+    assert.deepEqual(parseSource(value), expected);
   });
 }
 
 for (const value of ["claude", "https://github.com/me/dotfiles", "github.com/me", "github.com/me/dotfiles//../etc"]) {
   test(`rejects claude config source ${value}`, () => {
-    assert.throws(() => parseClaudeConfigSource(value), /claude.config/);
+    assert.throws(() => parseSource(value), /claude.config/);
   });
 }

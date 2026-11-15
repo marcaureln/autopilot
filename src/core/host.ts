@@ -16,7 +16,7 @@ export type Host = {
   claude?: { config?: string };
 };
 
-export type ClaudeConfigSource = { kind: "path"; path: string } | { kind: "github"; owner: string; repo: string; subdir?: string; ref?: string };
+export type Source = { kind: "path"; path: string } | { kind: "github"; owner: string; repo: string; subdir?: string; ref?: string };
 
 export const HOST_FILE = "/etc/autopilot/host.json";
 
@@ -41,12 +41,12 @@ export function loadHost(path = HOST_FILE): Host {
 
 const GITHUB_SOURCE = /^github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)(?:\/\/([^#]+))?(?:#(.+))?$/;
 
-export function parseClaudeConfigSource(value: string): ClaudeConfigSource {
+export function parseSource(value: string, field = "claude.config"): Source {
   if (value.startsWith("/")) return { kind: "path", path: value };
   const match = GITHUB_SOURCE.exec(value);
   const [, owner, repo, subdir, ref] = match ?? [];
   if (!owner || !repo || subdir?.split("/").includes("..")) {
-    throw new Error(`claude.config "${value}" must be github.com/<owner>/<repo>[//<subdir>][#<ref>] or an absolute path`);
+    throw new Error(`${field} "${value}" must be github.com/<owner>/<repo>[//<subdir>][#<ref>] or an absolute path`);
   }
   return { kind: "github", owner, repo, ...(subdir && { subdir }), ...(ref && { ref }) };
 }

@@ -8,8 +8,12 @@
   },
   "steps": { "spec": "planner", "build": "builder", "fix": "builder" },
   "skills": {
-    "planner": ["pstack/architect"],
-    "builder": ["pstack/poteto-mode", "pstack/unslop", "pstack/no-comment", "obra/test-driven-development", "obra/systematic-debugging"]
+    "planner": ["github.com/example-org/skills//architect#main"],
+    "builder": [
+      "github.com/example-org/skills//poteto-mode#main",
+      "github.com/example-org/skills//test-driven-development#v1.2.0",
+      "/etc/autopilot/skills/systematic-debugging"
+    ]
   },
   "verify": {
     "mode": "local",

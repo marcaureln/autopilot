@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -11,7 +11,8 @@ import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
 import type { Risk } from "./risk.ts";
 import type { Comment } from "./spec.ts";
-import { fetchClaudeConfig, readAgentFile, shallowClone } from "./workspace.ts";
+import { prepareAgent } from "./skills.ts";
+import { readAgentFile, shallowClone } from "./workspace.ts";
 
 export type PlannedFile = { path: string; status: "added" | "modified" | "deleted" } | { path: string; status: "renamed"; previous_path: string };
 
@@ -108,21 +109,19 @@ export async function runPlanner({ github, repoGitHub, repo, host, config, issue
     mkdirSync(join(work, ".autopilot"));
     appendFileSync(join(work, ".git", "info", "exclude"), "/.autopilot/\n");
 
-    const skills = join(job, "skills");
-    mkdirSync(skills);
-    const claudeConfigDir = host.claude?.config ? await fetchClaudeConfig(host.claude.config, github, join(job, "claude")) : undefined;
-    if (claudeConfigDir && existsSync(join(claudeConfigDir, "skills"))) cpSync(join(claudeConfigDir, "skills"), skills, { recursive: true });
+    const role = config.steps.spec;
+    const { skillsDir, claudeConfigDir } = await prepareAgent(host, config.skills[role], github, job);
 
     const promptFile = join(job, "prompt.md");
     writeFileSync(promptFile, plannerPrompt({ repo: `${repo.owner}/${repo.name}`, issue, thread, risk: config.risk }));
 
-    const agent = config.agents[config.steps.spec];
+    const agent = config.agents[role];
     await runClaude({
       name: `autopilot-${repo.owner}-${repo.name}-${issue.number}`.toLowerCase().replace(/[^a-z0-9_.-]/g, "-"),
       model: agent.model,
       effort: agent.effort,
       promptFile,
-      skillsDir: skills,
+      skillsDir,
       workdir: work,
       claudeConfigDir,
       limits: host.limits,
