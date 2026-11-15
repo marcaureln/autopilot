@@ -53,12 +53,30 @@ Each repo has a `.github/autopilot.json` ([full example](examples/autopilot.json
 }
 ```
 
+## Hosts
+
+A host runs `autopilot run` as a systemd service and holds everything it needs: its `/etc/autopilot/host.json`, the 1Password service account token, and a release from GitHub. At start, the host reads the App key and the Claude token with `op`. The CLI on your machine is only a client. It keeps no config and forwards each command to the host over SSH, like the Vault CLI with `VAULT_ADDR`.
+
+```sh
+# Once per host: push the 1Password token, write host.json, install the latest release
+autopilot host setup --host alex@raspberrypi --owner <login> --app-id <id>
+
+export AUTOPILOT_HOST=alex@raspberrypi
+autopilot allow <owner>/<repo>   # opens the App install page if the App is not installed there
+autopilot status
+autopilot logs
+autopilot audit --since 1d       # JSON audit events from journald
+autopilot update                 # install the latest release, or --version vX.Y.Z
+```
+
+Several hosts can share an allowlist. Before a host acts on an issue, it posts a claim comment. The oldest claim wins, and the other hosts skip the issue. To move an issue to another host, delete its claim comment.
+
 ## Development
 
 ```sh
 mise install && pnpm install
 pnpm check               # types + lint + tests
-node src/cli.ts run --once
+node src/cli.ts run --once --config host.json   # a dev host; op reads secrets with your sign-in
 ```
 
 Node runs the TypeScript files directly. There is no build step.
