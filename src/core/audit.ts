@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import type { Gate1 } from "./gate.ts";
+import type { Gate1, Gate2 } from "./gate.ts";
 import type { Risk } from "./risk.ts";
 import type { IssueState, State } from "./state.ts";
 
@@ -10,6 +10,12 @@ export type AuditEvent =
   | { event: "issue.claimed"; issue: string; host: string }
   | { event: "state.changed"; issue: string; from: IssueState; to: State }
   | { event: "gate.decided"; issue: string; gate: "gate1"; planner: Risk; rules: Risk; final: Risk; scope: "ok" | "too_broad"; decision: Gate1["event"] }
+  | { event: "gate.decided"; issue: string; gate: "gate2"; pull: number; planner: Risk | undefined; rules: Risk; merge: "auto" | "manual"; decision: Gate2["decision"] }
+  | { event: "checks.ran"; issue: string; pull: number; sha: string; results: Record<string, string> }
+  | { event: "git.pushed"; repo: string; branch: string; head: string; base: string; commits: number; force: boolean }
+  | { event: "pr.opened"; repo: string; pull: number; issue: number; branch: string }
+  | { event: "pr.merged"; repo: string; pull: number; sha: string }
+  | { event: "review.requested"; repo: string; pull: number; reviewers: string[] }
   | { event: "approval.accepted" | "approval.refused"; issue: string; editors: string[] }
   | { event: "container.started"; name: string; image: string; mounts: string[]; env: string[]; caps: Record<string, string | number> }
   | { event: "container.ended"; name: string; exit: number; timed_out: boolean; duration_seconds: number }

@@ -2,7 +2,9 @@ import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import type { AllowEntry } from "./allow.ts";
 import type { Audit } from "./audit.ts";
+import { issueOfBranch, type BotPull, type CheckState, type Statuses } from "./phase.ts";
 import type { Repo } from "./repo.ts";
+import type { FileChange } from "./risk.ts";
 import type { Comment } from "./spec.ts";
 import type { Change, CommentEdit } from "./trust.ts";
 
@@ -24,8 +26,41 @@ export type RepoGitHub = {
   minimizeOutdated(commentNodeId: string): Promise<void>;
   commentEditors(commentNodeId: string): Promise<string[]>;
   provenance(issue: number): Promise<Provenance>;
-  token(): Promise<string>;
+  // refresh: a new token, for a push that comes long after the clone.
+  token(refresh?: boolean): Promise<string>;
+  defaultBranch(): Promise<string>;
+  lastUnlabeled(issue: number, label: string, actors: string[]): Promise<string | undefined>;
+  userId(login: string): Promise<number>;
+  botPulls(botLogin: string): Promise<BotPull[]>;
+  pullFiles(pull: number): Promise<FileChange[]>;
+  pullCommits(pull: number): Promise<string[]>;
+  statuses(sha: string, botLogin: string): Promise<Statuses>;
+  setStatus(sha: string, check: string, state: CheckState, description: string): Promise<void>;
+  markPushed(sha: string, issue: number): Promise<void>;
+  pushedFor(sha: string, botLogin: string): Promise<number | undefined>;
+  openPull(pull: { head: string; base: string; title: string; body: string }): Promise<number>;
+  requestReview(pull: number, reviewers: string[]): Promise<void>;
+  mergePull(pull: number, sha: string, title: string, message: string): Promise<void>;
 };
+
+export const STATUS_PREFIX = "autopilot/";
+
+// A context that no check name in verify.required can produce.
+const PUSHED_CONTEXT = "autopilot-host/pushed";
+const PUSHED_DESCRIPTION = /^pushed by autopilot for #(\d+)$/;
+
+const CHECK_STATES: readonly string[] = ["success", "failure", "error", "pending"] satisfies CheckState[];
+
+function isCheckState(state: string): state is CheckState {
+  return CHECK_STATES.includes(state);
+}
+
+function fileChange(file: { filename: string; status: string; previous_filename?: string; additions: number; deletions: number }): FileChange {
+  const lines = { additions: file.additions, deletions: file.deletions };
+  if (file.status === "renamed" && file.previous_filename) return { status: "renamed", path: file.filename, previousPath: file.previous_filename, ...lines };
+  const status = file.status === "removed" ? "deleted" : file.status === "added" || file.status === "modified" ? file.status : "unknown";
+  return { status, path: file.filename, ...lines };
+}
 
 export type GitHub = {
   appSlug(): Promise<string>;
@@ -180,11 +215,77 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
         commentEdits,
       };
     },
-    async token() {
-      const auth: unknown = await octokit.auth({ type: "installation" });
+    async token(refresh = false) {
+      const auth: unknown = await octokit.auth({ type: "installation", refresh });
       if (!hasToken(auth)) throw new Error("GitHub App auth returned no installation token");
       audit({ event: "token.minted", installation: installationId, repo: `${owner}/${repo}`, expires: auth.expiresAt });
       return auth.token;
+    },
+    async defaultBranch() {
+      const { data } = await octokit.repos.get({ owner, repo });
+      return data.default_branch;
+    },
+    async lastUnlabeled(issue, label, actors) {
+      const events = await octokit.paginate(octokit.issues.listEvents, { ...issueParams(issue), per_page: 100 });
+      return events.findLast((event) => event.event === "unlabeled" && "label" in event && event.label?.name === label && actors.includes(event.actor?.login ?? ""))?.created_at;
+    },
+    async userId(login) {
+      const { data } = await octokit.users.getByUsername({ username: login });
+      return data.id;
+    },
+    async botPulls(botLogin) {
+      // Every open pull request, and the recently closed ones: a pull request closed long ago is history.
+      const open = await octokit.paginate(octokit.pulls.list, { owner, repo, state: "open", per_page: 100 });
+      const { data: closed } = await octokit.pulls.list({ owner, repo, state: "closed", sort: "updated", direction: "desc", per_page: 100 });
+      return [...open, ...closed].flatMap((pull) => {
+        const issue = issueOfBranch(pull.head.ref);
+        if (pull.user?.login !== botLogin || issue === undefined || pull.head.repo?.full_name !== `${owner}/${repo}`) return [];
+        const state = pull.merged_at ? "merged" : pull.state === "open" ? "open" : "closed";
+        return [{ number: pull.number, issue, state, base: pull.base.ref, head: { ref: pull.head.ref, sha: pull.head.sha }, closedAt: pull.closed_at ?? undefined }];
+      });
+    },
+    async pullFiles(pull) {
+      const files = await octokit.paginate(octokit.pulls.listFiles, { owner, repo, pull_number: pull, per_page: 100 });
+      return files.map(fileChange);
+    },
+    async pullCommits(pull) {
+      const commits = await octokit.paginate(octokit.pulls.listCommits, { owner, repo, pull_number: pull, per_page: 100 });
+      return commits.map((commit) => commit.sha);
+    },
+    async statuses(sha, botLogin) {
+      // Anyone with write access can post a status with any context, so only the bot's own count.
+      // GitHub lists the statuses newest first.
+      const { data } = await octokit.repos.listCommitStatusesForRef({ owner, repo, ref: sha, per_page: 100 });
+      const statuses: Statuses = {};
+      for (const status of data) {
+        const check = status.context.slice(STATUS_PREFIX.length);
+        if (status.creator?.login !== botLogin || !status.context.startsWith(STATUS_PREFIX) || !isCheckState(status.state) || Object.hasOwn(statuses, check)) continue;
+        statuses[check] = { state: status.state, description: status.description ?? "", at: status.updated_at };
+      }
+      return statuses;
+    },
+    async setStatus(sha, check, state, description) {
+      // GitHub rejects a description longer than 140 characters.
+      await octokit.repos.createCommitStatus({ owner, repo, sha, state, context: `${STATUS_PREFIX}${check}`, description: description.slice(0, 140) });
+    },
+    async markPushed(sha, issue) {
+      await octokit.repos.createCommitStatus({ owner, repo, sha, state: "success", context: PUSHED_CONTEXT, description: `pushed by autopilot for #${issue}` });
+    },
+    async pushedFor(sha, botLogin) {
+      const { data } = await octokit.repos.listCommitStatusesForRef({ owner, repo, ref: sha, per_page: 100 });
+      const mark = data.find((status) => status.context === PUSHED_CONTEXT && status.creator?.login === botLogin);
+      const issue = PUSHED_DESCRIPTION.exec(mark?.description ?? "")?.[1];
+      return issue === undefined ? undefined : Number(issue);
+    },
+    async openPull({ head, base, title, body }) {
+      const { data } = await octokit.pulls.create({ owner, repo, head, base, title, body });
+      return data.number;
+    },
+    async requestReview(pull, reviewers) {
+      await octokit.pulls.requestReviewers({ owner, repo, pull_number: pull, reviewers });
+    },
+    async mergePull(pull, sha, title, message) {
+      await octokit.pulls.merge({ owner, repo, pull_number: pull, sha, merge_method: "squash", commit_title: title, commit_message: message });
     },
   };
 }

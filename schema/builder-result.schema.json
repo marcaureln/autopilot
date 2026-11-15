@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/builder-result.schema.json",
+  "title": "Autopilot builder result",
+  "description": "What the builder writes to /work/.autopilot/result.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary"],
+  "properties": {
+    "summary": {
+      "description": "What you changed and why, in two to five short sentences, for the pull request body.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1500
+    },
+    "blocked": {
+      "description": "Only when you could not do the work: what stops you and what an owner must do.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1500
+    }
+  }
+}

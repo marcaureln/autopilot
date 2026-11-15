@@ -6,6 +6,8 @@ import { forward, hostSetup } from "./commands/client.ts";
 import { showAudit, showLogs, showStatus, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
 import { auditLog } from "./core/audit.ts";
+import { runBuilder } from "./core/builder.ts";
+import { runChecks } from "./core/checks.ts";
 import { createGitHub } from "./core/github.ts";
 import { HOST_FILE, loadHost } from "./core/host.ts";
 import { runPlanner } from "./core/planner.ts";
@@ -21,7 +23,7 @@ Commands that run on a host. With --host or AUTOPILOT_HOST, the client forwards 
   logs [--since <time>]       Show the service log (default: last 100 lines)
   audit [--since <time>]      Show the audit trail (default: --since 1d)
   update [--version <tag>]    Install a release from GitHub (default: the latest) and restart
-  run [--once]                Plan autopilot-labeled issues, one job at a time (never forwarded)
+  run [--once]                Plan, build, check and merge autopilot-labeled issues, one job at a time (never forwarded)
 
 Commands that run on the client:
   host setup --host <ssh-target> [--owner <login> --app-id <id>] [--version <tag> | --from-checkout]
@@ -78,7 +80,17 @@ async function main(): Promise<void> {
       const privateKey = readSecret(host.secrets.app_key, "run: GitHub App key", auditLog);
       const claudeToken = readSecret(host.secrets.claude_token, "run: token for the agent containers", auditLog);
       const github = createGitHub({ appId: host.app_id, privateKey }, auditLog);
-      await run({ github, host, audit: auditLog, plan: (job) => runPlanner(job, { claudeToken, audit: auditLog }) }, { once: values.once });
+      await run(
+        {
+          github,
+          host,
+          audit: auditLog,
+          plan: (job) => runPlanner(job, { claudeToken, audit: auditLog }),
+          build: (job) => runBuilder({ ...job, claudeToken, audit: auditLog }),
+          check: (job) => runChecks({ ...job, audit: auditLog }),
+        },
+        { once: values.once },
+      );
       break;
     }
     case "allow":

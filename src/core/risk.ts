@@ -28,6 +28,7 @@ const HIGH_FILES = new Set([
   ".gitattributes",
   ".gitmodules",
   "codeowners",
+  ".semgrepignore",
   "package-lock.json",
   "npm-shrinkwrap.json",
   "pnpm-lock.yaml",

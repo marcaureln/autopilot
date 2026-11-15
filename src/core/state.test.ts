@@ -1,16 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { labelsFor, stateOf, transition, type Event, type IssueState } from "./state.ts";
+import { labelsFor, migrateLabels, stateOf, transition, type Event, type IssueState } from "./state.ts";
 
 const stateCases: { labels: string[]; expected: IssueState | "ambiguous" }[] = [
   { labels: ["autopilot"], expected: "new" },
   { labels: ["bug", "autopilot"], expected: "new" },
-  { labels: ["autopilot", "autopilot:spec"], expected: "spec" },
+  { labels: ["autopilot", "autopilot:working"], expected: "working" },
   { labels: ["autopilot", "autopilot:needs-info", "bug"], expected: "needs-info" },
   { labels: ["autopilot", "autopilot:awaiting-approval"], expected: "awaiting-approval" },
-  { labels: ["autopilot", "autopilot:building"], expected: "building" },
   { labels: ["autopilot", "autopilot:blocked"], expected: "blocked" },
-  { labels: ["autopilot", "autopilot:spec", "autopilot:building"], expected: "ambiguous" },
+  { labels: ["autopilot", "autopilot:working", "autopilot:blocked"], expected: "ambiguous" },
   { labels: ["autopilot", "autopilot:unknown"], expected: "new" },
 ];
 
@@ -21,18 +20,17 @@ for (const { labels, expected } of stateCases) {
 }
 
 const transitionCases: { from: IssueState; event: Event; expected: IssueState | undefined }[] = [
-  { from: "new", event: "start", expected: "spec" },
-  { from: "spec", event: "needs_info", expected: "needs-info" },
-  { from: "spec", event: "approval_required", expected: "awaiting-approval" },
-  { from: "spec", event: "go", expected: "building" },
-  { from: "spec", event: "fail", expected: "blocked" },
-  { from: "needs-info", event: "reply", expected: "spec" },
-  { from: "awaiting-approval", event: "approve", expected: "building" },
+  { from: "new", event: "start", expected: "working" },
+  { from: "working", event: "needs_info", expected: "needs-info" },
+  { from: "working", event: "approval_required", expected: "awaiting-approval" },
+  { from: "working", event: "fail", expected: "blocked" },
+  { from: "needs-info", event: "reply", expected: "working" },
+  { from: "awaiting-approval", event: "approve", expected: "working" },
 
-  { from: "new", event: "go", expected: undefined },
+  { from: "new", event: "fail", expected: undefined },
   { from: "needs-info", event: "approve", expected: undefined },
-  { from: "awaiting-approval", event: "go", expected: undefined },
-  { from: "building", event: "start", expected: undefined },
+  { from: "awaiting-approval", event: "fail", expected: undefined },
+  { from: "working", event: "start", expected: undefined },
   { from: "blocked", event: "reply", expected: undefined },
 ];
 
@@ -43,6 +41,23 @@ for (const { from, event, expected } of transitionCases) {
 }
 
 test("labelsFor keeps other labels and the trigger, and replaces the state label", () => {
-  assert.deepEqual(labelsFor(["bug", "autopilot", "autopilot:spec"], "building"), ["bug", "autopilot", "autopilot:building"]);
-  assert.deepEqual(labelsFor(["autopilot"], "spec"), ["autopilot", "autopilot:spec"]);
+  assert.deepEqual(labelsFor(["bug", "autopilot", "autopilot:working"], "blocked"), ["bug", "autopilot", "autopilot:blocked"]);
+  assert.deepEqual(labelsFor(["autopilot"], "working"), ["autopilot", "autopilot:working"]);
 });
+
+const migrateCases: { labels: string[]; expected: string[] | undefined }[] = [
+  { labels: ["autopilot", "autopilot:spec"], expected: ["autopilot", "autopilot:working"] },
+  { labels: ["bug", "autopilot", "autopilot:building"], expected: ["bug", "autopilot", "autopilot:working"] },
+  { labels: ["autopilot", "autopilot:checking"], expected: ["autopilot", "autopilot:working"] },
+  { labels: ["autopilot", "autopilot:needs-review"], expected: ["autopilot", "autopilot:working"] },
+  { labels: ["autopilot", "autopilot:building", "autopilot:working"], expected: ["autopilot", "autopilot:working"] },
+  { labels: ["autopilot", "autopilot:needs-info"], expected: undefined },
+  { labels: ["autopilot", "autopilot:working"], expected: undefined },
+  { labels: ["spec"], expected: undefined },
+];
+
+for (const { labels, expected } of migrateCases) {
+  test(`migrate [${labels.join(", ")}] -> ${expected ? `[${expected.join(", ")}]` : "unchanged"}`, () => {
+    assert.deepEqual(migrateLabels(labels), expected);
+  });
+}

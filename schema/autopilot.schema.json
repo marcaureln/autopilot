@@ -47,7 +47,7 @@
       "default": {}
     },
     "skills": {
-      "description": "Skills installed for each role. Each entry is one skill directory with a SKILL.md: github.com/<owner>/<repo>[//<path>][#<ref>] (fetched per job with the App token, so the App must be installed on that repo) or a path under /etc/autopilot/skills on the host.",
+      "description": "Skills installed for each role. Each entry is one skill directory with a SKILL.md: github.com/<owner>/<repo>[//<path>][#<ref>] (fetched per job with the App token; the repo must be in the host allowlist) or a path under /etc/autopilot/skills on the host.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

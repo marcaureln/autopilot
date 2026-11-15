@@ -47,13 +47,18 @@ async function ensureImage(tag: string): Promise<void> {
   if (!exists) await run("docker", ["build", "--quiet", "--tag", tag, IMAGE_DIR], { maxBuffer: 16 * 1024 * 1024 });
 }
 
+export async function claudeImage(): Promise<string> {
+  const tag = imageTag();
+  await ensureImage(tag);
+  return tag;
+}
+
 function tail(text: string): string {
   return text.slice(-2000).trim();
 }
 
 export async function runClaude(job: HarnessRun): Promise<void> {
-  const tag = imageTag();
-  await ensureImage(tag);
+  const tag = await claudeImage();
   await run("docker", ["rm", "--force", job.name]).catch(() => undefined);
 
   const configDir = job.claudeConfigDir;

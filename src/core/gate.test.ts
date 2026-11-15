@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gate1, type Gate1 } from "./gate.ts";
+import { gate1, gate2, type Gate1, type Gate2 } from "./gate.ts";
 import type { PlannerResult } from "./planner.ts";
+import type { FileChange, Risk } from "./risk.ts";
 
 const risk = { high_paths: ["src/billing-v2/**"], max_diff_lines: 500 };
 
@@ -44,5 +45,33 @@ const cases: { name: string; result: Partial<PlannerResult>; expected: Gate1 }[]
 for (const { name, result, expected } of cases) {
   test(name, () => {
     assert.deepEqual(gate1({ ...plan, ...result }, risk), expected);
+  });
+}
+
+const contributing: FileChange[] = [{ status: "added", path: "CONTRIBUTING.md", additions: 20, deletions: 0 }];
+
+const gate2Cases: { name: string; changes?: FileChange[]; planner?: Risk; merge?: "auto" | "manual"; pushed?: boolean; base?: boolean; expected: Gate2 }[] = [
+  { name: "low risk with auto merge merges", expected: { decision: "merge", rulesRisk: "low", reasons: [] } },
+  { name: "manual merge asks for a review", merge: "manual", expected: { decision: "review", rulesRisk: "low", reasons: ["`merge` is `manual` in `.github/autopilot.json`"] } },
+  {
+    name: "a high-risk real diff asks for a review",
+    changes: [...contributing, { status: "added", path: ".github/workflows/ci.yml", additions: 10, deletions: 0 }],
+    expected: { decision: "review", rulesRisk: "high", reasons: ["the risk rules rate the diff high"] },
+  },
+  {
+    name: "a diff larger than the limit asks for a review",
+    changes: [{ status: "added", path: "docs/guide.md", additions: 600, deletions: 0 }],
+    expected: { decision: "review", rulesRisk: "high", reasons: ["the risk rules rate the diff high"] },
+  },
+  { name: "the planner risk still counts", planner: "high", expected: { decision: "review", rulesRisk: "low", reasons: ["the planner rated the risk high"] } },
+  { name: "a spec with no planner risk asks for a review", planner: undefined, expected: { decision: "review", rulesRisk: "low", reasons: ["the spec records no planner risk"] } },
+  { name: "a head commit pushed by someone else asks for a review", pushed: false, expected: { decision: "review", rulesRisk: "low", reasons: ["autopilot did not push the head commit for this issue"] } },
+  { name: "a pull request moved to another base asks for a review", base: false, expected: { decision: "review", rulesRisk: "low", reasons: ["the pull request does not target the default branch"] } },
+];
+
+for (const { name, changes, merge, pushed, base, expected, ...rest } of gate2Cases) {
+  test(`gate 2: ${name}`, () => {
+    const planner = "planner" in rest ? rest.planner : "low";
+    assert.deepEqual(gate2({ changes: changes ?? contributing, plannerRisk: planner, pushedByAutopilot: pushed ?? true, intoDefaultBranch: base ?? true }, { risk, merge: merge ?? "auto" }), expected);
   });
 }
