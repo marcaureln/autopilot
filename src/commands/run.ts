@@ -14,7 +14,7 @@ export async function runOnce(github: GitHub, host: Host, only: Repo | undefined
     for (const repo of await github.listRepos(installation.id)) {
       if (only && (repo.owner !== only.owner || repo.name !== only.name)) continue;
       for (const issue of await github.listLabeledIssues(installation.id, repo, TRIGGER_LABEL)) {
-        log(`${repo.owner}/${repo.name}#${issue.number} ${issue.title}`);
+        log(`${repo.owner}/${repo.name}#${issue.number} ${JSON.stringify(issue.title)}`);
       }
     }
   }

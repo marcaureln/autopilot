@@ -23,7 +23,7 @@ const host = { app_id: 1, private_key_path: "/k.pem", owners: ["marcaureln"], in
 test("lists labeled issues on allowed installations and ignores the others", async () => {
   const lines: string[] = [];
   await runOnce(github, host, undefined, (line) => lines.push(line));
-  assert.deepEqual(lines, ["marcaureln/app-a#7 Add CONTRIBUTING.md", "ignoring installation 2 (stranger): not in installations"]);
+  assert.deepEqual(lines, ['marcaureln/app-a#7 "Add CONTRIBUTING.md"', "ignoring installation 2 (stranger): not in installations"]);
 });
 
 test("--repo limits the loop to one repo", async () => {
