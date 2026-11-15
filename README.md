@@ -15,7 +15,7 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TB
     A([autopilot label]) --> S[Planner writes a spec]
     S --> G1{Gate 1}
     G1 -- unclear --> Q[Asks questions] --> S
@@ -30,14 +30,15 @@ flowchart LR
 
 Models propose and rules decide. The risk rules are deterministic, and a model can raise the risk but never lower it.
 
-## Status
+## Building blocks
 
-| Part | State |
-| --- | --- |
-| Config schema and loader | Done |
-| Risk rules | Done |
-| CLI, GitHub App auth, polling loop | Done |
-| Host setup, planner, builder, checks, secrets, onboarding | Not started |
+Each block sits behind a config field or a small interface. Only the "Today" column is built.
+
+| Block         | Today                          | Possible later              |
+| ------------- | ------------------------------ | --------------------------- |
+| Forge         | GitHub (App, labels, statuses) | GitLab, Forgejo             |
+| Agent harness | Claude Code                    | OpenCode, Codex, pi         |
+| Secrets       | 1Password CLI                  | OpenBao, age-encrypted file |
 
 ## Configuration
 
@@ -45,10 +46,10 @@ Each repo has a `.github/autopilot.json` ([full example](examples/autopilot.json
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/autopilot.schema.json",
-  "version": 1,
-  "stack": ["node"],
-  "merge": "auto"
+	"$schema": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/autopilot.schema.json",
+	"version": 1,
+	"stack": ["node"],
+	"merge": "auto"
 }
 ```
 
