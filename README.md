@@ -10,7 +10,7 @@
 autopilot aims to stay small: one process, no server, no queue, no database. GitHub is the only interface and the only state. It is also agnostic: the agent harness, the models, the verification mode and the host are each one config field.
 
 > [!WARNING]
-> autopilot is in early development and does not work end to end yet. Do not use it on a repo you care about.
+> autopilot is in early development. Try it on a test repo first.
 
 ## Quick start
 
