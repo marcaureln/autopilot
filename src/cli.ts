@@ -2,6 +2,7 @@
 import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { allow, allowed, deny } from "./commands/allow.ts";
+import { alias } from "./commands/alias.ts";
 import { forward, hostSetup, selfUpdate } from "./commands/client.ts";
 import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, update } from "./commands/host.ts";
@@ -45,6 +46,7 @@ Commands that run on the client:
   secrets rm <NAME>           Remove a secret and its reference
   self-update [--version <tag>]
                               Install a release of this CLI (default: the latest), as install.sh does
+  alias [<name>] [--remove]   Add "alias <name>=autopilot" (default: ap) to the rc file of $SHELL
 
 Options:
   --host <ssh-target>  Host to act on, or "local" for this machine (default: $AUTOPILOT_HOST)
@@ -69,6 +71,7 @@ const { values, positionals } = parseArgs({
     backend: { type: "string", default: "op" },
     "from-env": { type: "string" },
     "no-agent": { type: "boolean", default: false },
+    remove: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 });
@@ -160,6 +163,9 @@ async function main(): Promise<void> {
     }
     case "self-update":
       await selfUpdate(values.version);
+      break;
+    case "alias":
+      alias(positionals[1], values.remove);
       break;
     default:
       console.log(USAGE);
