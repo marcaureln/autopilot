@@ -37,6 +37,7 @@ const refused: { name: string; config: Record<string, unknown>; match: RegExp }[
   { name: "appPort", config: { appPort: 3000 }, match: /appPort/ },
   { name: "a host environment variable", config: { containerEnv: { TOKEN: "${localEnv:GITHUB_TOKEN}" } }, match: /localEnv/ },
   { name: "a host environment variable with env", config: { containerEnv: { TOKEN: "${env:GITHUB_TOKEN}" } }, match: /TOKEN/ },
+  { name: "a build cache from a host path", config: { build: { dockerfile: "Dockerfile", cacheFrom: "type=local,src=/home/user" } }, match: /cacheFrom/ },
   { name: "build options", config: { build: { dockerfile: "Dockerfile", options: ["--network=host"] } }, match: /build\.options/ },
   { name: "an image with no version", config: { image: "node" }, match: /node/ },
 ];
@@ -90,11 +91,14 @@ const composeRefused: { name: string; service: Record<string, unknown>; match: R
   { name: "cgroup_parent", service: { cgroup_parent: "/" }, match: /cgroup_parent/ },
   { name: "device_cgroup_rules", service: { device_cgroup_rules: ["c 1:3 mr"] }, match: /device_cgroup_rules/ },
   { name: "an env_file outside the repo", service: { env_file: [{ path: "/etc/autopilot/env", required: true }] }, match: /env_file/ },
-  { name: "a build context outside the repo", service: { build: { context: "/home/user" } }, match: /build context/ },
-  { name: "a build context through a symlink", service: { build: { context: "/work/repo/link" } }, match: /build context/ },
-  { name: "a build with the ssh agent", service: { build: { context: "/work/repo", ssh: ["default"] } }, match: /build\.ssh/ },
-  { name: "a build with more contexts", service: { build: { context: "/work/repo", additional_contexts: { host: "/" } } }, match: /additional_contexts/ },
-  { name: "a build on the host network", service: { build: { context: "/work/repo", network: "host" } }, match: /build\.network/ },
+  { name: "a build context outside the repo", service: { image: undefined, build: { context: "/home/user" } }, match: /build context/ },
+  { name: "a build context through a symlink", service: { image: undefined, build: { context: "/work/repo/link" } }, match: /build context/ },
+  { name: "a build with the ssh agent", service: { image: undefined, build: { context: "/work/repo", ssh: ["default"] } }, match: /build\.ssh/ },
+  { name: "a build with more contexts", service: { image: undefined, build: { context: "/work/repo", additional_contexts: { host: "/" } } }, match: /additional_contexts/ },
+  { name: "a build on the host network", service: { image: undefined, build: { context: "/work/repo", network: "host" } }, match: /build\.network/ },
+  { name: "a build cache in a host path", service: { image: undefined, build: { context: "/work/repo", cache_to: ["type=local,dest=/home/user"] } }, match: /build\.cache_to/ },
+  { name: "a privileged build", service: { image: undefined, build: { context: "/work/repo", privileged: true } }, match: /build\.privileged/ },
+  { name: "a build that tags an image of the host", service: { image: "autopilot-claude:0123456789ab", build: { context: "/work/repo" } }, match: /cannot set `image`/ },
 ];
 
 for (const { name, service, match } of composeRefused) {
@@ -111,7 +115,12 @@ test("compose: a service in the network of another service of the project passes
 });
 
 const topLevel: { name: string; compose: Record<string, unknown>; match: RegExp | undefined }[] = [
-  { name: "a plain named volume", compose: { volumes: { data: { name: "app_data" } } }, match: undefined },
+  { name: "a plain named volume", compose: { name: "app", volumes: { data: { name: "app_data" } } }, match: undefined },
+  { name: "a volume with a custom name", compose: { name: "app", volumes: { data: { name: "grype-db" } } }, match: /volume data: a custom name/ },
+  { name: "a plain network", compose: { name: "app", networks: { backend: { name: "app_backend", ipam: {} } } }, match: undefined },
+  { name: "an external network", compose: { name: "app", networks: { outside: { name: "app_outside", external: true } } }, match: /network outside: `external`/ },
+  { name: "a network with a custom name", compose: { name: "app", networks: { backend: { name: "bridge" } } }, match: /network backend: a custom name/ },
+  { name: "a network with another driver", compose: { name: "app", networks: { backend: { name: "app_backend", driver: "macvlan" } } }, match: /network backend: only the bridge driver/ },
   { name: "a volume with no fields", compose: { volumes: { data: null } }, match: undefined },
   { name: "a volume that binds a host path", compose: { volumes: { data: { driver: "local", driver_opts: { type: "none", o: "bind", device: "/" } } } }, match: /volume data/ },
   { name: "an external volume", compose: { volumes: { data: { external: true } } }, match: /volume data/ },

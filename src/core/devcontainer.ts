@@ -31,10 +31,14 @@ const DEVCONTAINER_REFUSED: Record<string, string> = {
   init: "changes the init process",
 };
 
-// `build.options` passes raw arguments to docker build.
-function buildOptionsProblem(config: Record<string, unknown>): string[] {
+// `build.options` passes raw arguments to docker build. A `type=local` cache reads or writes a host path.
+function buildProblems(config: Record<string, unknown>): string[] {
   const build = config.build;
-  return typeof build === "object" && build !== null && "options" in build && isSet(build.options) ? ["devcontainer.json: `build.options` passes raw arguments to docker build"] : [];
+  if (typeof build !== "object" || build === null) return [];
+  const fields: Record<string, unknown> = { ...build };
+  const problems = isSet(fields.options) ? ["devcontainer.json: `build.options` passes raw arguments to docker build"] : [];
+  if ([fields.cacheFrom].flat().some((source) => typeof source === "string" && source.includes("="))) problems.push("devcontainer.json: `build.cacheFrom` can only name images");
+  return problems;
 }
 
 function hostVariables(value: unknown, path: string): string[] {
@@ -47,12 +51,12 @@ function hostVariables(value: unknown, path: string): string[] {
 export function devcontainerProblems(config: Record<string, unknown>): string[] {
   const refused = Object.entries(DEVCONTAINER_REFUSED).flatMap(([key, why]) => (isSet(config[key]) ? [`devcontainer.json: \`${key}\` ${why}`] : []));
   const image = typeof config.image === "string" ? imageProblem(config.image) : undefined;
-  return [...refused, ...buildOptionsProblem(config), ...(image ? [`devcontainer.json: ${image}`] : []), ...hostVariables(config, "").map((problem) => `devcontainer.json: ${problem}`)];
+  return [...refused, ...buildProblems(config), ...(image ? [`devcontainer.json: ${image}`] : []), ...hostVariables(config, "").map((problem) => `devcontainer.json: ${problem}`)];
 }
 
 type ComposeVolume = { type?: string; source?: string };
 type Named = Record<string, Record<string, unknown> | null>;
-export type ComposeConfig = { services?: Record<string, Record<string, unknown>>; volumes?: Named; secrets?: Named; configs?: Named };
+export type ComposeConfig = { name?: string; services?: Record<string, Record<string, unknown>>; volumes?: Named; networks?: Named; secrets?: Named; configs?: Named };
 
 // Returns the real path, with the symlinks resolved, or undefined if it does not exist.
 export type Resolve = (path: string) => string | undefined;
@@ -63,7 +67,11 @@ function within(path: string, root: string): boolean {
 
 const SERVICE_REFUSED = ["cap_add", "security_opt", "devices", "device_cgroup_rules", "ports", "volumes_from", "cgroup_parent", "runtime"];
 const NAMESPACES = ["network_mode", "pid", "ipc", "userns_mode", "uts", "cgroup"];
-const BUILD_REFUSED = ["additional_contexts", "ssh", "secrets"];
+// Other build fields reach the host: caches with a host path, entitlements, privileges, the ssh agent, tags.
+const BUILD_ALLOWED = new Set(["context", "dockerfile", "dockerfile_inline", "args", "target", "labels"]);
+// Compose names a volume or a network <project>_<key>. Another name can join one that already exists on the host.
+const VOLUME_ALLOWED = new Set(["name", "driver", "labels"]);
+const NETWORK_ALLOWED = new Set(["name", "driver", "labels", "ipam", "internal", "attachable", "enable_ipv6"]);
 
 // The input is `docker compose config --format json`: paths are absolute and the short forms are
 // expanded. A path can still go through a symlink, so each one is resolved before the check.
@@ -95,9 +103,10 @@ export function composeProblems(compose: ComposeConfig, workspace: string, resol
     const build = service.build;
     if (typeof build === "object" && build !== null) {
       const fields: Record<string, unknown> = { ...build };
-      for (const key of BUILD_REFUSED) if (isSet(fields[key])) add(`\`build.${key}\` is not allowed`);
-      if (fields.network === "host") add("`build.network: host` uses the network of the host");
+      for (const key of Object.keys(fields)) if (!BUILD_ALLOWED.has(key) && isSet(fields[key])) add(`\`build.${key}\` is not allowed`);
       if (typeof fields.context === "string" && !inRepo(fields.context)) add(`the build context ${fields.context} is outside the repo`);
+      // Compose tags the build with `image`, which could replace an image of the host.
+      if (service.image !== undefined) add("a service with `build` cannot set `image`");
     }
     if (typeof service.image === "string" && service.build === undefined) {
       const image = imageProblem(service.image);
@@ -105,10 +114,16 @@ export function composeProblems(compose: ComposeConfig, workspace: string, resol
     }
     return problems;
   });
-  // A local volume with driver options can bind a host path, and an external one belongs to something else.
-  const volumes = Object.entries(compose.volumes ?? {}).flatMap(([name, volume]) =>
-    volume && (isSet(volume.driver_opts) || (volume.driver !== undefined && volume.driver !== "local") || isSet(volume.external)) ? [`compose volume ${name}: only a plain local volume is allowed`] : [],
-  );
+  const named = (kind: "volume" | "network", entries: Named | undefined, allowed: Set<string>, driver: string) =>
+    Object.entries(entries ?? {}).flatMap(([key, entry]) => {
+      if (!entry) return [];
+      const fields = Object.keys(entry).filter((field) => !allowed.has(field) && isSet(entry[field]));
+      const problems = fields.map((field) => `compose ${kind} ${key}: \`${field}\` is not allowed`);
+      if (entry.driver !== undefined && entry.driver !== driver) problems.push(`compose ${kind} ${key}: only the ${driver} driver is allowed`);
+      if (entry.name !== undefined && entry.name !== `${compose.name}_${key}`) problems.push(`compose ${kind} ${key}: a custom name can join a ${kind} of the host`);
+      return problems;
+    });
+  const volumes = [...named("volume", compose.volumes, VOLUME_ALLOWED, "local"), ...named("network", compose.networks, NETWORK_ALLOWED, "bridge")];
   // Secrets and configs come from a file in the repo or from inline content, never from the host.
   const files = (["secrets", "configs"] as const).flatMap((kind) =>
     Object.entries(compose[kind] ?? {}).flatMap(([name, entry]) => {
