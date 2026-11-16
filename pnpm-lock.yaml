@@ -11,6 +11,9 @@ importers:
       '@clack/prompts':
         specifier: 1.8.1
         version: 1.8.1
+      '@devcontainers/cli':
+        specifier: 0.90.0
+        version: 0.90.0
       '@octokit/auth-app':
         specifier: 8.3.1
         version: 8.3.1
@@ -40,6 +43,11 @@ packages:
   '@clack/prompts@1.8.1':
     resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
     engines: {node: '>= 20.12.0'}
+
+  '@devcontainers/cli@0.90.0':
+    resolution: {integrity: sha512-A4ceztBMlNzd1MUlQNel0dWxnkDlE83+WsgS4JOZfeBkbO0QUKEzBpd3UQ7Xqf7s0KzJaAj+Udnp4E8I3oqK3w==}
+    engines: {node: '>=20.0.0'}
+    hasBin: true
 
   '@octokit/auth-app@8.3.1':
     resolution: {integrity: sha512-XHWxZsF4mvGTQCv7AOxgby9t9OjVO19FBuKq+QmyBxFrf+B2hR/P5j/MTF8g95bITf8cRtR17KIXThpFNqiKbg==}
@@ -450,6 +458,8 @@ snapshots:
       fast-string-width: 3.0.2
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
+
+  '@devcontainers/cli@0.90.0': {}
 
   '@octokit/auth-app@8.3.1':
     dependencies:
