@@ -1,4 +1,7 @@
 import { execFile, spawn } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Audit } from "./audit.ts";
 import type { Host } from "./host.ts";
@@ -36,7 +39,10 @@ export function clientEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 export async function runContainer(job: ContainerRun): Promise<ContainerResult> {
   const secretNames = Object.keys(job.secrets ?? {});
-  const envFileText = envFile(job.secrets ?? {});
+  // A private 0700 folder with a 0600 file: Linux cannot open Node's fd 3 socket as /dev/fd/3.
+  const secretsDir = secretNames.length > 0 ? mkdtempSync(join(tmpdir(), "autopilot-env-")) : undefined;
+  const secretsFile = secretsDir && join(secretsDir, "env");
+  if (secretsFile) writeFileSync(secretsFile, envFile(job.secrets ?? {}), { mode: 0o600, flag: "wx" });
   await run("docker", ["rm", "--force", job.name]).catch(() => undefined);
   const args = [
     "run",
@@ -58,7 +64,7 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
     "--security-opt",
     "no-new-privileges",
     ...Object.entries(job.env ?? {}).flatMap(([name, value]) => ["--env", `${name}=${value}`]),
-    ...(secretNames.length > 0 ? ["--env-file", "/dev/fd/3"] : []),
+    ...(secretsFile ? ["--env-file", secretsFile] : []),
     ...job.mounts.flatMap(({ source, target, readonly }) => ["--volume", `${source}:${target}${readonly ? ":ro" : ""}`]),
     ...(job.entrypoint === undefined ? [] : ["--entrypoint", job.entrypoint]),
     job.image,
@@ -74,12 +80,8 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
     caps: { memory: job.limits.memory, cpus: job.limits.cpus, pids: job.limits.pids, timeout_seconds: Math.round(job.timeoutMs / 1000), cap_drop: "ALL", network: job.network },
   });
   const started = Date.now();
-  const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe", "pipe"], env: clientEnv(process.env) });
-  const [, stdout, stderr, secretsPipe] = child.stdio;
-  if (!stdout || !stderr || !secretsPipe || !("end" in secretsPipe)) throw new Error("docker: the pipes did not open");
-  // docker can exit before it reads the pipe; its exit code reports why.
-  secretsPipe.on("error", () => undefined);
-  secretsPipe.end(envFileText);
+  const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"], env: clientEnv(process.env) });
+  const { stdout, stderr } = child;
   let output = "";
   let truncated = false;
   const append = (chunk: Buffer) => {
@@ -100,7 +102,10 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
   const exit = await new Promise<number>((resolve, reject) => {
     child.on("error", reject);
     child.on("close", (code) => resolve(code ?? 1));
-  }).finally(() => clearTimeout(timer));
+  }).finally(() => {
+    clearTimeout(timer);
+    if (secretsDir) rmSync(secretsDir, { recursive: true, force: true });
+  });
   job.audit({ event: "container.ended", name: job.name, exit, timed_out: timedOut, duration_seconds: Math.round((Date.now() - started) / 1000) });
   return { exit, timedOut, output: output.trim(), truncated };
 }
