@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { isCancel, text } from "@clack/prompts";
-import { appInstallUrl, appManifest, parseConversion, stateMatches, suggestAppName } from "../core/app.ts";
+import { appInstallUrl, appManifest, type CreatedApp, keyFileProblem, parseConversion, stateMatches, suggestAppName, writeFallbackKey } from "../core/app.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { appCreatedPage, appFailedPage, appStartPage } from "../web/pages.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, HOST_SECRETS, openInBrowser } from "./client.ts";
@@ -41,7 +41,8 @@ export function appKeyStored(): boolean {
 // GitHub shows the private key only once, so the place for it must be ready before the App exists.
 function checkKeyDestination(destination: KeyDestination): void {
   if (destination.kind === "file") {
-    if (existsSync(destination.path)) throw new Error(`${destination.path} already exists: pass another --key-out path`);
+    const problem = keyFileProblem(destination.path);
+    if (problem) throw new Error(problem);
     return;
   }
   const vault = op(["vault", "get", SECRETS_VAULT, "--format", "json"]);
@@ -59,6 +60,15 @@ function storeKey(destination: KeyDestination, pem: string): string {
   const result = op(["document", "create", "-", "--vault", SECRETS_VAULT, "--title", APP_KEY_ITEM, "--file-name", APP_KEY_FILE], pem);
   if (!result.ok) throw new Error(`op could not save the private key: ${result.stderr}`);
   return HOST_SECRETS.app_key;
+}
+
+function keepKeyAfterFailure(app: CreatedApp, reason: string): string {
+  try {
+    return writeFallbackKey(app.pem);
+  } catch (error) {
+    const fallback = error instanceof Error ? error.message : String(error);
+    throw new Error(`the App ${app.slug} (id ${app.id}) exists and its private key is lost: ${reason}; the fallback file failed too: ${fallback}. Delete the App at https://github.com/settings/apps/${app.slug}/advanced, then run autopilot app create again`);
+  }
 }
 
 function send(response: ServerResponse, status: number, html: string, then?: () => void): void {
@@ -98,7 +108,17 @@ export async function appCreate(options: { keyOut?: string }): Promise<CreatedAp
       return send(response, 502, appFailedPage(message), () => created.reject(new Error(message)));
     }
     const app = parseConversion(await answer.json());
-    const summary = { id: app.id, slug: app.slug, keyLocation: storeKey(destination, app.pem), installUrl: appInstallUrl(app.slug) };
+    const installUrl = appInstallUrl(app.slug);
+    let keyLocation: string;
+    try {
+      keyLocation = storeKey(destination, app.pem);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const keyPath = keepKeyAfterFailure(app, reason);
+      const message = `the App ${app.slug} (id ${app.id}) exists, but ${reason}. Its private key is in ${keyPath}: move it to a safe place. Install the App: ${installUrl}`;
+      return send(response, 500, appFailedPage(reason, { slug: app.slug, id: app.id, keyPath }), () => created.reject(new Error(message)));
+    }
+    const summary = { id: app.id, slug: app.slug, keyLocation, installUrl };
     send(response, 200, appCreatedPage({ slug: app.slug, id: app.id, keyPath: summary.keyLocation, installUrl: summary.installUrl }), () => created.resolve(summary));
   }
 

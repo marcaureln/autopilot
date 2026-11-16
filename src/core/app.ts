@@ -1,4 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
+import { accessSync, constants, existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 export const APP_PERMISSIONS = {
   metadata: "read",
@@ -65,4 +68,24 @@ export function parseConversion(data: unknown): CreatedApp {
 
 export function appInstallUrl(slug: string): string {
   return `https://github.com/apps/${slug}/installations/new`;
+}
+
+// GitHub shows the private key only once, so a bad --key-out must fail before the App is created.
+export function keyFileProblem(path: string): string | undefined {
+  if (existsSync(path)) return `${path} already exists: pass another --key-out path`;
+  const dir = dirname(path);
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) return `the folder ${dir} does not exist: create it or pass another --key-out path`;
+  try {
+    accessSync(dir, constants.W_OK);
+  } catch {
+    return `the folder ${dir} is not writable: pass another --key-out path`;
+  }
+  return undefined;
+}
+
+// Last resort when the chosen place for the key fails after the App exists. The private folder keeps other users out.
+export function writeFallbackKey(pem: string, base = tmpdir()): string {
+  const path = join(mkdtempSync(join(base, "autopilot-key-")), "app.pem");
+  writeFileSync(path, pem, { mode: 0o600, flag: "wx" });
+  return path;
 }

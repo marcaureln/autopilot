@@ -118,7 +118,24 @@ ${rows([
   );
 }
 
-export function appFailedPage(message: string): string {
+export function appFailedPage(message: string, created?: { slug: string; id: number; keyPath: string }): string {
+  if (created) {
+    return layout(
+      "App created, key not saved",
+      panel(
+        "GitHub App",
+        `<span class="ap-tag ap-tag-danger">Key not saved</span>`,
+        `<h1>The App exists, but its key was not saved</h1>
+<p>GitHub created the App. Autopilot could not save its private key in the place you chose, so it wrote the key to a fallback file. Move that file to a safe place.</p>
+${rows([
+  ["App", created.slug],
+  ["App ID", String(created.id)],
+  ["Private key", created.keyPath],
+])}
+<pre class="ap-code">${escape(message)}</pre>`,
+      ) + `<p class="ap-hint">The terminal shows the same details.</p>`,
+    );
+  }
   return layout(
     "App not created",
     panel(
