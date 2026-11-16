@@ -38,6 +38,7 @@ const refused: { name: string; config: Record<string, unknown>; match: RegExp }[
   { name: "a host environment variable", config: { containerEnv: { TOKEN: "${localEnv:GITHUB_TOKEN}" } }, match: /localEnv/ },
   { name: "a host environment variable with env", config: { containerEnv: { TOKEN: "${env:GITHUB_TOKEN}" } }, match: /TOKEN/ },
   { name: "a build cache from a host path", config: { build: { dockerfile: "Dockerfile", cacheFrom: "type=local,src=/home/user" } }, match: /cacheFrom/ },
+  { name: "a nested build cache list", config: { build: { dockerfile: "Dockerfile", cacheFrom: [["type=local,src=/"]] } }, match: /cacheFrom/ },
   { name: "build options", config: { build: { dockerfile: "Dockerfile", options: ["--network=host"] } }, match: /build\.options/ },
   { name: "an image with no version", config: { image: "node" }, match: /node/ },
 ];
@@ -118,6 +119,7 @@ const topLevel: { name: string; compose: Record<string, unknown>; match: RegExp 
   { name: "a plain named volume", compose: { name: "app", volumes: { data: { name: "app_data" } } }, match: undefined },
   { name: "a volume with a custom name", compose: { name: "app", volumes: { data: { name: "grype-db" } } }, match: /volume data: a custom name/ },
   { name: "a plain network", compose: { name: "app", networks: { backend: { name: "app_backend", ipam: {} } } }, match: undefined },
+  { name: "a network with its own subnet", compose: { name: "app", networks: { backend: { name: "app_backend", ipam: { config: [{ subnet: "100.64.0.0/10" }] } } } }, match: /network backend: `ipam`/ },
   { name: "an external network", compose: { name: "app", networks: { outside: { name: "app_outside", external: true } } }, match: /network outside: `external`/ },
   { name: "a network with a custom name", compose: { name: "app", networks: { backend: { name: "bridge" } } }, match: /network backend: a custom name/ },
   { name: "a network with another driver", compose: { name: "app", networks: { backend: { name: "app_backend", driver: "macvlan" } } }, match: /network backend: only the bridge driver/ },

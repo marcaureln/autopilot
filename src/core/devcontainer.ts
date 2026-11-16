@@ -37,7 +37,8 @@ function buildProblems(config: Record<string, unknown>): string[] {
   if (typeof build !== "object" || build === null) return [];
   const fields: Record<string, unknown> = { ...build };
   const problems = isSet(fields.options) ? ["devcontainer.json: `build.options` passes raw arguments to docker build"] : [];
-  if ([fields.cacheFrom].flat().some((source) => typeof source === "string" && source.includes("="))) problems.push("devcontainer.json: `build.cacheFrom` can only name images");
+  const cacheFrom = fields.cacheFrom === undefined ? [] : [fields.cacheFrom].flat();
+  if (!cacheFrom.every((source) => typeof source === "string" && /^[\w./:@-]+$/.test(source))) problems.push("devcontainer.json: `build.cacheFrom` can only name images");
   return problems;
 }
 
@@ -71,7 +72,8 @@ const NAMESPACES = ["network_mode", "pid", "ipc", "userns_mode", "uts", "cgroup"
 const BUILD_ALLOWED = new Set(["context", "dockerfile", "dockerfile_inline", "args", "target", "labels"]);
 // Compose names a volume or a network <project>_<key>. Another name can join one that already exists on the host.
 const VOLUME_ALLOWED = new Set(["name", "driver", "labels"]);
-const NETWORK_ALLOWED = new Set(["name", "driver", "labels", "ipam", "internal", "attachable", "enable_ipv6"]);
+// No ipam: a subnet of the repo could take the routes of a network of the host.
+const NETWORK_ALLOWED = new Set(["name", "driver", "labels", "internal", "attachable", "enable_ipv6"]);
 
 // The input is `docker compose config --format json`: paths are absolute and the short forms are
 // expanded. A path can still go through a symlink, so each one is resolved before the check.
