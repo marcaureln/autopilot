@@ -39,6 +39,9 @@ const refused: { name: string; config: Record<string, unknown>; match: RegExp }[
   { name: "a host environment variable with env", config: { containerEnv: { TOKEN: "${env:GITHUB_TOKEN}" } }, match: /TOKEN/ },
   { name: "a build cache from a host path", config: { build: { dockerfile: "Dockerfile", cacheFrom: "type=local,src=/home/user" } }, match: /cacheFrom/ },
   { name: "a nested build cache list", config: { build: { dockerfile: "Dockerfile", cacheFrom: [["type=local,src=/"]] } }, match: /cacheFrom/ },
+  { name: "a workspace folder with mount options", config: { workspaceFolder: "/work,source=/,target=/host" }, match: /workspaceFolder/ },
+  { name: "a relative workspace folder", config: { workspaceFolder: "../work" }, match: /workspaceFolder/ },
+  { name: "a workspace folder with ..", config: { workspaceFolder: "/work/../etc" }, match: /workspaceFolder/ },
   { name: "build options", config: { build: { dockerfile: "Dockerfile", options: ["--network=host"] } }, match: /build\.options/ },
   { name: "an image with no version", config: { image: "node" }, match: /node/ },
 ];
@@ -50,6 +53,10 @@ for (const { name, config, match } of refused) {
     assert.match(problems[0] ?? "", match);
   });
 }
+
+test("devcontainer: a plain workspace folder passes", () => {
+  assert.deepEqual(devcontainerProblems({ image: "node:26.13.1", workspaceFolder: "/workspaces/app.v2_x" }), []);
+});
 
 test("devcontainer: an empty list or false is not a problem", () => {
   assert.deepEqual(devcontainerProblems({ image: "node:26.13.1", capAdd: [], mounts: [], privileged: false, runArgs: [] }), []);

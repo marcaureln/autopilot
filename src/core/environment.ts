@@ -55,7 +55,8 @@ export function overrideFiles(
   if (composeFile === undefined) {
     const runArgs = [`--memory=${limits.memory}`, `--memory-swap=${limits.memory}`, `--cpus=${limits.cpus}`, `--pids-limit=${limits.pids}`, "--security-opt=no-new-privileges"];
     // The CLI mounts the repo at /workspaces/<folder> and ignores `workspaceFolder` without `workspaceMount`,
-    // which the guardrails refuse. So the host mounts the repo where the repo expects it.
+    // which the guardrails refuse. So the host mounts the repo where the repo expects it. The guardrails
+    // allow only a plain absolute path, so the value cannot add mount options.
     const workspaceMount = typeof config.workspaceFolder === "string" ? { workspaceMount: `type=bind,source=\${localWorkspaceFolder},target=${config.workspaceFolder}` } : {};
     return { devcontainer: { ...base, ...workspaceMount, runArgs, mounts: mounts.map(mountString) } };
   }

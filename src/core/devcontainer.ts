@@ -49,10 +49,19 @@ function hostVariables(value: unknown, path: string): string[] {
   return [];
 }
 
+// The host puts workspaceFolder into its workspaceMount string, so a comma or `=` would add mount options.
+// The CLI has replaced the variables already.
+function workspaceFolderProblems(config: Record<string, unknown>): string[] {
+  const folder = config.workspaceFolder;
+  if (folder === undefined) return [];
+  const plain = typeof folder === "string" && /^\/[\w./-]*$/.test(folder) && !folder.split("/").includes("..");
+  return plain ? [] : [`devcontainer.json: \`workspaceFolder\` must be a plain absolute path (${String(folder)})`];
+}
+
 export function devcontainerProblems(config: Record<string, unknown>): string[] {
   const refused = Object.entries(DEVCONTAINER_REFUSED).flatMap(([key, why]) => (isSet(config[key]) ? [`devcontainer.json: \`${key}\` ${why}`] : []));
   const image = typeof config.image === "string" ? imageProblem(config.image) : undefined;
-  return [...refused, ...buildProblems(config), ...(image ? [`devcontainer.json: ${image}`] : []), ...hostVariables(config, "").map((problem) => `devcontainer.json: ${problem}`)];
+  return [...refused, ...buildProblems(config), ...workspaceFolderProblems(config), ...(image ? [`devcontainer.json: ${image}`] : []), ...hostVariables(config, "").map((problem) => `devcontainer.json: ${problem}`)];
 }
 
 type ComposeVolume = { type?: string; source?: string };
