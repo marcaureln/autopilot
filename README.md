@@ -12,6 +12,34 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
 > [!WARNING]
 > autopilot is in early development and does not work end to end yet. Do not use it on a repo you care about.
 
+## Quick start
+
+Install the client (see [Install](#install)), then run one command:
+
+```sh
+autopilot setup
+```
+
+The wizard checks the tools it needs (git, ssh, mise, op, gh) and prints the install command for a missing one. Then it creates the 1Password vault `autopilot`, your GitHub App, the Claude token and a host (an SSH target, or `local` for this machine), and allows your accounts and repos on the host. At the end it can onboard a first repo and add the `ap` alias. Run it again at any time: each step checks what is in place and only does what is missing.
+
+To run it without prompts, put the answers in a file ([schema](schema/setup.schema.json)) and pass `--yes`:
+
+```sh
+autopilot setup --config setup.json --yes
+```
+
+```json
+{
+	"$schema": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/setup.schema.json",
+	"app_id": 123456,
+	"host": "user@my-host",
+	"allow": ["octocat/app"],
+	"alias": "ap"
+}
+```
+
+The unattended mode cannot create the GitHub App, because GitHub needs a click in the browser. Run `autopilot app create` first, or pass the `app_id` of an App whose private key is in 1Password. Secret values are never in the file: setup reads the Claude token from 1Password, or from `CLAUDE_CODE_OAUTH_TOKEN` the first time.
+
 ## How it works
 
 ```mermaid

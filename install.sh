@@ -45,4 +45,4 @@ case ":$PATH:" in
   *":$bin:"*) ;;
   *) echo "INFO: $bin is not in your PATH: add it in your shell's rc file" ;;
 esac
-echo "==> done: autopilot $tag"
+echo "==> done: autopilot $tag. Next: autopilot setup"
