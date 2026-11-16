@@ -116,3 +116,17 @@ export function planHostSetup(facts: HostFacts, request: { version?: string; fro
   }
   return { kind: "run", version: id, fromCheckout: false, problem };
 }
+
+// Only op's "isn't an item" answer means the item is absent. Any other failure (locked, offline, no access) says nothing about it.
+export function itemStored(title: string, result: { ok: boolean; stderr: string }): boolean {
+  if (result.ok) return true;
+  if (/isn't an item/.test(result.stderr)) return false;
+  throw new Error(`op item get ${title}: ${result.stderr}`);
+}
+
+// gh api prints "HTTP 404" for a missing file. A 403, a 5xx or no network says nothing about the file.
+export function repoFileStored(path: string, result: { ok: boolean; stderr: string }): boolean {
+  if (result.ok) return true;
+  if (/HTTP 404/.test(result.stderr)) return false;
+  throw new Error(`gh api ${path}: ${result.stderr}`);
+}

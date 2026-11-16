@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { checkResources, isRepoEntry, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type HostPlan } from "./setup.ts";
+import { checkResources, isRepoEntry, itemStored, repoFileStored, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type HostPlan } from "./setup.ts";
 
 const GIB = 1024 ** 3;
 
@@ -134,5 +134,36 @@ const repoEntries: { value: string; valid: boolean }[] = [
 for (const { value, valid } of repoEntries) {
   test(`repo entry ${JSON.stringify(value)} is ${valid ? "valid" : "invalid"}`, () => {
     assert.equal(isRepoEntry(value), valid);
+  });
+}
+
+const itemAnswers: { name: string; result: { ok: boolean; stderr: string }; stored: boolean | RegExp }[] = [
+  { name: "op finds the item", result: { ok: true, stderr: "" }, stored: true },
+  { name: "op says the item does not exist", result: { ok: false, stderr: `[ERROR] 2026/01/01 00:00:00 "github-app-private-key" isn't an item in the "autopilot" vault.` }, stored: false },
+  { name: "op is locked", result: { ok: false, stderr: "[ERROR] 2026/01/01 00:00:00 authorization prompt dismissed" }, stored: /authorization prompt dismissed/ },
+  { name: "op has no network", result: { ok: false, stderr: "[ERROR] dial tcp: lookup my.1password.com: no such host" }, stored: /no such host/ },
+  { name: "op cannot find the vault", result: { ok: false, stderr: `[ERROR] "autopilot" isn't a vault in this account.` }, stored: /isn't a vault/ },
+  { name: "op fails without a message", result: { ok: false, stderr: "" }, stored: /op item get github-app-private-key/ },
+];
+
+for (const { name, result, stored } of itemAnswers) {
+  test(`item stored: ${name}`, () => {
+    if (stored instanceof RegExp) assert.throws(() => itemStored("github-app-private-key", result), stored);
+    else assert.equal(itemStored("github-app-private-key", result), stored);
+  });
+}
+
+const fileAnswers: { name: string; result: { ok: boolean; stderr: string }; stored: boolean | RegExp }[] = [
+  { name: "the file exists", result: { ok: true, stderr: "" }, stored: true },
+  { name: "the file is missing", result: { ok: false, stderr: "gh: Not Found (HTTP 404)" }, stored: false },
+  { name: "gh has no access", result: { ok: false, stderr: "gh: Resource not accessible (HTTP 403)" }, stored: /HTTP 403/ },
+  { name: "GitHub fails", result: { ok: false, stderr: "gh: Bad Gateway (HTTP 502)" }, stored: /HTTP 502/ },
+  { name: "gh is not signed in", result: { ok: false, stderr: "gh: To use GitHub CLI, run: gh auth login" }, stored: /gh auth login/ },
+];
+
+for (const { name, result, stored } of fileAnswers) {
+  test(`repo file stored: ${name}`, () => {
+    if (stored instanceof RegExp) assert.throws(() => repoFileStored("repos/o/r/contents/f", result), stored);
+    else assert.equal(repoFileStored("repos/o/r/contents/f", result), stored);
   });
 }

@@ -10,13 +10,13 @@ import { parseHost, type Host } from "../core/host.ts";
 import { ownPull, type PullListing } from "../core/onboarding.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret } from "../core/secrets.ts";
-import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type SetupConfig } from "../core/setup.ts";
+import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, repoFileStored, RESOURCES_PROBE, TOOLS, type HostFacts, type SetupConfig } from "../core/setup.ts";
 import { alias, AliasError, aliasFile, aliasNameProblem, shellOf, withoutAlias } from "./alias.ts";
-import { appCreate, appKeyStored, githubLogin } from "./app.ts";
+import { appCreate, githubLogin } from "./app.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, CLAUDE_TOKEN_ITEM, forward, HOST_SECRETS, hostSetup, OP_TOKEN_ITEM } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
 import { BRANCH as ONBOARDING_BRANCH, init } from "./init.ts";
-import { op } from "./secrets.ts";
+import { op, opItemExists } from "./secrets.ts";
 
 export type SetupOptions = { configFile?: string; yes: boolean; host?: string; version?: string; fromCheckout: boolean };
 
@@ -77,10 +77,6 @@ function githubSignIn(options: SetupOptions): string {
   return login;
 }
 
-function opItemExists(title: string): boolean {
-  return op(["item", "get", title, "--vault", SECRETS_VAULT, "--format", "json"]).ok;
-}
-
 async function onePassword(options: SetupOptions): Promise<void> {
   let vault = op(["vault", "get", SECRETS_VAULT, "--format", "json"]);
   if (!vault.ok && /not signed in|no accounts/i.test(vault.stderr)) {
@@ -107,7 +103,7 @@ async function onePassword(options: SetupOptions): Promise<void> {
 }
 
 async function githubApp(options: SetupOptions, config: SetupConfig): Promise<number> {
-  const keyStored = appKeyStored();
+  const keyStored = opItemExists(APP_KEY_ITEM);
   const choice =
     config.app_id !== undefined
       ? "reuse"
@@ -259,7 +255,9 @@ async function allowEntries(options: SetupOptions, config: SetupConfig, target: 
 }
 
 function onboarded(repo: string): boolean {
-  return spawnSync("gh", ["api", `repos/${repo}/contents/${CONFIG_PATH}`, "--silent"], { stdio: "ignore" }).status === 0;
+  const path = `repos/${repo}/contents/${CONFIG_PATH}`;
+  const result = spawnSync("gh", ["api", path, "--silent"], { encoding: "utf8" });
+  return repoFileStored(path, { ok: result.status === 0, stderr: result.stderr.trim() });
 }
 
 // init rewrites the branch and the pull request body on every run, so an open pull request means the repo waits for a merge.

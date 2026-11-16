@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CONFIG_PATH } from "../core/config.ts";
 import type { Repo } from "../core/repo.ts";
 import { detectRepo } from "../core/repo.ts";
+import { itemStored } from "../core/setup.ts";
 import {
   assertEnvFileValues,
   parseEnvFile,
@@ -184,4 +185,8 @@ export function parseSecretsCommand(positionals: string[], fromEnv: string | und
   if (action === "rm") return { action: "rm", name: checked(name) };
   if (action === "list" && name === undefined) return { action: "list" };
   throw new Error(usage);
+}
+
+export function opItemExists(title: string): boolean {
+  return itemStored(title, op(["item", "get", title, "--vault", SECRETS_VAULT, "--format", "json"]));
 }

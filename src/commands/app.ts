@@ -9,7 +9,7 @@ import { appInstallUrl, appManifest, type CreatedApp, keyFileProblem, parseConve
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { appCreatedPage, appFailedPage, appStartPage } from "../web/pages.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, HOST_SECRETS, openInBrowser } from "./client.ts";
-import { op } from "./secrets.ts";
+import { op, opItemExists } from "./secrets.ts";
 
 const REPO_URL = "https://github.com/marcaureln/autopilot";
 
@@ -34,10 +34,6 @@ async function askLogin(): Promise<string> {
   return value;
 }
 
-export function appKeyStored(): boolean {
-  return op(["item", "get", APP_KEY_ITEM, "--vault", SECRETS_VAULT, "--format", "json"]).ok;
-}
-
 // GitHub shows the private key only once, so the place for it must be ready before the App exists.
 function checkKeyDestination(destination: KeyDestination): void {
   if (destination.kind === "file") {
@@ -47,7 +43,7 @@ function checkKeyDestination(destination: KeyDestination): void {
   }
   const vault = op(["vault", "get", SECRETS_VAULT, "--format", "json"]);
   if (!vault.ok) throw new Error(`op cannot open the vault ${SECRETS_VAULT}: ${vault.stderr}. Run autopilot setup, or pass --key-out <path>`);
-  if (appKeyStored()) {
+  if (opItemExists(APP_KEY_ITEM)) {
     throw new Error(`the vault ${SECRETS_VAULT} already has ${APP_KEY_ITEM}, the key of an App: to replace that App, rename the item in 1Password first, or pass --key-out <path>`);
   }
 }
