@@ -308,12 +308,18 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
 
   let verdict = headVerdict(await repoGitHub.statuses(sha, ctx.bot), required, retryAt);
   // The checks read the config of the default branch, so they run on a branch that has its latest commits.
-  // Only the host's own head is rebased: marking the result as pushed must not vouch for someone else's commit.
-  if (verdict.kind === "run" && pushedByAutopilot && (await repoGitHub.behindBy(pull.base, sha)) > 0) {
+  // The result is marked as pushed by the host, so the host rebases only its own head onto the default
+  // branch, and marks the result only when it brings exactly the same changes.
+  const defaultBranch = await repoGitHub.defaultBranch();
+  const before = verdict.kind === "run" && pushedByAutopilot && pull.base === defaultBranch ? await repoGitHub.compare(defaultBranch, sha) : undefined;
+  if (before && before.behind > 0) {
     const head = await repoGitHub.rebasePull(pull.number, sha).catch((error: unknown) => {
       throw new Blocked(`autopilot could not rebase pull request #${pull.number} on \`${pull.base}\`: ${messageOf(error)}. Close the pull request, then remove the label to build again.`);
     });
-    if (head === sha) throw new Error(`${key}: the rebase of #${pull.number} left the head at ${sha.slice(0, 7)}`);
+    const after = await repoGitHub.compare(defaultBranch, head);
+    if (head === sha || after.behind > 0 || after.ahead !== before.ahead || after.changes.join("\n") !== before.changes.join("\n")) {
+      throw new Blocked(`The rebase of pull request #${pull.number} on \`${pull.base}\` gave ${head.slice(0, 7)}, which does not bring the same changes as ${sha.slice(0, 7)}. Close the pull request, then remove the label to build again.`);
+    }
     await repoGitHub.markPushed(head, issue.number);
     loop.audit({ event: "pr.rebased", repo: `${ctx.repo.owner}/${ctx.repo.name}`, pull: pull.number, issue: issue.number, from: sha, to: head });
     return loop.log(key, `${key}: rebased #${pull.number} on ${pull.base} to ${head.slice(0, 7)}, the checks run next`);
@@ -367,7 +373,7 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
     changes: await repoGitHub.pullFiles(pull.number),
     plannerRisk: spec?.plannerRisk,
     pushedByAutopilot,
-    intoDefaultBranch: pull.base === (await repoGitHub.defaultBranch()),
+    intoDefaultBranch: pull.base === defaultBranch,
   };
   const gate = gate2(facts, config);
   loop.audit({ event: "gate.decided", issue: key, gate: "gate2", pull: pull.number, planner: spec?.plannerRisk, rules: gate.rulesRisk, merge: config.merge, decision: gate.decision });

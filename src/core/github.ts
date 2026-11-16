@@ -12,6 +12,8 @@ export type Issue = { number: number; title: string; body: string; labels: strin
 
 export type Provenance = { body: Change; title?: Change; commentEdits: Map<number, CommentEdit> };
 
+export type Comparison = { behind: number; ahead: number; changes: string[] };
+
 export type LabelSpec = { name: string; color: string; description: string };
 
 export type RepoGitHub = {
@@ -38,7 +40,8 @@ export type RepoGitHub = {
   setStatus(sha: string, check: string, state: CheckState, description: string): Promise<void>;
   markPushed(sha: string, issue: number): Promise<void>;
   pushedFor(sha: string, botLogin: string): Promise<number | undefined>;
-  behindBy(base: string, head: string): Promise<number>;
+  // The changes of head since its merge base with base, as blob SHAs: equal changes mean equal content.
+  compare(base: string, head: string): Promise<Comparison>;
   // Returns the new head. GitHub does the rebase, so the host's checkout never runs the branch's code.
   rebasePull(pull: number, expectedHead: string): Promise<string>;
   openPull(pull: { head: string; base: string; title: string; body: string }): Promise<number>;
@@ -280,9 +283,10 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
       const issue = PUSHED_DESCRIPTION.exec(mark?.description ?? "")?.[1];
       return issue === undefined ? undefined : Number(issue);
     },
-    async behindBy(base, head) {
+    async compare(base, head) {
       const { data } = await octokit.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}`, per_page: 1 });
-      return data.behind_by;
+      const changes = (data.files ?? []).map((file) => `${file.status} ${file.previous_filename ?? ""} ${file.filename} ${file.sha ?? ""}`).sort();
+      return { behind: data.behind_by, ahead: data.ahead_by, changes };
     },
     async rebasePull(pull, expectedHead) {
       const { data } = await octokit.pulls.get({ owner, repo, pull_number: pull });

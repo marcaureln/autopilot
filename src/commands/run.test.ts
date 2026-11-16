@@ -31,7 +31,7 @@ function repoWith(issues: Awaited<ReturnType<RepoGitHub["listLabeledIssues"]>>):
     setStatus: unused,
     markPushed: unused,
     pushedFor: unused,
-    behindBy: unused,
+    compare: unused,
     rebasePull: unused,
     openPull: unused,
     requestReview: unused,
