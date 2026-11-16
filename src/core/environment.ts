@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { cpSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Audit } from "./audit.ts";
@@ -143,6 +144,8 @@ export async function startEnvironment(options: EnvironmentOptions): Promise<Sta
   const read = await devcontainer.readConfiguration(workspace, {});
   const configDir = dirname(realpathSync(read.configFile));
   const configRel = inside(configDir, workspace);
+  // The host names the compose project, so its volumes and networks never match those of another project.
+  const projectName = `autopilot-${createHash("sha256").update(idLabel).digest("hex").slice(0, 12)}`;
   if (configRel === undefined) throw new EnvironmentRefused([`devcontainer.json is outside the repo (${read.configFile})`]);
 
   const problems = devcontainerProblems(read.merged);
@@ -152,7 +155,7 @@ export async function startEnvironment(options: EnvironmentOptions): Promise<Sta
     const files = [composeFile].flat().map((file) => join(configDir, String(file)));
     const outside = files.filter((file) => inside(file, workspace) === undefined);
     if (outside.length > 0) throw new EnvironmentRefused(outside.map((file) => `the compose file ${file} is outside the repo`));
-    const compose = await devcontainer.composeConfig(files);
+    const compose = await devcontainer.composeConfig(files, projectName);
     problems.push(...composeProblems(compose, workspace, resolvePath));
     composeServices = compose.services ?? {};
     const service = read.configuration.service;
@@ -192,7 +195,7 @@ export async function startEnvironment(options: EnvironmentOptions): Promise<Sta
     env: [],
     caps: { memory: limits.memory, cpus: limits.cpus, pids: limits.pids, security_opt: "no-new-privileges" },
   });
-  const up = await devcontainer.up({ workspace, overrideConfig: join(workspace, overridePath), idLabel, additionalFeatures: features, timeoutMs: options.timeoutMs });
+  const up = await devcontainer.up({ workspace, overrideConfig: join(workspace, overridePath), idLabel, projectName, additionalFeatures: features, timeoutMs: options.timeoutMs });
   const parsed = up.timedOut ? undefined : parseUpResult(up.stdout);
   if (parsed?.kind === "up") return parsed;
   const message = parsed?.message ?? "timed out";

@@ -23,11 +23,11 @@ export type Configuration = {
 
 export type Features = Record<string, Record<string, unknown>>;
 
-export type UpOptions = { workspace: string; overrideConfig: string; idLabel: string; additionalFeatures: Features; timeoutMs: number };
+export type UpOptions = { workspace: string; overrideConfig: string; idLabel: string; projectName: string; additionalFeatures: Features; timeoutMs: number };
 
 export type Devcontainer = {
   readConfiguration(workspace: string, additionalFeatures: Features): Promise<Configuration>;
-  composeConfig(files: string[]): Promise<ComposeConfig>;
+  composeConfig(files: string[], projectName: string): Promise<ComposeConfig>;
   // Builds, starts and runs the lifecycle commands (the install). `stdout` holds the result line.
   up(options: UpOptions): Promise<ContainerResult & { stdout: string }>;
   exec(containerId: string, command: string[], options: { env?: Record<string, string>; timeoutMs: number }): Promise<ContainerResult>;
@@ -38,8 +38,8 @@ export type Devcontainer = {
   down(idLabel: string): Promise<void>;
 };
 
-function spawnTail(command: string, args: string[], timeoutMs: number): Promise<ContainerResult & { stdout: string }> {
-  const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: clientEnv(process.env) });
+function spawnTail(command: string, args: string[], timeoutMs: number, env: Record<string, string> = {}): Promise<ContainerResult & { stdout: string }> {
+  const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...clientEnv(process.env), ...env } });
   let output = "";
   let stdout = "";
   let truncated = false;
@@ -100,11 +100,12 @@ export const cliDevcontainer: Devcontainer = {
   },
 
   // --no-env-resolution keeps the env_file paths, so the guardrails can check them.
-  async composeConfig(files) {
-    return JSON.parse(await docker(["compose", ...files.flatMap((file) => ["--file", file]), "config", "--no-env-resolution", "--format", "json"]));
+  async composeConfig(files, projectName) {
+    return JSON.parse(await docker(["compose", "--project-name", projectName, ...files.flatMap((file) => ["--file", file]), "config", "--no-env-resolution", "--format", "json"]));
   },
 
-  up({ workspace, overrideConfig, idLabel, additionalFeatures, timeoutMs }) {
+  // COMPOSE_PROJECT_NAME wins over the `name` of the compose file, so the repo cannot choose the project.
+  up({ workspace, overrideConfig, idLabel, projectName, additionalFeatures, timeoutMs }) {
     return spawnTail(
       process.execPath,
       [
@@ -122,6 +123,7 @@ export const cliDevcontainer: Devcontainer = {
 
       ],
       timeoutMs,
+      { COMPOSE_PROJECT_NAME: projectName },
     );
   },
 
