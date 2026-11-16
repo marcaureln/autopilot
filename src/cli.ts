@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
-import { parseArgs } from "node:util";
+import { parseArgs, type ParseArgsConfig } from "node:util";
 import { allow, allowed, deny } from "./commands/allow.ts";
 import { alias } from "./commands/alias.ts";
 import { appCreate } from "./commands/app.ts";
@@ -66,7 +66,18 @@ Options:
 
 const HOST_COMMANDS = ["allow", "deny", "allowed", "status", "logs", "audit", "update"];
 
-const { values, positionals } = parseArgs({
+// A typo in an option gets one line and the help hint, not a stack trace.
+function parseCommandLine<T extends ParseArgsConfig>(config: T): ReturnType<typeof parseArgs<T>> {
+  try {
+    return parseArgs(config);
+  } catch (error) {
+    if (!(error instanceof TypeError) || !("code" in error) || !String(error.code).startsWith("ERR_PARSE_ARGS")) throw error;
+    console.error(`${error.message.split(". ")[0]}. Run autopilot --help.`);
+    process.exit(1);
+  }
+}
+
+const { values, positionals } = parseCommandLine({
   allowPositionals: true,
   options: {
     host: { type: "string" },
@@ -178,7 +189,7 @@ async function main(): Promise<void> {
       await setup({ configFile: values.config, yes: values.yes, host: target, version: values.version, fromCheckout: values["from-checkout"] });
       break;
     case "app":
-      if (positionals[1] !== "create") throw new Error("usage: autopilot app create [--key-out <path>]");
+      if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path>]");
       await appCreate({ keyOut: values["key-out"] });
       break;
     case "self-update":
