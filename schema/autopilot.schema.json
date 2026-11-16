@@ -5,7 +5,7 @@
   "description": "Tells autopilot what to do in this repo. Lives at .github/autopilot.json.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "stack"],
+  "required": ["version"],
   "properties": {
     "$schema": {
       "type": "string"
@@ -13,13 +13,6 @@
     "version": {
       "description": "Config format version.",
       "const": 1
-    },
-    "stack": {
-      "description": "Stack packs that apply to this repo.",
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": { "enum": ["node"] }
     },
     "agents": {
       "description": "The harness and model for each role.",
@@ -74,7 +67,7 @@
           "default": ["lint", "types", "test", "sast", "deps-scan", "secrets-scan"]
         },
         "commands": {
-          "description": "Shell command for each stack check, such as lint, types and test.",
+          "description": "Shell command for each check, such as lint, types and test. It runs in the repo's dev container (.devcontainer/), with no network.",
           "type": "object",
           "additionalProperties": { "type": "string", "minLength": 1 },
           "default": {}
@@ -124,7 +117,7 @@
       "default": {}
     },
     "secrets": {
-      "description": "Runtime secrets as references, written by `autopilot secrets set`. Each one must be op://autopilot/<owner>_<repo>/<NAME> (lowercase owner and repo). The host resolves the values for the stack checks only.",
+      "description": "Runtime secrets as references, written by `autopilot secrets set`. Each one must be op://autopilot/<owner>_<repo>/<NAME> (lowercase owner and repo). The host resolves the values for the verify.commands checks only.",
       "type": "object",
       "propertyNames": { "pattern": "^[A-Z_][A-Z0-9_]*$" },
       "additionalProperties": {

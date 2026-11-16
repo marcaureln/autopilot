@@ -1,0 +1,9 @@
+{
+  "id": "autopilot-claude-code",
+  "version": "1.0.0",
+  "name": "Claude Code for autopilot",
+  "description": "Installs one exact version of Claude Code with its native installer. Anthropic's feature always installs the latest version.",
+  "options": {
+    "version": { "type": "string", "default": "", "description": "Exact Claude Code version, such as 2.1.325" }
+  }
+}

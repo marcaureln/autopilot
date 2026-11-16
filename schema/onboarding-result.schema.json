@@ -5,10 +5,10 @@
   "description": "What the onboarding agent writes to /work/.autopilot/result.json.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["commands", "agents_md", "notes"],
+  "required": ["commands", "agents_md", "notes", "environment"],
   "properties": {
     "commands": {
-      "description": "The real shell command for each check that the repo supports. Leave out a check the repo cannot run.",
+      "description": "The real shell command for each check that the repo supports. Each one runs at the workspace folder of the dev container, with no network. Leave out a check the repo cannot run.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -24,10 +24,29 @@
       "maxLength": 20000
     },
     "notes": {
-      "description": "Short items that a person must check or fix before agents work on the repo, such as a missing linter or test setup.",
+      "description": "Short items that a person must check or fix before agents work on the repo, such as a missing linter or test setup, or a change you propose to an existing .devcontainer/.",
       "type": "array",
       "maxItems": 10,
       "items": { "type": "string", "minLength": 1, "maxLength": 300 }
+    },
+    "environment": {
+      "description": "The dev container, as a person reads it in the pull request.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "services", "install", "reason"],
+      "properties": {
+        "image": { "description": "The base image of the dev container.", "type": "string", "minLength": 1, "maxLength": 200 },
+        "services": { "description": "The compose services next to the dev container, such as postgres or redis.", "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1, "maxLength": 100 } },
+        "install": { "description": "The command that installs the dependencies (postCreateCommand), or none.", "type": "string", "minLength": 1, "maxLength": 300 },
+        "reason": { "description": "Why this image and these services, from what the repo shows.", "type": "string", "minLength": 1, "maxLength": 600 }
+      }
+    },
+    "devcontainer_files": {
+      "description": "Only when the repo has no .devcontainer/: the full text of each file to write in .devcontainer/, by file name. It must have devcontainer.json.",
+      "type": "object",
+      "maxProperties": 10,
+      "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$", "maxLength": 100 },
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 50000 }
     }
   }
 }

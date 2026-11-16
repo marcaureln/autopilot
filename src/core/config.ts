@@ -14,7 +14,6 @@ export type Agent = {
 export type Config = {
   $schema?: string;
   version: 1;
-  stack: "node"[];
   agents: Record<Role, Agent>;
   steps: Record<"spec" | "build" | "fix", Role>;
   skills: Record<Role, string[]>;
@@ -40,6 +39,9 @@ export function parseConfig(text: string, source: string): Config {
     data = JSON.parse(text);
   } catch (error) {
     throw new Error(`Invalid config ${source}: ${error instanceof Error ? error.message : error}`);
+  }
+  if (typeof data === "object" && data !== null && "stack" in data) {
+    throw new Error(`Invalid config ${source}: \`stack\` is gone, the repo's .devcontainer/ is the environment now. Run \`autopilot init\` again.`);
   }
   if (!validate(data)) {
     throw new Error(`Invalid config ${source}: ${ajv.errorsText(validate.errors, { dataVar: "config" })}`);

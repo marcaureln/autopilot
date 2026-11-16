@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/builder-result.schema.json",
   "title": "Autopilot builder result",
-  "description": "What the builder writes to /work/.autopilot/result.json.",
+  "description": "What the builder writes to .autopilot/result.json in its checkout.",
   "type": "object",
   "additionalProperties": false,
   "required": ["summary"],

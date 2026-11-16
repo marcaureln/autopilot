@@ -13,6 +13,7 @@ import { setup } from "./commands/setup.ts";
 import { auditLog } from "./core/audit.ts";
 import { runBuilder } from "./core/builder.ts";
 import { runChecks } from "./core/checks.ts";
+import { cliDevcontainer } from "./core/devcontainer-cli.ts";
 import { createGitHub } from "./core/github.ts";
 import { HOST_FILE, loadHost } from "./core/host.ts";
 import { runPlanner } from "./core/planner.ts";
@@ -45,9 +46,13 @@ Commands that run on the client:
                               Push the 1Password service account token, write host.json if it is
                               missing, and install a release (or the current commit). Linux hosts
                               run a systemd service, macOS hosts a launchd agent of the user
-  init [--no-agent]           Onboard the repo: scaffold the stack pack, create the labels, let an agent
-                              set the commands and draft AGENTS.md, run the checks once, and open a PR.
-                              With a host, also allow the repo there
+  init [--skill <source>]... [--notes <file>]
+                              Onboard the repo: an agent writes .devcontainer/ (if the repo has none),
+                              the check commands and a draft AGENTS.md; then init checks the dev container,
+                              runs the install and each check once, creates the labels and opens a PR.
+                              --skill adds a skill (github.com/<owner>/<repo>[//<path>][#<ref>] or a host
+                              path) for the agent and for skills.planner and skills.builder. --notes adds
+                              your own instructions to the prompt. With a host, also allow the repo there
   secrets set <NAME>          Save a secret in 1Password (hidden prompt, or stdin) and add its reference
                               to .github/autopilot.json in this checkout
   secrets set --from-env <file>
@@ -91,7 +96,8 @@ const { values, positionals } = parseCommandLine({
     repo: { type: "string" },
     backend: { type: "string", default: "op" },
     "from-env": { type: "string" },
-    "no-agent": { type: "boolean", default: false },
+    skill: { type: "string", multiple: true, default: [] },
+    notes: { type: "string" },
     remove: { type: "boolean", default: false },
     "key-out": { type: "string" },
     yes: { type: "boolean", default: false },
@@ -142,8 +148,8 @@ async function main(): Promise<void> {
           host,
           audit: auditLog,
           plan: (job) => runPlanner(job, { claudeToken, audit: auditLog }),
-          build: (job) => runBuilder({ ...job, claudeToken, audit: auditLog }),
-          check: (job) => runChecks({ ...job, audit: auditLog }),
+          build: (job) => runBuilder({ ...job, claudeToken, devcontainer: cliDevcontainer, audit: auditLog }),
+          check: (job) => runChecks({ ...job, devcontainer: cliDevcontainer, audit: auditLog }),
         },
         { once: values.once },
       );
@@ -171,7 +177,7 @@ async function main(): Promise<void> {
       await update(hostFile, values.version);
       break;
     case "init":
-      await init({ repo: targetRepo(), host: target, agent: !values["no-agent"] });
+      await init({ repo: targetRepo(), host: target, skills: values.skill, notesFile: values.notes });
       break;
     case "secrets": {
       if (values.backend !== "op") throw new Error(`--backend ${values.backend} is not supported: the only backend is op (1Password)`);

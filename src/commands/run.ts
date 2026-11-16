@@ -6,6 +6,7 @@ import { botIdentity, BuildStopped, neutralize, pullBody, SecretsMissing, type B
 import { planChecks, type CheckResult, type ChecksJob } from "../core/checks.ts";
 import { claimComment, claimOf, ownClaims } from "../core/claim.ts";
 import { CONFIG_PATH, parseConfig, type Config } from "../core/config.ts";
+import { EnvironmentRefused } from "../core/environment.ts";
 import { gate1, gate2 } from "../core/gate.ts";
 import type { GitHub, Issue, RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
@@ -30,8 +31,8 @@ export type Loop = {
   github: GitHub;
   host: Host;
   plan: (job: PlannerJob) => Promise<PlannerResult>;
-  build: (job: Omit<BuildJob, "claudeToken" | "audit">) => Promise<Built>;
-  check: (job: Omit<ChecksJob, "audit">) => Promise<CheckResult[]>;
+  build: (job: Omit<BuildJob, "claudeToken" | "devcontainer" | "audit">) => Promise<Built>;
+  check: (job: Omit<ChecksJob, "devcontainer" | "audit">) => Promise<CheckResult[]>;
   log: Log;
   audit: Audit;
 };
@@ -171,7 +172,7 @@ async function reconcile(loop: Loop, ctx: RepoContext, issue: Issue): Promise<vo
       );
       return;
     }
-    if (!(error instanceof Blocked || error instanceof BuildStopped)) throw error;
+    if (!(error instanceof Blocked || error instanceof BuildStopped || error instanceof EnvironmentRefused)) throw error;
     log(key, `${key}: blocked: ${error.message}`);
     // The label first: if the comment fails, the job still stops instead of running again on each loop.
     await move("fail");

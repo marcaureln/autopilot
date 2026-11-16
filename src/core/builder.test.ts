@@ -52,6 +52,7 @@ test("the pull request body links the issue first and drops attribution lines fr
 test("a fix prompt carries the failed check output, cut to its end", () => {
   const prompt = builderPrompt({
     repo: "o/r",
+    workdir: "/workspaces/r",
     issue: { number: 7, title: "Add CONTRIBUTING.md", body: "" },
     thread: [],
     secrets: [],
@@ -62,6 +63,13 @@ test("a fix prompt carries the failed check output, cut to its end", () => {
   assert.doesNotMatch(prompt, /x{6001}/);
 });
 
+test("the prompt names the workspace folder of the dev container, not a fixed path", () => {
+  const prompt = builderPrompt({ repo: "o/r", workdir: "/workspaces/r", issue: { number: 7, title: "t", body: "" }, thread: [], secrets: [] });
+  assert.match(prompt, /checked out at \/workspaces\/r\./);
+  assert.match(prompt, /one JSON file at \/workspaces\/r\/\.autopilot\/result\.json/);
+  assert.doesNotMatch(prompt, /\/work\b/);
+});
+
 const secretsPromptCases: { secrets: string[]; expected: RegExp }[] = [
   { secrets: ["STRIPE_KEY", "DATABASE_URL"], expected: /only in the check containers: `STRIPE_KEY`, `DATABASE_URL`\./ },
   { secrets: [], expected: /The repo has no secrets\./ },
@@ -69,7 +77,7 @@ const secretsPromptCases: { secrets: string[]; expected: RegExp }[] = [
 
 for (const { secrets, expected } of secretsPromptCases) {
   test(`the prompt names the secrets the checks get: [${secrets.join(", ")}]`, () => {
-    assert.match(builderPrompt({ repo: "o/r", issue: { number: 7, title: "t", body: "" }, thread: [], secrets }), expected);
+    assert.match(builderPrompt({ repo: "o/r", workdir: "/workspaces/r", issue: { number: 7, title: "t", body: "" }, thread: [], secrets }), expected);
   });
 }
 

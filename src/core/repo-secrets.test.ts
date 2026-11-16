@@ -68,21 +68,21 @@ test("the docker env file refuses a value on more than one line, and names only 
 
 const config = `{
   "version": 1,
-  "stack": ["node"]
+  "merge": "manual"
 }
 `;
 
 test("set adds the reference and keeps the other fields", () => {
   const once = setSecretReference(config, "B", "op://autopilot/x_y/B");
   const twice = setSecretReference(once, "A", "op://autopilot/x_y/A");
-  assert.deepEqual(JSON.parse(twice), { version: 1, stack: ["node"], secrets: { B: "op://autopilot/x_y/B", A: "op://autopilot/x_y/A" } });
+  assert.deepEqual(JSON.parse(twice), { version: 1, merge: "manual", secrets: { B: "op://autopilot/x_y/B", A: "op://autopilot/x_y/A" } });
   assert.ok(twice.endsWith("}\n"));
 });
 
 test("set replaces a reference, rm removes it and drops an empty secrets object", () => {
   const set = setSecretReference(config, "A", "op://autopilot/x_y/A");
   assert.equal(setSecretReference(set, "A", "op://autopilot/x_y/A"), set);
-  assert.deepEqual(JSON.parse(removeSecretReference(set, "A")), { version: 1, stack: ["node"] });
+  assert.deepEqual(JSON.parse(removeSecretReference(set, "A")), { version: 1, merge: "manual" });
 });
 
 const note = { id: "notesPlain", type: "STRING", purpose: "NOTES", label: "notesPlain", value: "" };

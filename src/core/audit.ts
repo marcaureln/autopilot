@@ -23,6 +23,7 @@ export type AuditEvent =
   | { event: "approval.accepted" | "approval.refused"; issue: string; editors: string[] }
   | { event: "container.started"; name: string; image: string; mounts: string[]; env: string[]; caps: Record<string, string | number> }
   | { event: "container.ended"; name: string; exit: number; timed_out: boolean; duration_seconds: number }
+  | { event: "container.removed"; name: string }
   | { event: "allowlist.changed"; action: "allow" | "deny"; entry: string; by: string | undefined };
 
 export type Audit = (event: AuditEvent) => void;

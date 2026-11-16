@@ -1,5 +1,0 @@
-{
-  "name": "node",
-  "image": "node:26.13.1",
-  "workspaceFolder": "/work"
-}

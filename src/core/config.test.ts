@@ -10,10 +10,9 @@ test("loads the sample config", () => {
 });
 
 test("fills every default in a minimal config", () => {
-  const config = parseConfig(`{ "version": 1, "stack": ["node"] }`, "minimal");
+  const config = parseConfig(`{ "version": 1 }`, "minimal");
   assert.deepEqual(config, {
     version: 1,
-    stack: ["node"],
     agents: {
       planner: { harness: "claude", model: "claude-opus-5-5", effort: "high" },
       builder: { harness: "claude", model: "claude-sonnet-5-5" },
@@ -34,13 +33,17 @@ test("fills every default in a minimal config", () => {
 });
 
 test("rejects an invalid config and names the bad field", () => {
-  assert.throws(() => parseConfig(`{ "version": 1, "stack": ["node"], "merge": "yolo" }`, "test"), /merge/);
+  assert.throws(() => parseConfig(`{ "version": 1, "merge": "yolo" }`, "test"), /merge/);
 });
 
 test("rejects a secret value that is not an op:// reference", () => {
-  assert.throws(() => parseConfig(`{ "version": 1, "stack": ["node"], "secrets": { "STRIPE_KEY": "sk_live_123" } }`, "test"), /secrets/);
+  assert.throws(() => parseConfig(`{ "version": 1, "secrets": { "STRIPE_KEY": "sk_live_123" } }`, "test"), /secrets/);
 });
 
 test("rejects a config that is not JSON and names the source", () => {
   assert.throws(() => parseConfig(`{ "version": 1, }`, ".github/autopilot.json"), /Invalid config \.github\/autopilot\.json: /);
+});
+
+test("a config from the stack packs asks for a new autopilot init", () => {
+  assert.throws(() => parseConfig(`{ "version": 1, "stack": ["node"] }`, ".github/autopilot.json"), /Invalid config \.github\/autopilot\.json: `stack` .*Run `autopilot init` again/);
 });

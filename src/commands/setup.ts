@@ -296,7 +296,7 @@ async function onboard(options: SetupOptions, config: SetupConfig, target: strin
       record(`Onboard ${repo}`, "already done", "onboarding PR open");
       continue;
     }
-    await init({ repo: { owner, name }, host: target, agent: true });
+    await init({ repo: { owner, name }, host: target, skills: [], notesFile: undefined });
     record(`Onboard ${repo}`, "done", "merge the onboarding pull request");
   }
 }

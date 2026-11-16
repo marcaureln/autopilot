@@ -1,12 +1,14 @@
 import { execFile } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Audit } from "./audit.ts";
 import { newFailures, type Baseline } from "./baseline.ts";
 import type { Config } from "./config.ts";
+import type { Devcontainer } from "./devcontainer-cli.ts";
 import { containerName, ensurePulled, runContainer, type ContainerResult, type Mount } from "./docker.ts";
+import { checkCommand, RUN_DIR, SECRETS_NAME, shellEnvFile, startEnvironment, stopEnvironment } from "./environment.ts";
 import type { Host } from "./host.ts";
 import type { BotPull } from "./phase.ts";
 import type { Repo } from "./repo.ts";
@@ -17,7 +19,6 @@ import { shallowClone } from "./workspace.ts";
 const exec = promisify(execFile);
 
 export const IMAGES = {
-  node: "node:26.13.1-slim",
   sast: "semgrep/semgrep:1.185.0",
   "deps-scan": "anchore/grype:v0.121.0",
   "secrets-scan": "trufflesecurity/trufflehog:3.95.8",
@@ -31,7 +32,7 @@ const GIT_SAFE_DIRECTORY = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.dire
 
 export type CheckResult = { check: string; state: "success" | "failure" | "error"; description: string; output: string };
 
-export type CheckPlan = { check: string; kind: "stack"; command: string } | { check: string; kind: "scanner"; scanner: keyof typeof SCANNERS } | { check: string; kind: "missing" };
+export type CheckPlan = { check: string; kind: "command"; command: string } | { check: string; kind: "scanner"; scanner: keyof typeof SCANNERS } | { check: string; kind: "missing" };
 
 const SCANNERS = { sast: true, "deps-scan": true, "secrets-scan": true } as const;
 
@@ -42,18 +43,10 @@ function isScanner(check: string): check is keyof typeof SCANNERS {
 export function planChecks(required: string[], commands: Record<string, string>): CheckPlan[] {
   return required.map((check) => {
     const command = commands[check];
-    if (command !== undefined) return { check, kind: "stack", command };
+    if (command !== undefined) return { check, kind: "command", command };
     if (isScanner(check)) return { check, kind: "scanner", scanner: check };
     return { check, kind: "missing" };
   });
-}
-
-export function nodeInstallCommand(files: (name: string) => boolean): string | undefined {
-  if (files("package-lock.json") || files("npm-shrinkwrap.json")) return "npm ci";
-  if (files("pnpm-lock.yaml")) return "npm install --global pnpm && pnpm install --frozen-lockfile";
-  if (files("yarn.lock")) return "npm install --global yarn && yarn install --frozen-lockfile";
-  if (files("package.json")) return "npm install";
-  return undefined;
 }
 
 export const HIDDEN_OUTPUT = "(this check runs with the repo secrets: autopilot shows only if it passed)";
@@ -91,15 +84,18 @@ export type ChecksJob = {
   commits: number;
   host: Host;
   config: Config;
+  devcontainer: Devcontainer;
   audit: Audit;
 };
 
 export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
-  const { repo, pull, host, config, audit } = job;
+  const { repo, pull, host, config, devcontainer, audit } = job;
   const deadline = Date.now() + config.verify.timeout_minutes * 60 * 1000;
   const jobDir = mkdtempSync(join(tmpdir(), "autopilot-checks-"));
   const src = join(jobDir, "src");
   const name = (step: string) => containerName(repo.owner, repo.name, pull.number, step);
+  const idLabel = `autopilot.job=${name("checks")}`;
+  let started = false;
   const container = (
     step: string,
     image: string,
@@ -120,7 +116,8 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
       timeoutMs: deadline - Date.now(),
       audit,
     });
-  // Each container gets its own copy, so one check cannot change what the next one sees.
+  // Each scanner gets its own copy, so one check cannot change what the next one sees. The commands
+  // share the copy in the dev container: they run one after the other in it.
   const copy = (step: string) => {
     const dir = join(jobDir, step);
     cpSync(src, dir, { recursive: true, verbatimSymlinks: true });
@@ -133,9 +130,32 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
     if (head.trim() !== pull.head.sha) throw new Error(`the branch moved to ${head.trim().slice(0, 7)} while the checks started`);
     const { stdout: baseline } = await exec("git", ["rev-parse", `HEAD~${job.commits}`], { cwd: src });
 
-    let stackDir: string | undefined;
-    let installFailure: CheckResult | undefined;
     let secrets: Record<string, string> = {};
+    let environment: { kind: "ready"; containerId: string; workspaceFolder: string } | { kind: "failed"; result: CheckResult } | undefined;
+    const openEnvironment = async (): Promise<NonNullable<typeof environment>> => {
+      const refused = refusedSecrets(repo, config.secrets);
+      if (refused.length > 0) throw new Error(`the secrets ${refused.join(", ")} point outside the repo's own 1Password item`);
+      secrets = Object.fromEntries(Object.entries(config.secrets).map(([key, reference]) => [key, readSecret(reference, `checks: ${repo.owner}/${repo.name}#${pull.number}`, audit)]));
+      const runDir = join(jobDir, "run");
+      mkdirSync(runDir, { mode: 0o700 });
+      started = true;
+      // `devcontainer up` runs the repo's install (its lifecycle commands) with the network on.
+      const up = await startEnvironment({
+        devcontainer,
+        workspace: copy(repo.name),
+        idLabel,
+        limits: host.limits,
+        mounts: [{ source: runDir, target: RUN_DIR, readonly: true }],
+        claudeCodeVersion: undefined,
+        timeoutMs: deadline - Date.now(),
+        audit,
+      });
+      if (up.kind === "failed") return { kind: "failed", result: { ...resultOf("install", up.result, "error"), description: "the dev container or its install failed" } };
+      // The checks run repository code with the secrets: no network, only the compose services.
+      await devcontainer.cutNetwork(up.containerId);
+      if (Object.keys(secrets).length > 0) writeFileSync(join(runDir, SECRETS_NAME), shellEnvFile(secrets), { mode: 0o600, flag: "wx" });
+      return { kind: "ready", containerId: up.containerId, workspaceFolder: up.workspaceFolder };
+    };
     const results: CheckResult[] = [];
     for (const plan of planChecks(config.verify.required, config.verify.commands)) {
       if (Date.now() >= deadline) {
@@ -143,29 +163,16 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
         continue;
       }
       if (plan.kind === "missing") throw new Error(`verify.required lists ${plan.check}, which has no command`);
-      if (plan.kind === "stack") {
-        if (!stackDir) {
-          const refused = refusedSecrets(repo, config.secrets);
-          if (refused.length > 0) throw new Error(`the secrets ${refused.join(", ")} point outside the repo's own 1Password item`);
-          secrets = Object.fromEntries(
-            Object.entries(config.secrets).map(([key, reference]) => [key, readSecret(reference, `checks: ${repo.owner}/${repo.name}#${pull.number}`, audit)]),
-          );
-          stackDir = copy("stack");
-          await ensurePulled(IMAGES.node);
-          const dir = stackDir;
-          const install = nodeInstallCommand((file) => existsSync(join(dir, file)));
-          if (install) {
-            const run = await container("install", IMAGES.node, ["sh", "-c", `cd /work && ${install}`], [{ source: dir, target: "/work", readonly: false }], { network: "bridge" });
-            if (run.exit !== 0 || run.timedOut) installFailure = { ...resultOf("install", run, "error"), description: `dependency install failed: ${install}` };
-          }
-        }
-        if (installFailure) {
-          results.push({ ...installFailure, check: plan.check });
+      if (plan.kind === "command") {
+        environment ??= await openEnvironment();
+        if (environment.kind === "failed") {
+          results.push({ ...environment.result, check: plan.check });
           continue;
         }
-        const run = await container(plan.check, IMAGES.node, ["sh", "-c", `cd /work && ${plan.command}`], [{ source: stackDir, target: "/work", readonly: false }], { secrets });
+        const withSecrets = Object.keys(secrets).length > 0;
+        const run = await devcontainer.exec(environment.containerId, checkCommand(plan.command, environment.workspaceFolder, withSecrets), { timeoutMs: deadline - Date.now() });
         const result = withBaseline(resultOf(plan.check, run), run, job.defaultBranchBaseline[plan.check]);
-        results.push(Object.keys(secrets).length > 0 ? hideOutput(result) : result);
+        results.push(withSecrets ? hideOutput(result) : result);
         continue;
       }
       await ensurePulled(IMAGES[plan.scanner]);
@@ -174,6 +181,7 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
     const values = Object.values(secrets);
     return results.map((result) => ({ ...result, output: redact(result.output, values) }));
   } finally {
+    if (started) await stopEnvironment(devcontainer, idLabel, audit).catch((error: unknown) => console.error(`could not remove the dev container ${idLabel}: ${error instanceof Error ? error.message : String(error)}`));
     rmSync(jobDir, { recursive: true, force: true });
   }
 }
