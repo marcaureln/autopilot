@@ -1,10 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { CONFIG_PATH } from "../core/config.ts";
 import type { Repo } from "../core/repo.ts";
 import { detectRepo } from "../core/repo.ts";
 import {
-  envFile,
+  assertEnvFileValues,
   parseEnvFile,
   parseOpItem,
   referencedSecrets,
@@ -19,12 +20,10 @@ import {
   type OpItem,
 } from "../core/repo-secrets.ts";
 
-export const CONFIG_PATH = ".github/autopilot.json";
-
 export type SecretsCommand = { action: "set"; name: string } | { action: "set-from-env"; file: string } | { action: "list" } | { action: "rm"; name: string };
 
-// Output of op can hold secret values, so it is captured and never printed. op reads an item from
-// stdin only when stdin is a pipe, and Node gives a child a socket, so a shell pipeline feeds it.
+// op reads an item from stdin only when stdin is a pipe, and Node gives a child a socket, so a
+// shell pipeline feeds it.
 function op(args: string[], input?: string): { ok: boolean; stdout: string; stderr: string } {
   const command: [string, string[]] = input === undefined ? ["op", args] : ["sh", ["-c", 'cat | exec op "$@"', "sh", ...args]];
   const result = spawnSync(command[0], command[1], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
@@ -54,8 +53,7 @@ function getItem(repo: Repo): OpItem | undefined {
 }
 
 function writeValues(repo: Repo, values: Record<string, string>): void {
-  // Checks get the values through a docker env file, which cannot hold more than one line.
-  envFile(values);
+  assertEnvFileValues(values);
   const item = getItem(repo);
   const json = JSON.stringify(withSecrets(item, repo, values));
   const result = item ? op(["item", "edit", itemTitle(repo), "--vault", SECRETS_VAULT, "--format", "json"], json) : op(["item", "create", "--vault", SECRETS_VAULT, "--format", "json", "-"], json);
@@ -68,13 +66,11 @@ function originOf(dir: string): Repo | undefined {
   try {
     return detectRepo(dir);
   } catch {
-    // No origin remote, or not on GitHub.
     return undefined;
   }
 }
 
-// The reference goes into the checkout only when the checkout is the repo, so the user commits it with the right repo.
-function configFile(repo: Repo): string | undefined {
+function checkoutConfigOf(repo: Repo): string | undefined {
   const root = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" });
   if (root.status !== 0) return undefined;
   const top = root.stdout.trim();
@@ -85,7 +81,7 @@ function configFile(repo: Repo): string | undefined {
 }
 
 function updateConfig(repo: Repo, edit: (text: string) => string, hint: string): void {
-  const path = configFile(repo);
+  const path = checkoutConfigOf(repo);
   if (!path) return console.log(`No ${CONFIG_PATH} of ${repo.owner}/${repo.name} in this checkout. ${hint}`);
   writeFileSync(path, edit(readFileSync(path, "utf8")));
   console.log(`Updated ${CONFIG_PATH}: commit it.`);
@@ -97,11 +93,10 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-// Raw mode reads the keys one by one, so the terminal never echoes them.
 function readHidden(prompt: string): Promise<string> {
   const stdin = process.stdin;
-  process.stderr.write(prompt);
   stdin.setRawMode(true);
+  process.stderr.write(prompt);
   stdin.resume();
   stdin.setEncoding("utf8");
   return new Promise((resolve, reject) => {
@@ -161,7 +156,7 @@ export async function secrets(command: SecretsCommand, repo: Repo): Promise<void
     }
     case "list": {
       const stored = secretNames(getItem(repo));
-      const path = configFile(repo);
+      const path = checkoutConfigOf(repo);
       const referenced = path ? referencedSecrets(readFileSync(path, "utf8")) : [];
       const all = [...new Set([...stored, ...referenced])].toSorted();
       if (all.length === 0) return console.log(`${repo.owner}/${repo.name} has no secrets.`);
@@ -182,7 +177,6 @@ export function parseSecretsCommand(positionals: string[], fromEnv: string | und
     if (!SECRET_NAME.test(value)) throw new Error(`"${value}" is not a secret name (A-Z, 0-9 and _)`);
     return value;
   };
-  // The shell history would keep it.
   if (action === "set" && rest.length > 0) throw new Error("a value is never an argument: type it at the hidden prompt, pipe it on stdin, or use --from-env <file>");
   if (rest.length > 0) throw new Error(usage);
   if (action === "set" && fromEnv !== undefined && name === undefined) return { action: "set-from-env", file: fromEnv };

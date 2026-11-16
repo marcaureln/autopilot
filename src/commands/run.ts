@@ -4,7 +4,7 @@ import type { Audit } from "../core/audit.ts";
 import { botIdentity, BuildStopped, neutralize, pullBody, SecretsMissing, type BuildJob, type Built, type Failure } from "../core/builder.ts";
 import { planChecks, type CheckResult, type ChecksJob } from "../core/checks.ts";
 import { claimComment, claimOf, ownClaims } from "../core/claim.ts";
-import { parseConfig, type Config } from "../core/config.ts";
+import { CONFIG_PATH, parseConfig, type Config } from "../core/config.ts";
 import { gate1, gate2 } from "../core/gate.ts";
 import type { GitHub, Issue, RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
@@ -15,8 +15,6 @@ import { refusedSecrets } from "../core/repo-secrets.ts";
 import { isApproved, latestSpec, type Comment, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
 import { isOwnerTick, isVouched, trustedSpec, trustedThread, type TrustedSpec } from "../core/trust.ts";
 import { labelsFor, migrateLabels, STATES, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
-
-const CONFIG_PATH = ".github/autopilot.json";
 
 const LABELS = [
   { name: TRIGGER_LABEL, color: "000000", description: "autopilot: build this issue" },

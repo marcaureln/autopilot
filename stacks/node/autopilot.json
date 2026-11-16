@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/autopilot.schema.json",
+  "version": 1,
+  "stack": ["node"],
+  "verify": {
+    "required": ["sast", "deps-scan", "secrets-scan"],
+    "commands": {}
+  },
+  "merge": "manual"
+}

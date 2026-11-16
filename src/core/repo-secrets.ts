@@ -43,12 +43,15 @@ export function parseEnvFile(text: string): [string, string][] {
 }
 
 // The docker env file format has no quoting: one NAME=value per line.
+export function assertEnvFileValues(secrets: Record<string, string>): void {
+  const multiLine = Object.keys(secrets).filter((name) => /[\r\n\0]/.test(secrets[name] ?? ""));
+  if (multiLine.length > 0) throw new Error(`the secret ${multiLine.join(", ")} has more than one line, which a docker env file cannot hold`);
+}
+
 export function envFile(secrets: Record<string, string>): string {
+  assertEnvFileValues(secrets);
   return Object.entries(secrets)
-    .map(([name, value]) => {
-      if (/[\r\n\0]/.test(value)) throw new Error(`the secret ${name} has more than one line, which a docker env file cannot hold`);
-      return `${name}=${value}\n`;
-    })
+    .map(([name, value]) => `${name}=${value}\n`)
     .join("");
 }
 
