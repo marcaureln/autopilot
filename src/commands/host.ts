@@ -3,9 +3,9 @@ import { existsSync, readFileSync, readlinkSync } from "node:fs";
 import { AUDIT_TAG } from "../core/audit.ts";
 import { loadHost, type Host } from "../core/host.ts";
 import { hostLayout, LOCAL_LAYOUT, parseOS, type Layout } from "../core/layout.ts";
+import { RELEASE_TAG } from "../core/setup.ts";
 
 const RELEASE_REPO = "marcaureln/autopilot";
-const TAG = /^v\d+\.\d+\.\d+$/;
 // host/setup.sh and host/setup-macos.sh give the systemd unit and the launchd job this name.
 export const SERVICE = "autopilot";
 export const LOCAL_TARGET = "local";
@@ -51,7 +51,7 @@ export async function must(shell: Shell, step: string, command: string, input?: 
 }
 
 export function parseTag(value: string): string {
-  if (!TAG.test(value)) throw new Error(`"${value}" is not a release tag such as v1.2.3`);
+  if (!RELEASE_TAG.test(value)) throw new Error(`"${value}" is not a release tag such as v1.2.3`);
   return value;
 }
 

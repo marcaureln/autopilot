@@ -9,7 +9,7 @@ import { createGitHub } from "../core/github.ts";
 import { parseHost, type Host } from "../core/host.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret } from "../core/secrets.ts";
-import { checkResources, describeResources, installCommand, parseList, parseResources, parseSetupConfig, RESOURCES_PROBE, TOOLS, type SetupConfig } from "../core/setup.ts";
+import { checkResources, describeResources, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type SetupConfig } from "../core/setup.ts";
 import { alias, aliasFile, shellOf, withoutAlias } from "./alias.ts";
 import { appCreate, appKeyStored, githubLogin } from "./app.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, CLAUDE_TOKEN_ITEM, forward, HOST_SECRETS, hostSetup, OP_TOKEN_ITEM } from "./client.ts";
@@ -197,23 +197,31 @@ async function hostState(remote: Connection): Promise<HostState> {
   };
 }
 
-function ready(state: HostState): boolean {
-  return state.host !== undefined && state.opToken && state.release !== undefined && ["active", "running"].includes(state.service);
+function factsOf(state: HostState): HostFacts {
+  return { hasHost: state.host !== undefined, opToken: state.opToken, release: state.release, service: state.service };
 }
 
 async function setUpHost(options: SetupOptions, config: SetupConfig, target: string, remote: Connection, appId: number, login: string): Promise<Host> {
   let state = await hostState(remote);
-  if (ready(state)) {
+  const plan = planHostSetup(factsOf(state), options);
+  if (plan.kind === "refuse") throw new Error(`${target}: ${plan.reason}`);
+  if (plan.kind === "ready") {
     record("Host setup", "already done", `${state.release}, service ${state.service}`);
   } else {
+    if (plan.problem) {
+      if (options.yes) throw new Error(`${target}: ${plan.problem}. With --yes, setup does not reinstall or restart a host. Fix it, or run autopilot setup without --yes`);
+      const again = await answer(confirm({ message: `${plan.problem}. Install ${plan.version ?? "this checkout"} again, push the 1Password token and restart the service?` }));
+      if (!again) throw new Error(`${target}: ${plan.problem}`);
+    }
     const owner = state.host
       ? undefined
       : await configOrAsk(options, config.owner ?? (options.yes ? login : undefined), "owner", () =>
           text({ message: "GitHub login that may start jobs (the owner)", initialValue: login, validate: (input) => (/^[A-Za-z0-9-]+$/.test(input ?? "") ? undefined : "A GitHub login") }),
         );
-    await hostSetup(target, { owner, appId, version: options.version, fromCheckout: options.fromCheckout });
+    await hostSetup(target, { owner, appId, version: plan.version, fromCheckout: plan.fromCheckout });
     state = await hostState(remote);
-    if (!ready(state)) throw new Error(`host setup ran, but the host is not ready: service ${state.service}`);
+    const after = planHostSetup(factsOf(state), options);
+    if (after.kind !== "ready") throw new Error(`host setup ran, but the host is not ready: service ${state.service}`);
     record("Host setup", "done", `${state.release}, service ${state.service}`);
   }
   const host = state.host;

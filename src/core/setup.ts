@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/setup.schema.json" with { type: "json" };
 
@@ -77,4 +78,35 @@ export function describeResources(resources: HostResources): string {
 
 export function parseList(value: string): string[] {
   return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
+}
+
+export const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
+
+export type HostFacts = { hasHost: boolean; opToken: boolean; release?: string; service: string };
+
+export type HostPlan =
+  | { kind: "ready" }
+  | { kind: "refuse"; reason: string }
+  | { kind: "run"; version?: string; fromCheckout: boolean; problem?: string };
+
+// A release folder is /opt/autopilot-<tag or commit> on Linux and <dir>/releases/<tag or commit> on macOS.
+function releaseId(link: string): string {
+  return basename(link).replace(/^autopilot-/, "");
+}
+
+// A host that already runs a release keeps that release: setup repairs it and never upgrades it by surprise.
+export function planHostSetup(facts: HostFacts, request: { version?: string; fromCheckout: boolean }): HostPlan {
+  const problems = [
+    ...(["active", "running"].includes(facts.service) ? [] : [`service is ${facts.service}`]),
+    ...(facts.opToken ? [] : ["the 1Password token file is missing"]),
+  ];
+  if (facts.hasHost && facts.release !== undefined && problems.length === 0) return { kind: "ready" };
+  if (!facts.hasHost || facts.release === undefined) return { kind: "run", ...request };
+  const problem = problems.join("; ");
+  if (request.version || request.fromCheckout) return { kind: "run", ...request, problem };
+  const id = releaseId(facts.release);
+  if (!RELEASE_TAG.test(id)) {
+    return { kind: "refuse", reason: `${problem}, and the host runs the checkout build ${id}: setup does not replace it with a release. Pass --from-checkout to install it again from this checkout` };
+  }
+  return { kind: "run", version: id, fromCheckout: false, problem };
 }
