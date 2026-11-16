@@ -23,6 +23,11 @@ test("an image config gets the host caps as runArgs, the host mounts, and root a
   });
 });
 
+test("an image config with a workspace folder gets the repo mounted there", () => {
+  const { devcontainer } = overrideFiles({ image: "node:26.13.1", workspaceFolder: "/work" }, { limits, mounts: [], composeServices: undefined });
+  assert.equal(devcontainer.workspaceMount, "type=bind,source=${localWorkspaceFolder},target=/work");
+});
+
 test("a compose config gets a compose file with the caps on each service and the mounts on the dev container", () => {
   const configuration = { name: "app", dockerComposeFile: "compose.yaml", service: "app", workspaceFolder: "/workspace" };
   const composeServices = { app: { image: "node:26.13.1" }, db: { image: "postgres:18.1" }, sidecar: { image: "busybox:1.37.0", network_mode: "service:db" } };
