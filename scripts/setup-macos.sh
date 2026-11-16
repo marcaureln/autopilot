@@ -6,8 +6,8 @@ set -euo pipefail
 release="${1:?usage: setup-macos.sh <release-dir> <rootless|rootful>}"
 docker_mode="${2:?usage: setup-macos.sh <release-dir> <rootless|rootful>}"
 
-# shellcheck source=host/common.sh
-. "$release/host/common.sh"
+# shellcheck source=scripts/common.sh
+. "$release/scripts/common.sh"
 
 if [ "$(id -u)" -eq 0 ]; then
   echo "run setup on macOS as the user who runs Docker, not as root" >&2

@@ -5,12 +5,12 @@ release="${1:?usage: setup.sh <release-dir> <rootless|rootful>}"
 docker_mode="${2:?usage: setup.sh <release-dir> <rootless|rootful>}"
 user=autopilot
 
-# shellcheck source=host/common.sh
-. "$release/host/common.sh"
+# shellcheck source=scripts/common.sh
+. "$release/scripts/common.sh"
 
 case "$(uname -s)" in
   Linux) ;;
-  Darwin) exec bash "$release/host/setup-macos.sh" "$release" "$docker_mode" ;;
+  Darwin) exec bash "$release/scripts/setup-macos.sh" "$release" "$docker_mode" ;;
   *)
     echo "autopilot hosts run Linux or macOS, not $(uname -s)" >&2
     exit 1

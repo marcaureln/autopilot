@@ -3,14 +3,14 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import managedSettings from "../../harness/claude/managed-settings.json" with { type: "json" };
+import managedSettings from "../../docker/claude/managed-settings.json" with { type: "json" };
 import type { Audit } from "../core/audit.ts";
 import type { Agent } from "../core/config.ts";
 import type { Host } from "../core/host.ts";
 
 const run = promisify(execFile);
 
-const IMAGE_DIR = new URL("../../harness/claude/", import.meta.url).pathname;
+const IMAGE_DIR = new URL("../../docker/claude/", import.meta.url).pathname;
 const IMAGE_FILES = ["Dockerfile", "managed-settings.json"];
 
 const SETTINGS = JSON.stringify({ attribution: managedSettings.attribution });

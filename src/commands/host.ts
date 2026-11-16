@@ -6,7 +6,7 @@ import { hostLayout, LOCAL_LAYOUT, parseOS, type Layout } from "../core/layout.t
 import { RELEASE_TAG } from "../core/setup.ts";
 
 const RELEASE_REPO = "marcaureln/autopilot";
-// host/setup.sh and host/setup-macos.sh give the systemd unit and the launchd job this name.
+// scripts/setup.sh and scripts/setup-macos.sh give the systemd unit and the launchd job this name.
 export const SERVICE = "autopilot";
 export const LOCAL_TARGET = "local";
 
@@ -85,7 +85,7 @@ export async function installRelease(remote: Connection, release: Release, docke
   }
   // On macOS one user runs the service and the management commands, so no account gains rights from the release.
   if (remote.layout.os === "linux") await assertRootOnly(remote, dir);
-  await must(shell, "setup.sh", `${sudo}bash ${dir}/host/setup.sh ${dir} ${docker}`);
+  await must(shell, "setup.sh", `${sudo}bash ${dir}/scripts/setup.sh ${dir} ${docker}`);
 }
 
 export async function update(path: string, version: string | undefined): Promise<void> {
