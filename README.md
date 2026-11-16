@@ -150,7 +150,7 @@ The repo's own `.devcontainer/` is the environment of every job: the install, th
 
 `--skill <source>` (repeatable) gives the agent a skill and adds it to `skills.planner` and `skills.builder`. `--notes <file>` adds your own instructions to the agent's prompt.
 
-The host refuses a `.devcontainer/` that reaches outside its container: host commands (`initializeCommand`), `runArgs`, privileges, capabilities, host mounts, published ports, host namespaces, `${localEnv:...}`, and images without an exact version tag. It adds its own memory, CPU and process caps and `no-new-privileges`.
+The host refuses a `.devcontainer/` that reaches outside its container: host commands (`initializeCommand`), `runArgs`, privileges, capabilities, host mounts (also through a symlink, a volume driver, `volumes_from`, an `env_file`, a secret or a build context), published ports, the namespaces of the host or of another container, `${localEnv:...}`, and images without an exact version tag. It adds its own memory, CPU and process caps and `no-new-privileges`. During the checks, it also cuts the outside network of the compose services.
 
 ### Secrets
 
