@@ -34,6 +34,17 @@ async function askLogin(): Promise<string> {
   return value;
 }
 
+// GET /apps/<slug> is public and answers 404 for a name that no App has.
+async function freeAppName(login: string): Promise<string> {
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    const name = suggestAppName(login, attempt);
+    const answer = await fetch(`https://api.github.com/apps/${name}`, { headers: { accept: "application/vnd.github+json" } });
+    if (answer.status === 404) return name;
+    if (!answer.ok) throw new Error(`GET /apps/${name}: ${answer.status} ${await answer.text()}`);
+  }
+  throw new Error(`the names ${suggestAppName(login, 1)} to ${suggestAppName(login, 20)} are all taken`);
+}
+
 // GitHub shows the private key only once, so the place for it must be ready before the App exists.
 function checkKeyDestination(destination: KeyDestination): void {
   if (destination.kind === "file") {
@@ -75,7 +86,7 @@ function send(response: ServerResponse, status: number, html: string, then?: () 
 export async function appCreate(options: { keyOut?: string }): Promise<CreatedAppSummary> {
   const destination: KeyDestination = options.keyOut ? { kind: "file", path: resolve(options.keyOut) } : { kind: "op" };
   checkKeyDestination(destination);
-  const name = suggestAppName(await askLogin());
+  const name = await freeAppName(await askLogin());
   const state = randomBytes(16).toString("hex");
   const created = Promise.withResolvers<CreatedAppSummary>();
   let origin = "";

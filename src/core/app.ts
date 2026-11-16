@@ -28,8 +28,10 @@ const SUFFIX = "-autopilot";
 // GitHub refuses App names longer than 34 characters.
 const NAME_MAX = 34;
 
-export function suggestAppName(login: string): string {
-  return `${login.toLowerCase().slice(0, NAME_MAX - SUFFIX.length)}${SUFFIX}`;
+// App names are unique on all of GitHub, so a later attempt adds a number.
+export function suggestAppName(login: string, attempt: number): string {
+  const suffix = attempt === 1 ? SUFFIX : `${SUFFIX}-${attempt}`;
+  return `${login.toLowerCase().slice(0, NAME_MAX - suffix.length)}${suffix}`;
 }
 
 // GitHub wants a hook URL in the manifest, also for an inactive hook.

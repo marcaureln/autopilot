@@ -5,15 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appInstallUrl, appManifest, keyFileProblem, parseConversion, stateMatches, suggestAppName, writeFallbackKey } from "./app.ts";
 
-const names: { login: string; expected: string }[] = [
-  { login: "octocat", expected: "octocat-autopilot" },
-  { login: "Example-User", expected: "example-user-autopilot" },
-  { login: "a-very-long-login-name-of-39-chars-xx", expected: "a-very-long-login-name-o-autopilot" },
+const names: { login: string; attempt: number; expected: string }[] = [
+  { login: "octocat", attempt: 1, expected: "octocat-autopilot" },
+  { login: "Example-User", attempt: 1, expected: "example-user-autopilot" },
+  { login: "a-very-long-login-name-of-39-chars-xx", attempt: 1, expected: "a-very-long-login-name-o-autopilot" },
+  { login: "octocat", attempt: 2, expected: "octocat-autopilot-2" },
+  { login: "a-very-long-login-name-of-39-chars-xx", attempt: 12, expected: "a-very-long-login-nam-autopilot-12" },
 ];
 
-for (const { login, expected } of names) {
-  test(`suggests ${expected} for ${login}`, () => {
-    const name = suggestAppName(login);
+for (const { login, attempt, expected } of names) {
+  test(`suggests ${expected} for ${login} at attempt ${attempt}`, () => {
+    const name = suggestAppName(login, attempt);
     assert.equal(name, expected);
     assert.ok(name.length <= 34);
   });
