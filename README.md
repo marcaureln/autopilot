@@ -80,19 +80,39 @@ The host reads only the references to the repo's own item. It gives the values t
 
 The trust boundary is the same as in CI: whoever can change the code of a repo can read the secrets that the repo gets, for example from a test. Hiding the output only prevents accidents. Give a repo only test-mode or low-value keys.
 
+## Install
+
+The CLI on your machine is only a client. It installs for your user, without root. You need [mise](https://mise.jdx.dev/installing-mise.html), which installs the pinned Node.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
+autopilot self-update            # install the latest release, or --version vX.Y.Z
+autopilot alias                  # add "alias ap=autopilot" to the rc file of your shell; --remove deletes it
+```
+
+The release goes to `~/.local/share/autopilot` and the command to `~/.local/bin/autopilot`.
+
 ## Hosts
 
-A host runs `autopilot run` as a systemd service and holds everything it needs: its `/etc/autopilot/host.json`, the 1Password service account token, and a release from GitHub. At start, the host reads the App key and the Claude token with `op`. The CLI on your machine is only a client. It keeps no config and forwards each command to the host over SSH, like the Vault CLI with `VAULT_ADDR`.
+A host runs `autopilot run` as a service and holds everything it needs: its `host.json`, the 1Password service account token, and a release from GitHub. At start, the host reads the App key and the Claude token with `op`. The client keeps no config and forwards each command to the host over SSH, like the Vault CLI with `VAULT_ADDR`. The host `local` is the machine you run the command on.
+
+| Host | Service | Files | Logs |
+| --- | --- | --- | --- |
+| Linux | systemd, as the user `autopilot` with rootless Docker | `/etc/autopilot`, `/opt/autopilot` | journald |
+| macOS | launchd agent of your user, with your OrbStack, Colima or Docker Desktop | `~/.autopilot` | `~/Library/Logs/autopilot` |
+
+A macOS host runs while you are logged in, and stops while the Mac sleeps.
 
 ```sh
 # Once per host: push the 1Password token, write host.json, install the latest release
 autopilot host setup --host user@my-host --owner <login> --app-id <id>
+autopilot host setup --host local --owner <login> --app-id <id>     # this machine
 
 export AUTOPILOT_HOST=user@my-host
 autopilot allow <owner>/<repo>   # opens the App install page if the App is not installed there
 autopilot status
 autopilot logs
-autopilot audit --since 1d       # JSON audit events from journald
+autopilot audit --since 1d       # JSON audit events
 autopilot update                 # install the latest release, or --version vX.Y.Z
 ```
 
