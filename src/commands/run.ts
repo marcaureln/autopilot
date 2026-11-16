@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseAllowEntry } from "../core/allow.ts";
 import type { Audit } from "../core/audit.ts";
-import { botIdentity, BuildStopped, neutralize, pullBody, type BuildJob, type Built, type Failure } from "../core/builder.ts";
+import { botIdentity, BuildStopped, neutralize, pullBody, SecretsMissing, type BuildJob, type Built, type Failure } from "../core/builder.ts";
 import { planChecks, type CheckResult, type ChecksJob } from "../core/checks.ts";
 import { claimComment, claimOf, ownClaims } from "../core/claim.ts";
 import { parseConfig, type Config } from "../core/config.ts";
@@ -156,6 +156,16 @@ async function reconcile(loop: Loop, ctx: RepoContext, issue: Issue): Promise<vo
 
     if (current === "working") await working({ loop, ctx, issue, key, comments, labeledAt: labeled.at, move });
   } catch (error) {
+    if (error instanceof SecretsMissing) {
+      log(key, `${key}: the builder needs the secrets ${error.names.join(", ")}`);
+      await move("needs_info");
+      const names = error.names.map((name) => `\`${name}\``).join(", ");
+      await repoGitHub.postComment(
+        issue.number,
+        `The builder needs secrets that the checks do not get: ${names}. In a checkout of this repo, run \`autopilot secrets set <NAME>\` for each one, merge the change to \`.github/autopilot.json\`, then reply here.`,
+      );
+      return;
+    }
     if (!(error instanceof Blocked || error instanceof BuildStopped)) throw error;
     log(key, `${key}: blocked: ${error.message}`);
     // The label first: if the comment fails, the job still stops instead of running again on each loop.

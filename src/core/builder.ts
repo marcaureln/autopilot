@@ -24,7 +24,7 @@ const MAX_COMMITS = 50;
 const MAX_BUNDLE_BYTES = 100 * 1024 * 1024;
 const MAX_FAILURE_CHARS = 6000;
 
-export type BuilderResult = { summary: string; blocked?: string };
+export type BuilderResult = { summary: string; missing_secrets?: string[]; blocked?: string };
 
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile<BuilderResult>(schema);
@@ -97,6 +97,7 @@ export type BuilderInput = {
   repo: string;
   issue: { number: number; title: string; body: string };
   thread: Comment[];
+  secrets: string[];
   failures?: Failure[];
 };
 
@@ -105,7 +106,7 @@ function failureBlock({ check, output }: Failure): string {
   return `## ${check}\n\n\`\`\`\n${text.replaceAll("```", "'''") || "(no output)"}\n\`\`\``;
 }
 
-export function builderPrompt({ repo, issue, thread, failures }: BuilderInput): string {
+export function builderPrompt({ repo, issue, thread, secrets, failures }: BuilderInput): string {
   const comments = thread.map((comment) => `**@${comment.author}** (${comment.createdAt}):\n\n${comment.body}`).join("\n\n---\n\n");
   const task = failures
     ? `The checks failed on the current commit of the pull request branch, which is checked out at /work. Fix the cause of each failure below. Do not weaken, skip or delete a check or a test to make it pass.
@@ -133,6 +134,10 @@ ${comments || "(no comments)"}
 - Do not change the git identity or the git config. Do not add trailers such as Co-Authored-By or Signed-off-by, and no "Generated with" line.
 - Do not push and do not open a pull request. There are no GitHub credentials here; autopilot pushes for you.
 - Keep the change to what the spec asks.
+
+# Secrets
+
+${secrets.length > 0 ? `The repo has secrets. They exist only in the check containers: ${secrets.map((name) => `\`${name}\``).join(", ")}.` : "The repo has no secrets."} They are not set here. If the work needs a secret that is not in this list, do not hard-code or invent a value: put its name in \`missing_secrets\` and stop.
 
 # Result
 
@@ -163,6 +168,14 @@ export type BuildJob = {
 export type Built = { head: string; summary: string };
 
 export class BuildStopped extends Error {}
+
+export class SecretsMissing extends Error {
+  readonly names: string[];
+  constructor(names: string[]) {
+    super(`the builder needs the secrets ${names.join(", ")}`);
+    this.names = names;
+  }
+}
 
 async function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
   const { stdout } = await exec("git", args, { cwd, env: env ?? { ...process.env, GIT_TERMINAL_PROMPT: "0" }, maxBuffer: 64 * 1024 * 1024 });
@@ -237,7 +250,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     const { skillsDir, claudeConfigDir } = await prepareAgent(host, config.skills[role], github, jobDir);
     const promptFile = join(jobDir, "prompt.md");
     const failures = mode.kind === "fix" ? mode.failures : undefined;
-    writeFileSync(promptFile, builderPrompt({ repo: `${repo.owner}/${repo.name}`, issue, thread, failures }));
+    writeFileSync(promptFile, builderPrompt({ repo: `${repo.owner}/${repo.name}`, issue, thread, secrets: Object.keys(config.secrets), failures }));
 
     const agent = config.agents[role];
     await runClaude({
@@ -259,6 +272,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     const resultText = readAgentFile(work, RESULT_PATH, 64 * 1024);
     if (resultText === undefined) throw new BuildStopped(`the builder wrote no ${RESULT_PATH}`);
     const result = parseBuilderResult(resultText);
+    if (result.missing_secrets) throw new SecretsMissing(result.missing_secrets);
     if (result.blocked) throw new BuildStopped(`the builder stopped: ${result.blocked}`);
 
     const bundle = await bundleNewCommits(job, jobDir, work, start);

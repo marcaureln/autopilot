@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { botIdentity, builderPrompt, commitProblems, neutralize, pullBody, type Commit } from "./builder.ts";
+import { botIdentity, builderPrompt, commitProblems, neutralize, parseBuilderResult, pullBody, type Commit } from "./builder.ts";
 
 const bot = botIdentity("autopilot[bot]", 123456);
 
@@ -54,9 +54,35 @@ test("a fix prompt carries the failed check output, cut to its end", () => {
     repo: "o/r",
     issue: { number: 7, title: "Add CONTRIBUTING.md", body: "" },
     thread: [],
+    secrets: [],
     failures: [{ check: "lint", output: `${"x".repeat(7000)}END` }],
   });
   assert.match(prompt, /## lint/);
   assert.match(prompt, /\[\.\.\. cut \.\.\.\]\nx+END/);
   assert.doesNotMatch(prompt, /x{6001}/);
 });
+
+const secretsPromptCases: { secrets: string[]; expected: RegExp }[] = [
+  { secrets: ["STRIPE_KEY", "DATABASE_URL"], expected: /only in the check containers: `STRIPE_KEY`, `DATABASE_URL`\./ },
+  { secrets: [], expected: /The repo has no secrets\./ },
+];
+
+for (const { secrets, expected } of secretsPromptCases) {
+  test(`the prompt names the secrets the checks get: [${secrets.join(", ")}]`, () => {
+    assert.match(builderPrompt({ repo: "o/r", issue: { number: 7, title: "t", body: "" }, thread: [], secrets }), expected);
+  });
+}
+
+const resultCases: { name: string; text: string; valid: boolean }[] = [
+  { name: "a summary", text: '{"summary":"done"}', valid: true },
+  { name: "missing secrets", text: '{"summary":"needs a key","missing_secrets":["STRIPE_KEY"]}', valid: true },
+  { name: "a secret name that is not an env name", text: '{"summary":"x","missing_secrets":["stripe key"]}', valid: false },
+  { name: "an empty list of missing secrets", text: '{"summary":"x","missing_secrets":[]}', valid: false },
+];
+
+for (const { name, text, valid } of resultCases) {
+  test(`builder result: ${name}`, () => {
+    if (valid) assert.doesNotThrow(() => parseBuilderResult(text));
+    else assert.throws(() => parseBuilderResult(text), /invalid/);
+  });
+}
