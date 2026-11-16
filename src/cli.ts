@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { allow, allowed, deny } from "./commands/allow.ts";
-import { forward, hostSetup } from "./commands/client.ts";
+import { forward, hostSetup, selfUpdate } from "./commands/client.ts";
 import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
@@ -43,6 +43,8 @@ Commands that run on the client:
                               The same for every key in a .env file
   secrets list                Show the secrets of the repo
   secrets rm <NAME>           Remove a secret and its reference
+  self-update [--version <tag>]
+                              Install a release of this CLI (default: the latest), as install.sh does
 
 Options:
   --host <ssh-target>  Host to act on, or "local" for this machine (default: $AUTOPILOT_HOST)
@@ -156,6 +158,9 @@ async function main(): Promise<void> {
       await hostSetup(target, { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"] });
       break;
     }
+    case "self-update":
+      await selfUpdate(values.version);
+      break;
     default:
       console.log(USAGE);
       process.exitCode = values.help ? 0 : 1;

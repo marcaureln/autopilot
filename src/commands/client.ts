@@ -1,5 +1,6 @@
-import { execFile, execFileSync, spawn } from "node:child_process";
-import { dirname } from "node:path";
+import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { parseHost, type Host } from "../core/host.ts";
 import { connect, installRelease, latestRelease, LOCAL_TARGET, must, parseTag, type Release, type Connection } from "./host.ts";
@@ -99,4 +100,11 @@ export async function hostSetup(target: string, options: { owner?: string; appId
 
   const host = await hostFile(remote, options);
   await installRelease(remote, release, host.docker);
+}
+
+export async function selfUpdate(version: string | undefined): Promise<void> {
+  if (existsSync(join(CLI_ROOT, ".git"))) throw new Error(`autopilot runs from the checkout ${CLI_ROOT}: update it with git pull`);
+  const tag = version ? parseTag(version) : await latestRelease();
+  const result = spawnSync("sh", [join(CLI_ROOT, "install.sh"), tag], { stdio: "inherit" });
+  if (result.status !== 0) throw new Error(`install.sh ${tag} failed (exit ${result.status})`);
 }
