@@ -22,6 +22,10 @@ step "prerequisites ($(. /etc/os-release && echo "$PRETTY_NAME"))"
 missing=()
 command -v systemctl >/dev/null || missing+=("systemd: autopilot runs as a systemd service")
 command -v docker >/dev/null || missing+=("Docker Engine: https://docs.docker.com/engine/install/")
+# The dev containers of the repos run their services with Docker Compose.
+if command -v docker >/dev/null && ! docker compose version >/dev/null 2>&1; then
+  missing+=("Docker Compose plugin (package docker-compose-plugin): https://docs.docker.com/compose/install/linux/")
+fi
 if ! command -v mise >/dev/null && ! command -v apt-get >/dev/null; then
   missing+=("mise: https://mise.jdx.dev/installing-mise.html")
 fi

@@ -27,6 +27,9 @@ if ! command -v docker >/dev/null; then
   missing+=("Docker: OrbStack (https://orbstack.dev), Colima (https://github.com/abiosoft/colima) or Docker Desktop (https://docs.docker.com/desktop/setup/install/mac-install/)")
 elif ! docker info >/dev/null 2>&1; then
   missing+=("a running Docker engine: start OrbStack, Colima or Docker Desktop until docker info works")
+elif ! docker compose version >/dev/null 2>&1; then
+  # The dev containers of the repos run their services with Docker Compose.
+  missing+=("Docker Compose: https://docs.docker.com/compose/install/ (OrbStack and Docker Desktop include it; with Colima, brew install docker-compose)")
 fi
 if ! command -v brew >/dev/null; then
   command -v mise >/dev/null || missing+=("mise: https://mise.jdx.dev/installing-mise.html (or Homebrew, https://brew.sh, and setup installs it)")
