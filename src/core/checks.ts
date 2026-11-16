@@ -155,7 +155,7 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
           const dir = stackDir;
           const install = nodeInstallCommand((file) => existsSync(join(dir, file)));
           if (install) {
-            const run = await container("install", IMAGES.node, ["sh", "-c", install], [{ source: dir, target: "/work", readonly: false }], { network: "bridge" });
+            const run = await container("install", IMAGES.node, ["sh", "-c", `cd /work && ${install}`], [{ source: dir, target: "/work", readonly: false }], { network: "bridge" });
             if (run.exit !== 0 || run.timedOut) installFailure = { ...resultOf("install", run, "error"), description: `dependency install failed: ${install}` };
           }
         }
