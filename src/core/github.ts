@@ -38,6 +38,9 @@ export type RepoGitHub = {
   setStatus(sha: string, check: string, state: CheckState, description: string): Promise<void>;
   markPushed(sha: string, issue: number): Promise<void>;
   pushedFor(sha: string, botLogin: string): Promise<number | undefined>;
+  behindBy(base: string, head: string): Promise<number>;
+  // Returns the new head. GitHub does the rebase, so the host's checkout never runs the branch's code.
+  rebasePull(pull: number, expectedHead: string): Promise<string>;
   openPull(pull: { head: string; base: string; title: string; body: string }): Promise<number>;
   requestReview(pull: number, reviewers: string[]): Promise<void>;
   mergePull(pull: number, sha: string, title: string, message: string): Promise<void>;
@@ -276,6 +279,18 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
       const mark = data.find((status) => status.context === PUSHED_CONTEXT && status.creator?.login === botLogin);
       const issue = PUSHED_DESCRIPTION.exec(mark?.description ?? "")?.[1];
       return issue === undefined ? undefined : Number(issue);
+    },
+    async behindBy(base, head) {
+      const { data } = await octokit.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}`, per_page: 1 });
+      return data.behind_by;
+    },
+    async rebasePull(pull, expectedHead) {
+      const { data } = await octokit.pulls.get({ owner, repo, pull_number: pull });
+      const { updatePullRequestBranch } = await octokit.graphql<{ updatePullRequestBranch: { pullRequest: { headRefOid: string } } }>(
+        `mutation($id: ID!, $head: GitObjectID!) { updatePullRequestBranch(input: { pullRequestId: $id, expectedHeadOid: $head, updateMethod: REBASE }) { pullRequest { headRefOid } } }`,
+        { id: data.node_id, head: expectedHead },
+      );
+      return updatePullRequestBranch.pullRequest.headRefOid;
     },
     async openPull({ head, base, title, body }) {
       const { data } = await octokit.pulls.create({ owner, repo, head, base, title, body });

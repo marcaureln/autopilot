@@ -307,6 +307,17 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
   const pushedByAutopilot = (await repoGitHub.pushedFor(sha, ctx.bot)) === issue.number;
 
   let verdict = headVerdict(await repoGitHub.statuses(sha, ctx.bot), required, retryAt);
+  // The checks read the config of the default branch, so they run on a branch that has its latest commits.
+  // Only the host's own head is rebased: marking the result as pushed must not vouch for someone else's commit.
+  if (verdict.kind === "run" && pushedByAutopilot && (await repoGitHub.behindBy(pull.base, sha)) > 0) {
+    const head = await repoGitHub.rebasePull(pull.number, sha).catch((error: unknown) => {
+      throw new Blocked(`autopilot could not rebase pull request #${pull.number} on \`${pull.base}\`: ${messageOf(error)}. Close the pull request, then remove the label to build again.`);
+    });
+    if (head === sha) throw new Error(`${key}: the rebase of #${pull.number} left the head at ${sha.slice(0, 7)}`);
+    await repoGitHub.markPushed(head, issue.number);
+    loop.audit({ event: "pr.rebased", repo: `${ctx.repo.owner}/${ctx.repo.name}`, pull: pull.number, issue: issue.number, from: sha, to: head });
+    return loop.log(key, `${key}: rebased #${pull.number} on ${pull.base} to ${head.slice(0, 7)}, the checks run next`);
+  }
   if (verdict.kind === "run" || (verdict.kind === "failed" && !ctx.outputs.has(sha))) {
     verdict = headVerdict(await runChecks(job, config, pull), required, retryAt);
   }

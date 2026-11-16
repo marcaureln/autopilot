@@ -17,6 +17,7 @@ export type AuditEvent =
   | { event: "checks.ran"; issue: string; pull: number; sha: string; results: Record<string, string> }
   | { event: "git.pushed"; repo: string; branch: string; head: string; base: string; commits: number; force: boolean }
   | { event: "pr.opened"; repo: string; pull: number; issue: number; branch: string }
+  | { event: "pr.rebased"; repo: string; pull: number; issue: number; from: string; to: string }
   | { event: "pr.merged"; repo: string; pull: number; sha: string }
   | { event: "review.requested"; repo: string; pull: number; reviewers: string[] }
   | { event: "approval.accepted" | "approval.refused"; issue: string; editors: string[] }
