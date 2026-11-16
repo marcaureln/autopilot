@@ -32,7 +32,7 @@ export type Devcontainer = {
   up(options: UpOptions): Promise<ContainerResult & { stdout: string }>;
   exec(containerId: string, command: string[], options: { env?: Record<string, string>; timeoutMs: number }): Promise<ContainerResult>;
   // Disconnects the container and the other containers of its compose project from every network
-  // that reaches outside Docker. Otherwise a service could carry the secrets out for the container.
+  // that reaches outside Docker, stopped ones too. Otherwise a service could carry the secrets out for the container.
   cutNetwork(containerId: string): Promise<void>;
   // The CLI has no down command: autopilot removes what carries the id label, and its compose project.
   down(idLabel: string): Promise<void>;
@@ -136,7 +136,7 @@ export const cliDevcontainer: Devcontainer = {
     const mode = await docker(["inspect", "--format", "{{.HostConfig.NetworkMode}}", containerId]);
     if (mode === "host" || mode.startsWith("container:")) throw new Error(`the dev container uses the network of ${mode === "host" ? "the host" : "another container"}, so autopilot cannot cut it`);
     const project = await docker(["inspect", "--format", '{{index .Config.Labels "com.docker.compose.project"}}', containerId]);
-    const others = project ? (await docker(["ps", "--quiet", "--no-trunc", "--filter", `label=com.docker.compose.project=${project}`])).split("\n").filter((id) => id && id !== containerId) : [];
+    const others = project ? (await docker(["ps", "--all", "--quiet", "--no-trunc", "--filter", `label=com.docker.compose.project=${project}`])).split("\n").filter((id) => id && id !== containerId) : [];
     for (const id of [containerId, ...others]) {
       const networks = (await docker(["inspect", "--format", "{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}\n{{end}}", id])).split("\n").filter(Boolean);
       for (const network of networks) {
