@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HIDDEN_OUTPUT, hideOutput, planChecks, redact, withBaseline, type CheckResult } from "./checks.ts";
+import { grypeDbFresh, HIDDEN_OUTPUT, hideOutput, planChecks, redact, withBaseline, type CheckResult } from "./checks.ts";
 import type { ContainerResult } from "./docker.ts";
 
 test("each required check gets a command, a built-in scanner, or nothing", () => {
@@ -55,4 +55,17 @@ for (const { name, run, known, state } of baselineCases) {
   test(`baseline: ${name}`, () => {
     assert.equal(withBaseline(failed, run, known).state, state);
   });
+}
+
+const now = Date.parse("2026-11-16T12:00:00Z");
+const status = (built: string, valid: boolean) => `{\n "schemaVersion": "v6.1.10",\n "built": "${built}",\n "path": "/cache/6/vulnerability.db",\n "valid": ${valid}\n}\n`;
+const grypeCases = [
+  { name: "a database built today is fresh", exit: 0, output: status("2026-11-16T06:30:54Z", true), fresh: true },
+  { name: "a database built three days ago is old", exit: 0, output: status("2026-11-13T06:30:54Z", true), fresh: false },
+  { name: "an invalid database is not fresh", exit: 0, output: status("2026-11-16T06:30:54Z", false), fresh: false },
+  { name: "a missing database is not fresh", exit: 1, output: status("0001-01-01T00:00:00Z", false), fresh: false },
+  { name: "output that is not a status is not fresh", exit: 0, output: "unexpected", fresh: false },
+];
+for (const { name, exit, output, fresh } of grypeCases) {
+  test(`grype database: ${name}`, () => assert.equal(grypeDbFresh({ exit, output }, now), fresh));
 }

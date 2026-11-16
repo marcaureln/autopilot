@@ -63,7 +63,7 @@ const host = {
 
 async function linesFor(allow: string[]): Promise<string[]> {
   const lines: string[] = [];
-  await runOnce({ github, host: { ...host, allow }, plan: unused, build: unused, check: unused, log: (_, line) => lines.push(line), audit: unused });
+  await runOnce({ github, host: { ...host, allow }, plan: unused, build: unused, check: unused, log: (_, line) => lines.push(line), audit: unused, idle: async () => undefined });
   return lines;
 }
 

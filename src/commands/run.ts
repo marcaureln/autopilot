@@ -35,6 +35,9 @@ export type Loop = {
   check: (job: Omit<ChecksJob, "devcontainer" | "audit">) => Promise<CheckResult[]>;
   log: Log;
   audit: Audit;
+  // Host work that must not overlap a job, such as a scanner database update. It runs after each
+  // issue and each loop, so a long queue of issues does not hold it back.
+  idle: () => Promise<void>;
 };
 
 // GitHub statuses do not hold the check output, so it lives in memory. After a restart, a failed
@@ -435,6 +438,7 @@ export async function runOnce(loop: Loop, state = loopState()): Promise<void> {
         await reconcile(loop, ctx, issue).catch((error: unknown) =>
           log(`${repo.owner}/${repo.name}#${issue.number}`, `${repo.owner}/${repo.name}#${issue.number}: error: ${messageOf(error)}`),
         );
+        await loop.idle();
       }
     }
   }
@@ -454,6 +458,7 @@ export async function run(loop: Omit<Loop, "log">, options: { once: boolean }): 
   const state = loopState();
   await runOnce(full, state);
   while (!options.once) {
+    await loop.idle();
     await sleep(loop.host.poll_interval_seconds * 1000);
     await runOnce(full, state);
   }

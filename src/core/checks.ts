@@ -25,7 +25,12 @@ export const IMAGES = {
 } as const;
 
 const SEMGREP_RULES_URL = "https://semgrep.dev/c/p/default";
-const GRYPE_DB_VOLUME = "autopilot-grype-db";
+const GRYPE_DB_CACHE: Mount = { source: "autopilot-grype-db", target: "/cache", readonly: false };
+const GRYPE_ENV = { GRYPE_DB_CACHE_DIR: "/cache", GRYPE_CHECK_FOR_APP_UPDATE: "false" };
+// Anchore builds a new Grype database each day. On a Raspberry Pi its download and import take about
+// 4.5 minutes, so the host updates it between jobs, and a job updates it only when it is missing or old.
+const GRYPE_DB_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const GRYPE_DB_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 
 // The containers run as root on files the host user owns.
 const GIT_SAFE_DIRECTORY = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.directory", GIT_CONFIG_VALUE_0: "*" };
@@ -74,6 +79,43 @@ function resultOf(check: string, run: ContainerResult, failedAs: "failure" | "er
   if (run.timedOut) return { check, state: "error", description: "timed out", output: run.output };
   if (run.exit === 0) return { check, state: "success", description: "passed", output: run.output };
   return { check, state: failedAs, description: `failed (exit ${run.exit})`, output: run.output };
+}
+
+// The input is the result of `grype db status --output json`.
+export function grypeDbFresh(status: { exit: number; output: string }, now: number): boolean {
+  if (status.exit !== 0 || !/"valid":\s*true/.test(status.output)) return false;
+  const built = /"built":\s*"([^"]+)"/.exec(status.output)?.[1];
+  return built !== undefined && now - Date.parse(built) < GRYPE_DB_MAX_AGE_MS;
+}
+
+// The run loop calls this between jobs. A failed update waits for the next interval: the jobs
+// still update a database that is missing or old.
+export function grypeDbUpdater(limits: Host["limits"], audit: Audit): () => Promise<void> {
+  let last = 0;
+  return async () => {
+    if (Date.now() - last < GRYPE_DB_UPDATE_INTERVAL_MS) return;
+    last = Date.now();
+    const failure = await ensurePulled(IMAGES["deps-scan"])
+      .then(() =>
+        runContainer({
+          name: containerName("grype-db"),
+          image: IMAGES["deps-scan"],
+          command: ["db", "update"],
+          mounts: [GRYPE_DB_CACHE],
+          network: "bridge",
+          env: GRYPE_ENV,
+          limits,
+          timeoutMs: 15 * 60 * 1000,
+          audit,
+        }),
+      )
+      .then(
+        (result) => (result.exit !== 0 || result.timedOut ? result.output.slice(-500) : undefined),
+        (error: unknown) => (error instanceof Error ? error.message : String(error)),
+      );
+    // The loop goes on: an error here must not stop the service.
+    if (failure !== undefined) console.error(`could not update the Grype database: ${failure}`);
+  };
 }
 
 export type ChecksJob = {
@@ -218,12 +260,13 @@ const SCAN: Record<keyof typeof SCANNERS, Scan> = {
     return resultOf("sast", run);
   },
   async "deps-scan"({ dir, container }) {
-    const cache = { source: GRYPE_DB_VOLUME, target: "/cache", readonly: false };
-    const env = { GRYPE_DB_CACHE_DIR: "/cache", GRYPE_CHECK_FOR_APP_UPDATE: "false" };
-    const update = await container("grype-db", IMAGES["deps-scan"], ["db", "update"], [cache], { network: "bridge", env });
-    if (update.exit !== 0 || update.timedOut) throw new Error(`could not update the Grype database: ${update.output.slice(-500)}`);
-    const run = await container("deps-scan", IMAGES["deps-scan"], ["dir:/src", "--only-fixed", "--fail-on", "high"], [{ source: dir, target: "/src", readonly: true }, cache], {
-      env: { ...env, GRYPE_DB_AUTO_UPDATE: "false" },
+    const status = await container("grype-db-status", IMAGES["deps-scan"], ["db", "status", "--output", "json"], [GRYPE_DB_CACHE], { env: GRYPE_ENV });
+    if (!grypeDbFresh(status, Date.now())) {
+      const update = await container("grype-db", IMAGES["deps-scan"], ["db", "update"], [GRYPE_DB_CACHE], { network: "bridge", env: GRYPE_ENV });
+      if (update.exit !== 0 || update.timedOut) throw new Error(`could not update the Grype database: ${update.output.slice(-500)}`);
+    }
+    const run = await container("deps-scan", IMAGES["deps-scan"], ["dir:/src", "--only-fixed", "--fail-on", "high"], [{ source: dir, target: "/src", readonly: true }, GRYPE_DB_CACHE], {
+      env: { ...GRYPE_ENV, GRYPE_DB_AUTO_UPDATE: "false" },
     });
     return resultOf("deps-scan", run);
   },

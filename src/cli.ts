@@ -12,7 +12,7 @@ import { parseSecretsCommand, secrets } from "./commands/secrets.ts";
 import { setup } from "./commands/setup.ts";
 import { auditLog } from "./core/audit.ts";
 import { runBuilder } from "./core/builder.ts";
-import { runChecks } from "./core/checks.ts";
+import { grypeDbUpdater, runChecks } from "./core/checks.ts";
 import { cliDevcontainer } from "./core/devcontainer-cli.ts";
 import { createGitHub } from "./core/github.ts";
 import { HOST_FILE, loadHost } from "./core/host.ts";
@@ -147,6 +147,7 @@ async function main(): Promise<void> {
           github,
           host,
           audit: auditLog,
+          idle: grypeDbUpdater(host.limits, auditLog),
           plan: (job) => runPlanner(job, { claudeToken, audit: auditLog }),
           build: (job) => runBuilder({ ...job, claudeToken, devcontainer: cliDevcontainer, audit: auditLog }),
           check: (job) => runChecks({ ...job, devcontainer: cliDevcontainer, audit: auditLog }),
