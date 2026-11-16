@@ -3,14 +3,19 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { parseHost, type Host } from "../core/host.ts";
+import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { connect, installRelease, latestRelease, LOCAL_TARGET, must, parseTag, type Release, type Connection } from "./host.ts";
 
 const CLI_ROOT = new URL("../../", import.meta.url).pathname;
 const HOST_SCHEMA = "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/host.schema.json";
-const OP_TOKEN_REFERENCE = "op://autopilot/op-service-account-token/password";
+export const APP_KEY_ITEM = "github-app-private-key";
+export const APP_KEY_FILE = "app.pem";
+export const CLAUDE_TOKEN_ITEM = "claude-token";
+export const OP_TOKEN_ITEM = "op-service-account-token";
+const OP_TOKEN_REFERENCE = `op://${SECRETS_VAULT}/${OP_TOKEN_ITEM}/password`;
 export const HOST_SECRETS: Host["secrets"] = {
-  app_key: "op://autopilot/github-app-private-key/app.pem",
-  claude_token: "op://autopilot/claude-token/credential",
+  app_key: `op://${SECRETS_VAULT}/${APP_KEY_ITEM}/${APP_KEY_FILE}`,
+  claude_token: `op://${SECRETS_VAULT}/${CLAUDE_TOKEN_ITEM}/credential`,
 };
 
 export function shellQuote(arg: string): string {
@@ -23,7 +28,7 @@ export function urlToOpen(command: string, line: string): string | undefined {
   return /^open: (https:\/\/github\.com\/apps\/[a-z0-9-]+\/installations\/new\/permissions\?target_id=\d+)$/.exec(line)?.[1];
 }
 
-function openInBrowser(url: string): void {
+export function openInBrowser(url: string): void {
   execFile(process.platform === "darwin" ? "open" : "xdg-open", [url], () => {});
 }
 

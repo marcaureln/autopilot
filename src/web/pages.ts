@@ -101,7 +101,7 @@ ${rows(permissions)}
   );
 }
 
-export function appCreatedPage(app: { slug: string; id: number; keyPath: string; hostPath: string; installUrl: string }): string {
+export function appCreatedPage(app: { slug: string; id: number; keyPath: string; installUrl: string }): string {
   return layout(
     "App created",
     panel(
@@ -112,7 +112,6 @@ export function appCreatedPage(app: { slug: string; id: number; keyPath: string;
 ${rows([
   ["App ID", String(app.id)],
   ["Private key", app.keyPath],
-  ["Host file", app.hostPath],
 ])}
 <a class="ap-btn" href="${escape(app.installUrl)}">Install the App</a>`,
     ) + `<p class="ap-hint">You can close this tab. The terminal shows the same details.</p>`,

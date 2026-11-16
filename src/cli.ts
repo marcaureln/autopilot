@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { allow, allowed, deny } from "./commands/allow.ts";
 import { alias } from "./commands/alias.ts";
+import { appCreate } from "./commands/app.ts";
 import { forward, hostSetup, selfUpdate } from "./commands/client.ts";
 import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, update } from "./commands/host.ts";
@@ -31,6 +32,9 @@ or runs them on this machine for the host "local":
   run [--once]                Plan, build, check and merge autopilot-labeled issues, one job at a time (never forwarded)
 
 Commands that run on the client:
+  app create [--key-out <path>]
+                              Create your GitHub App in the browser (GitHub's App manifest flow). The private
+                              key goes to 1Password (vault autopilot), or to a 0600 file with --key-out
   host setup --host <ssh-target | local> [--owner <login> --app-id <id>] [--version <tag> | --from-checkout]
                               Push the 1Password service account token, write host.json if it is
                               missing, and install a release (or the current commit). Linux hosts
@@ -60,7 +64,7 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     host: { type: "string" },
-    config: { type: "string", default: HOST_FILE },
+    config: { type: "string" },
     once: { type: "boolean", default: false },
     since: { type: "string" },
     version: { type: "string" },
@@ -72,6 +76,7 @@ const { values, positionals } = parseArgs({
     "from-env": { type: "string" },
     "no-agent": { type: "boolean", default: false },
     remove: { type: "boolean", default: false },
+    "key-out": { type: "string" },
     help: { type: "boolean", short: "h", default: false },
   },
 });
@@ -98,17 +103,18 @@ function targetRepo(): Repo {
 async function main(): Promise<void> {
   const [command = ""] = positionals;
   const target = hostTarget();
+  const hostFile = values.config ?? HOST_FILE;
   if (HOST_COMMANDS.includes(command)) {
     if (target) {
       const options = [...(values.since ? ["--since", values.since] : []), ...(values.version ? ["--version", values.version] : [])];
       process.exitCode = await forward(target, [...positionals, ...options]);
       return;
     }
-    if (!existsSync(values.config)) throw new Error(`no host file at ${values.config}: to manage a host, set AUTOPILOT_HOST=<ssh-target | local> or pass --host`);
+    if (!existsSync(hostFile)) throw new Error(`no host file at ${hostFile}: to manage a host, set AUTOPILOT_HOST=<ssh-target | local> or pass --host`);
   }
   switch (command) {
     case "run": {
-      const host = loadHost(values.config);
+      const host = loadHost(hostFile);
       const privateKey = readSecret(host.secrets.app_key, "run: GitHub App key", auditLog);
       const claudeToken = readSecret(host.secrets.claude_token, "run: token for the agent containers", auditLog);
       const github = createGitHub({ appId: host.app_id, privateKey }, auditLog);
@@ -126,16 +132,16 @@ async function main(): Promise<void> {
       break;
     }
     case "allow":
-      await allow(values.config, argument(command), auditLog);
+      await allow(hostFile, argument(command), auditLog);
       break;
     case "deny":
-      deny(values.config, argument(command), auditLog);
+      deny(hostFile, argument(command), auditLog);
       break;
     case "allowed":
-      allowed(values.config);
+      allowed(hostFile);
       break;
     case "status":
-      showStatus(values.config);
+      showStatus(hostFile);
       break;
     case "logs":
       showLogs(values.since);
@@ -144,7 +150,7 @@ async function main(): Promise<void> {
       showAudit(values.since);
       break;
     case "update":
-      await update(values.config, values.version);
+      await update(hostFile, values.version);
       break;
     case "init":
       await init({ repo: targetRepo(), host: target, agent: !values["no-agent"] });
@@ -161,6 +167,10 @@ async function main(): Promise<void> {
       await hostSetup(target, { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"] });
       break;
     }
+    case "app":
+      if (positionals[1] !== "create") throw new Error("usage: autopilot app create [--key-out <path>]");
+      await appCreate({ keyOut: values["key-out"] });
+      break;
     case "self-update":
       await selfUpdate(values.version);
       break;

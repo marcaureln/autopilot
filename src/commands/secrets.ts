@@ -24,7 +24,7 @@ export type SecretsCommand = { action: "set"; name: string } | { action: "set-fr
 
 // op reads an item from stdin only when stdin is a pipe, and Node gives a child a socket, so a
 // shell pipeline feeds it.
-function op(args: string[], input?: string): { ok: boolean; stdout: string; stderr: string } {
+export function op(args: string[], input?: string): { ok: boolean; stdout: string; stderr: string } {
   const command: [string, string[]] = input === undefined ? ["op", args] : ["sh", ["-c", 'cat | exec op "$@"', "sh", ...args]];
   const result = spawnSync(command[0], command[1], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
   if (result.error) throw new Error(`op: ${result.error.message}`);
