@@ -12,15 +12,59 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
 > [!WARNING]
 > autopilot is in early development. Try it on a test repo first.
 
-## Quick start
+## Set up
 
-Install the client (see [Install](#install)), then run one command:
+### What you need
 
-```sh
-autopilot setup
-```
+- **On your machine:** git, ssh, [mise](https://mise.jdx.dev/installing-mise.html), [gh](https://cli.github.com/) signed in to GitHub, and the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`) signed in to your account. Setup prints the install command for a missing tool.
+- **A Claude account** that can run `claude setup-token`. The agents use this token.
+- **A host** that runs the jobs: a Linux machine that you can reach with SSH and sudo, with [Docker Engine](https://docs.docker.com/engine/install/) and its [rootless extras](https://docs.docker.com/engine/security/rootless/), and the [Compose plugin](https://docs.docker.com/compose/install/linux/), or a Mac with OrbStack, Colima or Docker Desktop. The host can also be the machine you work on.
 
-The wizard checks the tools it needs (git, ssh, mise, op, gh) and prints the install command for a missing one. Then it creates the 1Password vault `autopilot`, your GitHub App, the Claude token and a host (an SSH target, or `local` for this machine), and allows your accounts and repos on the host. At the end it can onboard a first repo and add the `ap` alias. Run it again at any time: each step checks what is in place and only does what is missing.
+### Steps
+
+1. Install the client:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
+   ```
+
+2. Run the setup wizard:
+
+   ```sh
+   autopilot setup
+   ```
+
+   The wizard does these steps in this order. Each step checks what is in place and only does what is missing, so you can run it again at any time.
+
+   1. **Tools.** It checks git, ssh, mise, op and gh.
+   2. **1Password.** It creates the vault `autopilot` and a service account that can only read that vault. The host uses this account to read its secrets.
+   3. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page: click **Create GitHub App**. The private key goes to the vault. To use an App that you already have, give its App ID and the path of its `.pem` file.
+   4. **Claude token.** The wizard runs `claude setup-token`, which signs you in to Claude in the browser and prints a token. Paste the token at the hidden prompt. It goes to the vault.
+   5. **Host.** Give an SSH target such as `user@my-host`, or `local` for this machine. The wizard installs the latest release on the host and starts the service.
+   6. **Owner and allowlist.** Your GitHub login is the owner: only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that autopilot may work on. If the App is not installed there, the wizard opens the install page: select the repos, then click **Install**.
+   7. **First repo.** The wizard runs `autopilot init` on a repo that you select. It opens an onboarding pull request (see [Onboarding](#onboarding)).
+   8. **Alias.** It adds `ap` as a short name for `autopilot` to your shell.
+
+3. Review and merge the onboarding pull request. Make sure that the check commands in `.github/autopilot.json` are correct. Until this pull request is merged, autopilot stops each issue in the repo.
+
+4. Write your first issue. Ask for one small change, name the files, and give acceptance criteria. Then add the `autopilot` label:
+
+   ```sh
+   gh issue create --repo <owner>/<repo> --title "Add docs/labels.md" --body "Add docs/labels.md that lists the autopilot labels." --label autopilot
+   ```
+
+5. Follow the issue on GitHub. Within one minute, the host posts a claim comment, then a spec. Then it builds the change, runs the checks and opens a pull request. The labels tell you when you must act:
+
+   | Label | What to do |
+   | --- | --- |
+   | `autopilot:working` | Nothing. Wait. |
+   | `autopilot:needs-info` | Answer the questions of the spec in one comment. |
+   | `autopilot:awaiting-approval` | Read the spec, then tick **Approve and build**. |
+   | `autopilot:blocked` | Read the last comment, fix the cause, then remove the label to try again. |
+
+   With `"merge": "manual"` (the default from `init`), you review and merge each pull request. To see what the host does, run `autopilot logs` with `AUTOPILOT_HOST` set to your host.
+
+### Set up without prompts
 
 To run it without prompts, put the answers in a file ([schema](schema/setup.schema.json)) and pass `--yes`:
 
