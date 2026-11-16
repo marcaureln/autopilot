@@ -98,7 +98,9 @@ async function onePassword(options: SetupOptions): Promise<void> {
   if (!account.ok) throw new Error(`op could not create the service account: ${account.stderr}`);
   const item = { title: OP_TOKEN_ITEM, category: "PASSWORD", fields: [{ id: "password", type: "CONCEALED", purpose: "PASSWORD", label: "password", value: account.stdout.trim() }] };
   const saved = op(["item", "create", "--vault", SECRETS_VAULT, "--format", "json", "-"], JSON.stringify(item));
-  if (!saved.ok) throw new Error(`op could not save the service account token: ${saved.stderr}`);
+  if (!saved.ok) {
+    throw new Error(`op created the service account autopilot, but could not save its token: ${saved.stderr}. Revoke the service account autopilot in 1Password (Developer, Directory), then run autopilot setup again. Its token cannot be read again`);
+  }
   record("1Password service account", "done", `created, token in ${SECRETS_VAULT}/${OP_TOKEN_ITEM}`);
 }
 
