@@ -99,9 +99,15 @@ export async function hostSetup(target: string, options: { owner?: string; appId
   const release: Release = options.fromCheckout ? checkoutRelease() : { kind: "github", tag: options.version ? parseTag(options.version) : await latestRelease() };
   const remote = await connect(target);
 
-  console.log("==> 1Password service account token");
-  const token = execFileSync("op", ["read", "--no-newline", OP_TOKEN_REFERENCE], { stdio: ["ignore", "pipe", "inherit"] });
-  await must(remote.shell, "op token", writeHostFile(remote, remote.layout.opToken, "600"), token);
+  // Each read asks to unlock 1Password on the laptop, so an update keeps the token the host has.
+  // To change it, remove the file on the host and run setup again.
+  const present = await remote.shell.capture(`${remote.sudo}test -s ${remote.layout.opToken}`);
+  if (present.code === 0) console.log("==> 1Password service account token: already on the host");
+  else {
+    console.log("==> 1Password service account token");
+    const token = execFileSync("op", ["read", "--no-newline", OP_TOKEN_REFERENCE], { stdio: ["ignore", "pipe", "inherit"] });
+    await must(remote.shell, "op token", writeHostFile(remote, remote.layout.opToken, "600"), token);
+  }
 
   const host = await hostFile(remote, options);
   await installRelease(remote, release, host.docker);

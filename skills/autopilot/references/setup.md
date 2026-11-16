@@ -81,7 +81,7 @@ autopilot host setup --host user@my-host --owner <login> --app-id <id>
 autopilot host setup --host local --owner <login> --app-id <id>      # this machine
 ```
 
-It pushes the service account token, writes `host.json` if the host has none, installs the latest release and starts the service. `--owner` and `--app-id` are needed only the first time. Run it again to repair a host: each step checks before it acts. The host name in claim comments is the short `hostname` of the host.
+It pushes the service account token if the host has none, writes `host.json` if the host has none, installs the latest release and starts the service. `--owner` and `--app-id` are needed only the first time. Run it again to repair a host: each step checks before it acts. To change the token, remove `/etc/autopilot/op-token` on the host first. The host name in claim comments is the short `hostname` of the host.
 
 `host.json` has one owner. To add an owner, edit `owners` in `host.json` on the host (`/etc/autopilot/host.json` on Linux, `~/.autopilot/host.json` on macOS), then run `autopilot host setup` again.
 
