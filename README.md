@@ -53,6 +53,23 @@ Each repo has a `.github/autopilot.json` ([full example](examples/autopilot.json
 }
 ```
 
+### Secrets
+
+A test that needs a key gets it from 1Password. Run these in a checkout of the repo, with your own 1Password sign-in:
+
+```sh
+autopilot secrets set STRIPE_KEY        # hidden prompt, or pipe the value on stdin
+autopilot secrets set --from-env .env   # every key in the file
+autopilot secrets list
+autopilot secrets rm STRIPE_KEY
+```
+
+Each value goes to the `autopilot` vault, in one item per repo (`<owner>_<repo>`). The command adds the reference to `.github/autopilot.json`; commit it. A value is never a command argument, so it stays out of the shell history. A value must be on one line.
+
+The host reads only the references to the repo's own item. It gives the values to the `lint`, `types` and `test` checks, never to the scanners, the install step or the agent. A check that gets secrets shows only if it passed: autopilot keeps its output out of statuses, comments and the builder prompt.
+
+The trust boundary is the same as in CI: whoever can change the code of a repo can read the secrets that the repo gets, for example from a test. Hiding the output only prevents accidents. Give a repo only test-mode or low-value keys.
+
 ## Hosts
 
 A host runs `autopilot run` as a systemd service and holds everything it needs: its `/etc/autopilot/host.json`, the 1Password service account token, and a release from GitHub. At start, the host reads the App key and the Claude token with `op`. The CLI on your machine is only a client. It keeps no config and forwards each command to the host over SSH, like the Vault CLI with `VAULT_ADDR`.

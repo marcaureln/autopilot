@@ -5,12 +5,14 @@ import { allow, allowed, deny } from "./commands/allow.ts";
 import { forward, hostSetup } from "./commands/client.ts";
 import { showAudit, showLogs, showStatus, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
+import { parseSecretsCommand, secrets } from "./commands/secrets.ts";
 import { auditLog } from "./core/audit.ts";
 import { runBuilder } from "./core/builder.ts";
 import { runChecks } from "./core/checks.ts";
 import { createGitHub } from "./core/github.ts";
 import { HOST_FILE, loadHost } from "./core/host.ts";
 import { runPlanner } from "./core/planner.ts";
+import { detectRepo, type Repo } from "./core/repo.ts";
 import { readSecret } from "./core/secrets.ts";
 
 const USAGE = `Usage: autopilot <command> [options]
@@ -29,10 +31,18 @@ Commands that run on the client:
   host setup --host <ssh-target> [--owner <login> --app-id <id>] [--version <tag> | --from-checkout]
                               Push the 1Password service account token, write host.json if it is
                               missing, and install a release (or the current commit)
+  secrets set <NAME>          Save a secret in 1Password (hidden prompt, or stdin) and add its reference
+                              to .github/autopilot.json in this checkout
+  secrets set --from-env <file>
+                              The same for every key in a .env file
+  secrets list                Show the secrets of the repo
+  secrets rm <NAME>           Remove a secret and its reference
 
 Options:
   --host <ssh-target>  Host to act on (default: $AUTOPILOT_HOST)
-  --config <path>      Host file, on the host (default: ${HOST_FILE})`;
+  --config <path>      Host file, on the host (default: ${HOST_FILE})
+  --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
+  --backend op         Where secrets are saved (default and only one: op, the 1Password CLI)`;
 
 const HOST_COMMANDS = ["allow", "deny", "allowed", "status", "logs", "audit", "update"];
 
@@ -47,6 +57,9 @@ const { values, positionals } = parseArgs({
     owner: { type: "string" },
     "app-id": { type: "string" },
     "from-checkout": { type: "boolean", default: false },
+    repo: { type: "string" },
+    backend: { type: "string", default: "op" },
+    "from-env": { type: "string" },
     help: { type: "boolean", short: "h", default: false },
   },
 });
@@ -61,6 +74,13 @@ function argument(command: string): string {
   const value = positionals[1];
   if (!value) throw new Error(`usage: autopilot ${command} <owner>[/<repo>]`);
   return value;
+}
+
+function targetRepo(): Repo {
+  if (values.repo === undefined) return detectRepo();
+  const [owner, name, ...rest] = values.repo.split("/");
+  if (!owner || !name || rest.length > 0) throw new Error(`--repo "${values.repo}" is not <owner>/<repo>`);
+  return { owner, name };
 }
 
 async function main(): Promise<void> {
@@ -114,6 +134,11 @@ async function main(): Promise<void> {
     case "update":
       await update(values.config, values.version);
       break;
+    case "secrets": {
+      if (values.backend !== "op") throw new Error(`--backend ${values.backend} is not supported: the only backend is op (1Password)`);
+      await secrets(parseSecretsCommand(positionals.slice(1), values["from-env"]), targetRepo());
+      break;
+    }
     case "host": {
       if (positionals[1] !== "setup" || !target) throw new Error("usage: autopilot host setup --host <ssh-target> [--owner <login> --app-id <id>]");
       const appId = values["app-id"] === undefined ? undefined : Number(values["app-id"]);
