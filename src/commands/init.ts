@@ -214,6 +214,7 @@ export async function init(options: InitOptions): Promise<void> {
 
     const body = onboardingBody({
       repo,
+      merge: config.merge,
       generated: Object.keys(rendered),
       notes: result.notes,
       environment: { ...result.environment, existing: hasDevcontainer },

@@ -105,7 +105,7 @@ export function renderConfig(existingText: string | undefined, commands: Record<
   const builder = unique([...(base.skills?.builder ?? []), ...skills]);
   const config: ConfigObject = {
     ...base,
-    ...((planner.length > 0 || builder.length > 0) && { skills: { ...base.skills, planner, builder } }),
+    ...((planner.length > 0 || builder.length > 0) && { skills: { ...base.skills, ...(planner.length > 0 && { planner }), ...(builder.length > 0 && { builder }) } }),
     verify: {
       ...base.verify,
       required: unique([...(base.verify?.required ?? []), ...Object.keys(commands), ...SCANNERS]),
@@ -173,6 +173,8 @@ export type ValidateResult = { check: string; outcome: "passed" | "baseline" | "
 
 export type Onboarding = {
   repo: string;
+  // From the rendered config: an existing config keeps its own value.
+  merge: "auto" | "manual";
   generated: string[];
   // Agent text.
   notes: string[];
@@ -201,7 +203,7 @@ export function onboardingBody(onboarding: Onboarding): string {
     ...onboarding.notes.map(neutralize),
     ...(validate.kind === "ran" ? validate.results.filter((result) => result.outcome === "failed").map((result) => failedItem(result.check)) : ["Fix `.devcontainer/`: the guardrails refuse it, see the checks above."]),
     host.kind === "allowed" ? "Check that the App is installed on the repo: `autopilot allow` printed its install page if it was not." : `Allow the repo on a host: \`autopilot allow ${repo}\` with \`AUTOPILOT_HOST\` set. It also checks that the App is installed.`,
-    "`merge` is `manual`: switch it to `auto` when you trust the checks.",
+    ...(onboarding.merge === "manual" ? ["`merge` is `manual`: switch it to `auto` when you trust the checks."] : ["`merge` is `auto`: Gate 2 merges low-risk pull requests with no review."]),
   ];
   const failing = readiness.filter((item) => item.ok === "no");
   const byHand = readiness.filter((item) => item.ok === "by hand");

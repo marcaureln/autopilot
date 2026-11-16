@@ -16,6 +16,7 @@ import {
 
 const base: Onboarding = {
   repo: "acme/app",
+  merge: "manual",
   generated: [".github/autopilot.json", ".devcontainer/devcontainer.json"],
   notes: [],
   environment: { existing: false, image: "node:26.13.1", services: ["postgres"], install: "npm ci", reason: "The app reads Postgres in src/db.ts." },
@@ -62,6 +63,8 @@ const variants: { name: string; change: Partial<Onboarding>; expected: RegExp }[
     expected: /- not run: the guardrails refuse `\.devcontainer\/`\n  - devcontainer\.json: `runArgs`/,
   },
   { name: "the host allows the repo", change: { host: { kind: "allowed" } }, expected: /Check that the App is installed on the repo/ },
+  { name: "a manual merge", change: {}, expected: /`merge` is `manual`/ },
+  { name: "an existing auto merge", change: { merge: "auto" }, expected: /`merge` is `auto`/ },
 ];
 
 for (const { name, change, expected } of variants) {
@@ -132,6 +135,11 @@ test("config: a new repo gets the checks of the agent, the scanners, the skills 
   assert.deepEqual(config.skills, { planner: ["github.com/example-org/skills//tdd#main"], builder: ["github.com/example-org/skills//tdd#main"] });
   assert.equal(config.merge, "manual");
   assert.equal(config.stack, undefined);
+});
+
+test("config: no skill list stays empty", () => {
+  const existing = { version: 1, skills: { builder: ["/etc/autopilot/skills/a"] }, verify: { required: [], commands: {} } };
+  assert.deepEqual(JSON.parse(renderConfig(JSON.stringify(existing), {}, [])).skills, { builder: ["/etc/autopilot/skills/a"] });
 });
 
 test("config: an existing config keeps its fields, commands and skills, drops `stack`, and gains the missing checks", () => {
