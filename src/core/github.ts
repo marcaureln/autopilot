@@ -290,11 +290,17 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
     },
     async rebasePull(pull, expectedHead) {
       const { data } = await octokit.pulls.get({ owner, repo, pull_number: pull });
-      const { updatePullRequestBranch } = await octokit.graphql<{ updatePullRequestBranch: { pullRequest: { headRefOid: string } } }>(
-        `mutation($id: ID!, $head: GitObjectID!) { updatePullRequestBranch(input: { pullRequestId: $id, expectedHeadOid: $head, updateMethod: REBASE }) { pullRequest { headRefOid } } }`,
+      await octokit.graphql(
+        `mutation($id: ID!, $head: GitObjectID!) { updatePullRequestBranch(input: { pullRequestId: $id, expectedHeadOid: $head, updateMethod: REBASE }) { clientMutationId } }`,
         { id: data.node_id, head: expectedHead },
       );
-      return updatePullRequestBranch.pullRequest.headRefOid;
+      // GitHub answers before the rebase is done, with the old head.
+      for (let attempt = 0; attempt < 30; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const { data: now } = await octokit.pulls.get({ owner, repo, pull_number: pull });
+        if (now.head.sha !== expectedHead) return now.head.sha;
+      }
+      throw new Error(`the head of #${pull} is still ${expectedHead.slice(0, 7)} one minute after the rebase`);
     },
     async openPull({ head, base, title, body }) {
       const { data } = await octokit.pulls.create({ owner, repo, head, base, title, body });
