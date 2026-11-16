@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseAllowEntry } from "../core/allow.ts";
 import type { Audit } from "../core/audit.ts";
+import { BASELINE_PATH, parseBaseline, type Baseline } from "../core/baseline.ts";
 import { botIdentity, BuildStopped, neutralize, pullBody, SecretsMissing, type BuildJob, type Built, type Failure } from "../core/builder.ts";
 import { planChecks, type CheckResult, type ChecksJob } from "../core/checks.ts";
 import { claimComment, claimOf, ownClaims } from "../core/claim.ts";
@@ -55,6 +56,16 @@ async function readConfig(repoGitHub: RepoGitHub): Promise<Config> {
   if (text === undefined) throw new Blocked(`There is no \`${CONFIG_PATH}\` on the default branch.`);
   try {
     return parseConfig(text, CONFIG_PATH);
+  } catch (error) {
+    throw new Blocked(messageOf(error));
+  }
+}
+
+async function readBaseline(repoGitHub: RepoGitHub): Promise<Baseline> {
+  const text = await repoGitHub.readFile(BASELINE_PATH);
+  if (text === undefined) return {};
+  try {
+    return parseBaseline(text);
   } catch (error) {
     throw new Blocked(messageOf(error));
   }
@@ -275,7 +286,7 @@ async function runChecks(job: Working, config: Config, pull: BotPull): Promise<S
   for (const check of required) await repoGitHub.setStatus(sha, check, "pending", "running");
   loop.log(key, `${key}: checks on #${pull.number} at ${sha.slice(0, 7)}: ${required.join(", ")}`);
   const commits = await repoGitHub.pullCommits(pull.number);
-  const results = await loop.check({ repo, token: await repoGitHub.token(), pull, commits: commits.length, host: loop.host, config });
+  const results = await loop.check({ repo, token: await repoGitHub.token(), pull, commits: commits.length, host: loop.host, config, defaultBranchBaseline: await readBaseline(repoGitHub) });
   const at = new Date().toISOString();
   for (const result of results) await repoGitHub.setStatus(sha, result.check, result.state, result.description);
   ctx.outputs.set(sha, results);

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Audit } from "./audit.ts";
+import { newFailures, type Baseline } from "./baseline.ts";
 import type { Config } from "./config.ts";
 import { containerName, ensurePulled, runContainer, type ContainerResult, type Mount } from "./docker.ts";
 import type { Host } from "./host.ts";
@@ -55,9 +56,6 @@ export function nodeInstallCommand(files: (name: string) => boolean): string | u
   return undefined;
 }
 
-// A check with secrets could print one in any encoding. Hiding its output keeps a secret out of
-// comments and prompts by accident; it does not stop code under test from leaking it. Literal
-// redaction is a second layer.
 export const HIDDEN_OUTPUT = "(this check runs with the repo secrets: autopilot shows only if it passed)";
 
 export function hideOutput(result: CheckResult): CheckResult {
@@ -72,6 +70,13 @@ export function redact(text: string, values: string[]): string {
     .reduce((out, value) => out.replaceAll(value, "***"), text);
 }
 
+export function withBaseline(result: CheckResult, run: ContainerResult, known: string[] | undefined): CheckResult {
+  if (result.state !== "failure" || known === undefined || run.truncated) return result;
+  const fresh = newFailures(run.output, known);
+  if (fresh.length > 0) return { ...result, output: `New errors, not in the baseline:\n${fresh.join("\n")}\n\n${result.output}` };
+  return { ...result, state: "success", description: "passed: only errors from the baseline" };
+}
+
 function resultOf(check: string, run: ContainerResult, failedAs: "failure" | "error" = "failure"): CheckResult {
   if (run.timedOut) return { check, state: "error", description: "timed out", output: run.output };
   if (run.exit === 0) return { check, state: "success", description: "passed", output: run.output };
@@ -80,6 +85,7 @@ function resultOf(check: string, run: ContainerResult, failedAs: "failure" | "er
 
 export type ChecksJob = {
   repo: Repo;
+  defaultBranchBaseline: Baseline;
   token: string;
   pull: BotPull;
   commits: number;
@@ -129,8 +135,6 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
 
     let stackDir: string | undefined;
     let installFailure: CheckResult | undefined;
-    // Only the stack checks get the values: they run the repo's code with no network, after the
-    // install. The scanners and the install never get them.
     let secrets: Record<string, string> = {};
     const results: CheckResult[] = [];
     for (const plan of planChecks(config.verify.required, config.verify.commands)) {
@@ -160,7 +164,7 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
           continue;
         }
         const run = await container(plan.check, IMAGES.node, ["sh", "-c", `cd /work && ${plan.command}`], [{ source: stackDir, target: "/work", readonly: false }], { secrets });
-        const result = resultOf(plan.check, run);
+        const result = withBaseline(resultOf(plan.check, run), run, job.defaultBranchBaseline[plan.check]);
         results.push(Object.keys(secrets).length > 0 ? hideOutput(result) : result);
         continue;
       }

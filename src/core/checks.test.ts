@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HIDDEN_OUTPUT, hideOutput, nodeInstallCommand, planChecks, redact, type CheckResult } from "./checks.ts";
+import { HIDDEN_OUTPUT, hideOutput, nodeInstallCommand, planChecks, redact, withBaseline, type CheckResult } from "./checks.ts";
+import type { ContainerResult } from "./docker.ts";
 
 test("each required check gets a stack command, a built-in scanner, or nothing", () => {
   assert.deepEqual(planChecks(["lint", "sast", "deps-scan", "secrets-scan", "types"], { lint: "npm run lint", sast: "make sast" }), [
@@ -53,5 +54,19 @@ const hideCases: { name: string; result: CheckResult; expected: CheckResult }[] 
 for (const { name, result, expected } of hideCases) {
   test(`a check with secrets shows only pass or fail: ${name}`, () => {
     assert.deepEqual(hideOutput(result), expected);
+  });
+}
+
+const failed: CheckResult = { check: "lint", state: "failure", description: "failed (exit 1)", output: "a.ts\n  1:1  error  bad  rule" };
+const baselineCases: { name: string; run: ContainerResult; known: string[] | undefined; state: CheckResult["state"] }[] = [
+  { name: "no baseline", run: { exit: 1, timedOut: false, output: failed.output, truncated: false }, known: undefined, state: "failure" },
+  { name: "only known errors", run: { exit: 1, timedOut: false, output: failed.output, truncated: false }, known: ["a.ts", "#:# error bad rule"], state: "success" },
+  { name: "a new error", run: { exit: 1, timedOut: false, output: `${failed.output}\n  2:2  error  worse  rule`, truncated: false }, known: ["a.ts", "#:# error bad rule"], state: "failure" },
+  { name: "cut output", run: { exit: 1, timedOut: false, output: failed.output, truncated: true }, known: ["a.ts", "#:# error bad rule"], state: "failure" },
+];
+
+for (const { name, run, known, state } of baselineCases) {
+  test(`baseline: ${name}`, () => {
+    assert.equal(withBaseline(failed, run, known).state, state);
   });
 }

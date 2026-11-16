@@ -18,20 +18,18 @@ export type ContainerRun = {
   network: "none" | "bridge";
   // Never a secret: the docker run arguments are in the process list.
   env?: Record<string, string>;
-  // Sent to docker through a pipe as an env file, never in the arguments or the docker client environment.
   secrets?: Record<string, string>;
   limits: Host["limits"];
   timeoutMs: number;
   audit: Audit;
 };
 
-export type ContainerResult = { exit: number; timedOut: boolean; output: string };
+export type ContainerResult = { exit: number; timedOut: boolean; output: string; truncated: boolean };
 
 const OUTPUT_TAIL = 16_000;
 
 const CLIENT_ENV = ["PATH", "HOME", "USER", "LANG", "TMPDIR", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"];
 
-// The docker client gets only what it needs to reach the daemon, not the environment of the host process.
 export function clientEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(CLIENT_ENV.flatMap((name) => (env[name] === undefined ? [] : [[name, env[name]]])));
 }
@@ -83,7 +81,14 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
   secretsPipe.on("error", () => undefined);
   secretsPipe.end(envFileText);
   let output = "";
-  const append = (chunk: Buffer) => (output = (output + chunk.toString()).slice(-OUTPUT_TAIL));
+  let truncated = false;
+  const append = (chunk: Buffer) => {
+    output += chunk.toString();
+    if (output.length > OUTPUT_TAIL) {
+      output = output.slice(-OUTPUT_TAIL);
+      truncated = true;
+    }
+  };
   stdout.on("data", append);
   stderr.on("data", append);
 
@@ -97,7 +102,7 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
     child.on("close", (code) => resolve(code ?? 1));
   }).finally(() => clearTimeout(timer));
   job.audit({ event: "container.ended", name: job.name, exit, timed_out: timedOut, duration_seconds: Math.round((Date.now() - started) / 1000) });
-  return { exit, timedOut, output: output.trim() };
+  return { exit, timedOut, output: output.trim(), truncated };
 }
 
 export async function ensurePulled(image: string): Promise<void> {
