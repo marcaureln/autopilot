@@ -3,11 +3,12 @@ import { basename, join } from "node:path";
 import { parseAllowEntry } from "./allow.ts";
 import type { GitHub } from "./github.ts";
 import { parseSource, type Host } from "./host.ts";
+import { LOCAL_LAYOUT } from "./layout.ts";
 import { fetchSource } from "./workspace.ts";
 
 // People with write access to the repo write its config, not the host owner. A host path there must
 // point inside this directory, so a repo cannot copy host files into the agent.
-export const HOST_SKILLS_DIR = "/etc/autopilot/skills";
+export const HOST_SKILLS_DIR = LOCAL_LAYOUT.skillsDir;
 
 export type AgentSetup = { skillsDir: string; claudeConfigDir: string | undefined };
 

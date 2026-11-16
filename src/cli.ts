@@ -18,7 +18,8 @@ import { readSecret } from "./core/secrets.ts";
 
 const USAGE = `Usage: autopilot <command> [options]
 
-Commands that run on a host. With --host or AUTOPILOT_HOST, the client forwards them over SSH:
+Commands that run on a host. With --host or AUTOPILOT_HOST, the client forwards them over SSH,
+or runs them on this machine for the host "local":
   allow <owner>[/<repo>]      Allow it; prints the App install page if the App is not installed there
   deny <owner>[/<repo>]       Remove it from the allowlist
   allowed                     Show the allowlist
@@ -29,9 +30,10 @@ Commands that run on a host. With --host or AUTOPILOT_HOST, the client forwards 
   run [--once]                Plan, build, check and merge autopilot-labeled issues, one job at a time (never forwarded)
 
 Commands that run on the client:
-  host setup --host <ssh-target> [--owner <login> --app-id <id>] [--version <tag> | --from-checkout]
+  host setup --host <ssh-target | local> [--owner <login> --app-id <id>] [--version <tag> | --from-checkout]
                               Push the 1Password service account token, write host.json if it is
-                              missing, and install a release (or the current commit)
+                              missing, and install a release (or the current commit). Linux hosts
+                              run a systemd service, macOS hosts a launchd agent of the user
   init [--no-agent]           Onboard the repo: scaffold the stack pack, create the labels, let an agent
                               set the commands and draft AGENTS.md, run the checks once, and open a PR.
                               With a host, also allow the repo there
@@ -43,7 +45,7 @@ Commands that run on the client:
   secrets rm <NAME>           Remove a secret and its reference
 
 Options:
-  --host <ssh-target>  Host to act on (default: $AUTOPILOT_HOST)
+  --host <ssh-target>  Host to act on, or "local" for this machine (default: $AUTOPILOT_HOST)
   --config <path>      Host file, on the host (default: ${HOST_FILE})
   --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
   --backend op         Where secrets are saved (default and only one: op, the 1Password CLI)`;
@@ -69,7 +71,7 @@ const { values, positionals } = parseArgs({
   },
 });
 
-function sshTarget(): string | undefined {
+function hostTarget(): string | undefined {
   const target = values.host ?? process.env.AUTOPILOT_HOST;
   if (target?.startsWith("-")) throw new Error(`"${target}" is not an SSH target`);
   return target;
@@ -90,14 +92,14 @@ function targetRepo(): Repo {
 
 async function main(): Promise<void> {
   const [command = ""] = positionals;
-  const target = sshTarget();
+  const target = hostTarget();
   if (HOST_COMMANDS.includes(command)) {
     if (target) {
       const options = [...(values.since ? ["--since", values.since] : []), ...(values.version ? ["--version", values.version] : [])];
       process.exitCode = await forward(target, [...positionals, ...options]);
       return;
     }
-    if (!existsSync(values.config)) throw new Error(`no host file at ${values.config}: to manage a host, set AUTOPILOT_HOST=<ssh-target> or pass --host`);
+    if (!existsSync(values.config)) throw new Error(`no host file at ${values.config}: to manage a host, set AUTOPILOT_HOST=<ssh-target | local> or pass --host`);
   }
   switch (command) {
     case "run": {
@@ -148,7 +150,7 @@ async function main(): Promise<void> {
       break;
     }
     case "host": {
-      if (positionals[1] !== "setup" || !target) throw new Error("usage: autopilot host setup --host <ssh-target> [--owner <login> --app-id <id>]");
+      if (positionals[1] !== "setup" || !target) throw new Error("usage: autopilot host setup --host <ssh-target | local> [--owner <login> --app-id <id>]");
       const appId = values["app-id"] === undefined ? undefined : Number(values["app-id"]);
       if (appId !== undefined && !Number.isInteger(appId)) throw new Error(`--app-id "${values["app-id"]}" is not a number`);
       await hostSetup(target, { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"] });

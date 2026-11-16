@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/host.schema.json" with { type: "json" };
+import { LOCAL_LAYOUT } from "./layout.ts";
 
 export type Host = {
   $schema?: string;
@@ -18,7 +19,7 @@ export type Host = {
 
 export type Source = { kind: "path"; path: string } | { kind: "github"; owner: string; repo: string; subdir?: string; ref?: string };
 
-export const HOST_FILE = "/etc/autopilot/host.json";
+export const HOST_FILE = LOCAL_LAYOUT.hostFile;
 
 const ajv = new Ajv2020({ allErrors: true, useDefaults: true });
 const validate = ajv.compile<Omit<Host, "name"> & { name?: string }>(schema);

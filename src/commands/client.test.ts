@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { shellQuote, urlToOpen } from "./client.ts";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { hostCommand, shellQuote, urlToOpen } from "./client.ts";
 
 for (const arg of ["audit", "--since", "1 day ago", "it's", "$(id)", "a'b'c", ""]) {
   test(`the remote shell reads ${JSON.stringify(arg)} back unchanged`, () => {
@@ -28,5 +31,31 @@ const openCases: { command: string; line: string; expected: string | undefined }
 for (const { command, line, expected } of openCases) {
   test(`${command}: the client opens ${expected ? "the install page" : "nothing"} for "${line}"`, () => {
     assert.equal(urlToOpen(command, line), expected);
+  });
+}
+
+function fakeHost(uname: string): { env: NodeJS.ProcessEnv } {
+  const home = mkdtempSync(join(tmpdir(), "autopilot-host-"));
+  const bin = join(home, "fake-bin");
+  mkdirSync(join(home, ".autopilot", "bin"), { recursive: true });
+  mkdirSync(bin);
+  const script = (path: string, body: string) => {
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+  };
+  script(join(bin, "uname"), `echo ${uname}`);
+  script(join(bin, "sudo"), 'echo sudo "$@"');
+  script(join(home, ".autopilot", "bin", "autopilot"), 'echo home-command "$@"');
+  return { env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` } };
+}
+
+const hostCases: { uname: string; expected: string }[] = [
+  { uname: "Linux", expected: "sudo autopilot logs --since 1 day ago\n" },
+  { uname: "Darwin", expected: "home-command logs --since 1 day ago\n" },
+];
+
+for (const { uname, expected } of hostCases) {
+  test(`a ${uname} host runs the forwarded command from its own place`, () => {
+    assert.equal(execFileSync("sh", ["-c", hostCommand(["logs", "--since", "1 day ago"])], { encoding: "utf8", ...fakeHost(uname) }), expected);
   });
 }

@@ -1,10 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { renameSync, writeFileSync } from "node:fs";
 import { addAllowEntry, parseAllowEntry, removeAllowEntry } from "../core/allow.ts";
 import type { Audit } from "../core/audit.ts";
 import { createGitHub } from "../core/github.ts";
 import { HOST_FILE, loadHost, type Host } from "../core/host.ts";
 import { readSecret } from "../core/secrets.ts";
+import { restartService } from "./host.ts";
 
 function writeHost(path: string, host: Host): void {
   writeFileSync(`${path}.tmp`, JSON.stringify(host, null, 2) + "\n", { mode: 0o644 });
@@ -13,8 +13,7 @@ function writeHost(path: string, host: Host): void {
 
 function restart(path: string): void {
   if (path !== HOST_FILE) return console.log("restart `autopilot run` to apply the change");
-  const result = spawnSync("systemctl", ["restart", "autopilot"], { stdio: "inherit" });
-  if (result.status !== 0) throw new Error(`systemctl restart autopilot failed (exit ${result.status})`);
+  restartService();
 }
 
 async function installUrl(slug: string, owner: string): Promise<string> {

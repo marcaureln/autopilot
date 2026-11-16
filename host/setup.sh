@@ -5,9 +5,20 @@ release="${1:?usage: setup.sh <release-dir> <rootless|rootful>}"
 docker_mode="${2:?usage: setup.sh <release-dir> <rootless|rootful>}"
 user=autopilot
 
-step() { printf '==> %s\n' "$*"; }
+# shellcheck source=host/common.sh
+. "$release/host/common.sh"
 
-step "prerequisites"
+case "$(uname -s)" in
+  Linux) ;;
+  Darwin) exec bash "$release/host/setup-macos.sh" "$release" "$docker_mode" ;;
+  *)
+    echo "autopilot hosts run Linux or macOS, not $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+
+# shellcheck source=/dev/null
+step "prerequisites ($(. /etc/os-release && echo "$PRETTY_NAME"))"
 missing=()
 command -v systemctl >/dev/null || missing+=("systemd: autopilot runs as a systemd service")
 command -v docker >/dev/null || missing+=("Docker Engine: https://docs.docker.com/engine/install/")
@@ -83,10 +94,9 @@ step "cli $release"
 # Root runs this release through `sudo autopilot`, so $user, who runs the agent containers, must not be able to change it.
 tools=/opt/autopilot-tools
 install -d -m 755 -o root -g root "$tools"
-root_mise() { env MISE_DATA_DIR="$tools" MISE_TRUSTED_CONFIG_PATHS="$release" mise --cd "$release" "$@"; }
-root_mise install --yes
-root_mise exec -- pnpm install --prod --frozen-lockfile --silent
-node=$(root_mise which node)
+tool_mise "$release" "$tools" install --yes
+tool_mise "$release" "$tools" exec -- pnpm install --prod --frozen-lockfile --silent
+node=$(tool_mise "$release" "$tools" which node)
 ln -sfn "$release" /opt/autopilot
 
 step "service"
@@ -130,4 +140,5 @@ fi
 
 systemctl restart autopilot
 printf '{"at":"%s","event":"host.updated","release":"%s","by":"%s"}\n' "$(date -u +%FT%TZ)" "$release" "${SUDO_USER:-root}" | systemd-cat --identifier autopilot-audit
+
 step "done: $(systemctl is-active autopilot)"

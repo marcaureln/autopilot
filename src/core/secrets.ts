@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Audit } from "./audit.ts";
+import { LOCAL_LAYOUT } from "./layout.ts";
 
-const OP_TOKEN_FILE = "/etc/autopilot/op-token";
+const OP_TOKEN_FILE = LOCAL_LAYOUT.opToken;
 
 // systemd LoadCredential= sets CREDENTIALS_DIRECTORY for the service. Without a token file (a dev
 // machine), op uses its own sign-in.

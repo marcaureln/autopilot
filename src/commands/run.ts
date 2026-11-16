@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseAllowEntry } from "../core/allow.ts";
-import type { Audit } from "../core/audit.ts";
+import { serviceLog, type Audit } from "../core/audit.ts";
 import { BASELINE_PATH, parseBaseline, type Baseline } from "../core/baseline.ts";
 import { botIdentity, BuildStopped, neutralize, pullBody, SecretsMissing, type BuildJob, type Built, type Failure } from "../core/builder.ts";
 import { planChecks, type CheckResult, type ChecksJob } from "../core/checks.ts";
@@ -425,7 +425,7 @@ export function changesOnly(print: (line: string) => void): Log {
 }
 
 export async function run(loop: Omit<Loop, "log">, options: { once: boolean }): Promise<void> {
-  const full: Loop = { ...loop, log: changesOnly((line) => console.log(line)) };
+  const full: Loop = { ...loop, log: changesOnly(serviceLog) };
   const state = loopState();
   await runOnce(full, state);
   while (!options.once) {

@@ -1,7 +1,8 @@
 import { execFile, execFileSync, spawn } from "node:child_process";
+import { dirname } from "node:path";
 import { createInterface } from "node:readline";
-import { HOST_FILE, parseHost, type Host } from "../core/host.ts";
-import { installRelease, latestRelease, must, parseTag, sshShell, type Release, type Shell } from "./host.ts";
+import { parseHost, type Host } from "../core/host.ts";
+import { connect, installRelease, latestRelease, LOCAL_TARGET, must, parseTag, type Release, type Connection } from "./host.ts";
 
 const CLI_ROOT = new URL("../../", import.meta.url).pathname;
 const HOST_SCHEMA = "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/host.schema.json";
@@ -25,8 +26,17 @@ function openInBrowser(url: string): void {
   execFile(process.platform === "darwin" ? "open" : "xdg-open", [url], () => {});
 }
 
+// The client does not know the OS of the host. Host setup puts the command in these places.
+export function hostCommand(args: string[]): string {
+  const quoted = args.map(shellQuote).join(" ");
+  return `case $(uname -s) in Darwin) exec "$HOME/.autopilot/bin/autopilot" ${quoted} ;; *) exec sudo autopilot ${quoted} ;; esac`;
+}
+
 export function forward(target: string, args: string[]): Promise<number> {
-  const child = spawn("ssh", [target, `sudo autopilot ${args.map(shellQuote).join(" ")}`], { stdio: ["inherit", "pipe", "inherit"] });
+  // On the local host, the host command would read AUTOPILOT_HOST=local and forward to itself again.
+  const env = { ...process.env, AUTOPILOT_HOST: undefined };
+  const [program, through]: [string, string[]] = target === LOCAL_TARGET ? ["sh", ["-c"]] : ["ssh", [target]];
+  const child = spawn(program, [...through, hostCommand(args)], { stdio: ["inherit", "pipe", "inherit"], env });
   createInterface({ input: child.stdout }).on("line", (line) => {
     console.log(line);
     const url = urlToOpen(args[0] ?? "", line);
@@ -38,8 +48,8 @@ export function forward(target: string, args: string[]): Promise<number> {
   });
 }
 
-function writeRootFile(path: string, mode: "600" | "644"): string {
-  return `sudo sh -c 'set -e; install -d -m 755 /etc/autopilot; umask 077; cat > ${path}.tmp; chmod ${mode} ${path}.tmp; mv ${path}.tmp ${path}'`;
+function writeHostFile(remote: Connection, path: string, mode: "600" | "644"): string {
+  return `${remote.sudo}sh -c 'set -e; install -d -m 755 ${dirname(path)}; umask 077; cat > ${path}.tmp; chmod ${mode} ${path}.tmp; mv ${path}.tmp ${path}'`;
 }
 
 export function initialHostFile({ name, owner, appId }: { name: string; owner: string; appId: number }): Host {
@@ -67,25 +77,25 @@ function checkoutRelease(): Release {
   };
 }
 
-async function hostFile(remote: Shell, options: { owner?: string; appId?: number }): Promise<Host> {
-  const { code, stdout } = await remote.capture(`sudo cat ${HOST_FILE} 2>/dev/null`);
-  if (code === 0) return parseHost(stdout, HOST_FILE);
+async function hostFile(remote: Connection, options: { owner?: string; appId?: number }): Promise<Host> {
+  const path = remote.layout.hostFile;
+  const { code, stdout } = await remote.shell.capture(`${remote.sudo}cat ${path} 2>/dev/null`);
+  if (code === 0) return parseHost(stdout, path);
   if (!options.owner || !options.appId) throw new Error("the host has no host.json yet: pass --owner <login> --app-id <id>");
-  const name = (await remote.capture("hostname -s")).stdout.trim().toLowerCase();
-  const text = JSON.stringify(initialHostFile({ name, owner: options.owner, appId: options.appId }), null, 2) + "\n";
+  const text = JSON.stringify(initialHostFile({ name: remote.name, owner: options.owner, appId: options.appId }), null, 2) + "\n";
   const host = parseHost(text, "the new host.json");
   console.log(`==> host.json (new, host name ${host.name})`);
-  await must(remote, "host.json", writeRootFile(HOST_FILE, "644"), Buffer.from(text));
+  await must(remote.shell, "host.json", writeHostFile(remote, path, "644"), Buffer.from(text));
   return host;
 }
 
 export async function hostSetup(target: string, options: { owner?: string; appId?: number; version?: string; fromCheckout: boolean }): Promise<void> {
   const release: Release = options.fromCheckout ? checkoutRelease() : { kind: "github", tag: options.version ? parseTag(options.version) : await latestRelease() };
-  const remote = sshShell(target);
+  const remote = await connect(target);
 
   console.log("==> 1Password service account token");
   const token = execFileSync("op", ["read", "--no-newline", OP_TOKEN_REFERENCE], { stdio: ["ignore", "pipe", "inherit"] });
-  await must(remote, "op token", writeRootFile("/etc/autopilot/op-token", "600"), token);
+  await must(remote.shell, "op token", writeHostFile(remote, remote.layout.opToken, "600"), token);
 
   const host = await hostFile(remote, options);
   await installRelease(remote, release, host.docker);

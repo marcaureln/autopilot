@@ -1,5 +1,8 @@
 import { spawnSync } from "node:child_process";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { Gate1, Gate2 } from "./gate.ts";
+import { LOCAL_LAYOUT } from "./layout.ts";
 import type { Risk } from "./risk.ts";
 import type { IssueState, State } from "./state.ts";
 
@@ -35,4 +38,16 @@ function journal(event: AuditEvent): void {
   if (result.status !== 0) throw new Error(`audit: systemd-cat failed (${result.error?.message ?? `exit ${result.status}`})`);
 }
 
-export const auditLog: Audit = process.platform === "linux" ? journal : (event) => console.error(`audit ${line(event)}`);
+const logs = LOCAL_LAYOUT.logs;
+
+export const auditLog: Audit =
+  logs.kind === "journal"
+    ? journal
+    : (event) => {
+        mkdirSync(dirname(logs.audit), { recursive: true });
+        appendFileSync(logs.audit, `${line(event)}\n`);
+      };
+
+export function serviceLog(text: string): void {
+  console.log(logs.kind === "files" ? `${new Date().toISOString()} ${text}` : text);
+}
