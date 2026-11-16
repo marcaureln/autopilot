@@ -9,7 +9,7 @@ import { createGitHub } from "../core/github.ts";
 import { parseHost, type Host } from "../core/host.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret } from "../core/secrets.ts";
-import { checkResources, describeResources, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type SetupConfig } from "../core/setup.ts";
+import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type SetupConfig } from "../core/setup.ts";
 import { alias, aliasFile, shellOf, withoutAlias } from "./alias.ts";
 import { appCreate, appKeyStored, githubLogin } from "./app.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, CLAUDE_TOKEN_ITEM, forward, HOST_SECRETS, hostSetup, OP_TOKEN_ITEM } from "./client.ts";
@@ -265,13 +265,18 @@ async function chooseRepos(login: string): Promise<string[]> {
   if (!(await answer(confirm({ message: "Onboard a repo now? autopilot init opens a pull request on it." })))) return [];
   const listing = spawnSync("gh", ["repo", "list", login, "--limit", "100", "--no-archived", "--json", "nameWithOwner", "--jq", ".[].nameWithOwner"], { encoding: "utf8" });
   const repos = listing.status === 0 ? listing.stdout.split("\n").filter(Boolean) : [];
-  if (repos.length === 0) return parseList(await answer(text({ message: "Repo to onboard (owner/repo)" })));
+  if (repos.length === 0) {
+    const entry = await answer(text({ message: "Repo to onboard (owner/repo)", validate: (input) => (isRepoEntry(input ?? "") ? undefined : "Use owner/repo") }));
+    return [entry];
+  }
   return [await answer(select({ message: "Repo to onboard", options: repos.map((repo) => ({ value: repo, label: repo })) }))];
 }
 
 async function onboard(options: SetupOptions, config: SetupConfig, target: string, login: string): Promise<void> {
   const repos = config.init ?? (options.yes ? [] : await chooseRepos(login));
   if (repos.length === 0) return record("First repo", "skipped", "no repo to onboard");
+  const invalid = repos.filter((repo) => !isRepoEntry(repo));
+  if (invalid.length > 0) throw new Error(`not a repo as owner/repo: ${invalid.join(", ")}`);
   for (const repo of repos) {
     if (onboarded(repo)) {
       record(`Onboard ${repo}`, "already done", `${CONFIG_PATH} exists`);

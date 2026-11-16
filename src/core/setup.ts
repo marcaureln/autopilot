@@ -76,6 +76,12 @@ export function describeResources(resources: HostResources): string {
   return `${resources.arch}, ${(resources.memoryBytes / GIB).toFixed(1)} GiB memory, ${(resources.diskBytes / GIB).toFixed(0)} GiB free disk`;
 }
 
+const REPO_ENTRY = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+
+export function isRepoEntry(value: string): boolean {
+  return REPO_ENTRY.test(value);
+}
+
 export function parseList(value: string): string[] {
   return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
 }

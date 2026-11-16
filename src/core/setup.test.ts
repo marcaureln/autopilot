@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { checkResources, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type HostPlan } from "./setup.ts";
+import { checkResources, isRepoEntry, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type HostPlan } from "./setup.ts";
 
 const GIB = 1024 ** 3;
 
@@ -113,5 +113,26 @@ for (const { name, facts, request = { fromCheckout: false }, expected } of hostP
       assert.equal(plan.kind, "refuse");
       assert.match(plan.kind === "refuse" ? plan.reason : "", expected);
     } else assert.deepEqual(plan, expected);
+  });
+}
+
+const repoEntries: { value: string; valid: boolean }[] = [
+  { value: "octocat/app", valid: true },
+  { value: "example-org/my.app_2", valid: true },
+  { value: "octocat", valid: false },
+  { value: "", valid: false },
+  { value: "a/b/c", valid: false },
+  { value: "octocat/", valid: false },
+  { value: "/app", valid: false },
+  { value: "octocat/app extra", valid: false },
+  { value: "octocat/app\n", valid: false },
+  { value: "octo_cat/app", valid: false },
+  { value: "octocat/app;id", valid: false },
+  { value: "octocat/$(id)", valid: false },
+];
+
+for (const { value, valid } of repoEntries) {
+  test(`repo entry ${JSON.stringify(value)} is ${valid ? "valid" : "invalid"}`, () => {
+    assert.equal(isRepoEntry(value), valid);
   });
 }
