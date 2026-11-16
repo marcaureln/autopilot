@@ -9,6 +9,7 @@ import { containerName, ensurePulled, runContainer, type ContainerResult, type M
 import type { Host } from "./host.ts";
 import type { BotPull } from "./phase.ts";
 import type { Repo } from "./repo.ts";
+import { refusedSecrets } from "./repo-secrets.ts";
 import { readSecret } from "./secrets.ts";
 import { shallowClone } from "./workspace.ts";
 
@@ -54,7 +55,16 @@ export function nodeInstallCommand(files: (name: string) => boolean): string | u
   return undefined;
 }
 
-// Check output goes to the builder prompt and to issue comments.
+// A check with secrets could print one in any encoding. Hiding its output keeps a secret out of
+// comments and prompts by accident; it does not stop code under test from leaking it. Literal
+// redaction is a second layer.
+export const HIDDEN_OUTPUT = "(this check runs with the repo secrets: autopilot shows only if it passed)";
+
+export function hideOutput(result: CheckResult): CheckResult {
+  if (result.state === "success") return { ...result, description: "passed", output: "" };
+  return { ...result, description: result.state === "error" ? "error" : "failed", output: HIDDEN_OUTPUT };
+}
+
 export function redact(text: string, values: string[]): string {
   return values
     .filter((value) => value.length > 0)
@@ -119,7 +129,8 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
 
     let stackDir: string | undefined;
     let installFailure: CheckResult | undefined;
-    // Only the stack checks get the values: they run with no network, after the install.
+    // Only the stack checks get the values: they run the repo's code with no network, after the
+    // install. The scanners and the install never get them.
     let secrets: Record<string, string> = {};
     const results: CheckResult[] = [];
     for (const plan of planChecks(config.verify.required, config.verify.commands)) {
@@ -130,6 +141,8 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
       if (plan.kind === "missing") throw new Error(`verify.required lists ${plan.check}, which has no command`);
       if (plan.kind === "stack") {
         if (!stackDir) {
+          const refused = refusedSecrets(repo, config.secrets);
+          if (refused.length > 0) throw new Error(`the secrets ${refused.join(", ")} point outside the repo's own 1Password item`);
           secrets = Object.fromEntries(
             Object.entries(config.secrets).map(([key, reference]) => [key, readSecret(reference, `checks: ${repo.owner}/${repo.name}#${pull.number}`, audit)]),
           );
@@ -147,7 +160,8 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
           continue;
         }
         const run = await container(plan.check, IMAGES.node, ["sh", "-c", `cd /work && ${plan.command}`], [{ source: stackDir, target: "/work", readonly: false }], { secrets });
-        results.push(resultOf(plan.check, run));
+        const result = resultOf(plan.check, run);
+        results.push(Object.keys(secrets).length > 0 ? hideOutput(result) : result);
         continue;
       }
       await ensurePulled(IMAGES[plan.scanner]);

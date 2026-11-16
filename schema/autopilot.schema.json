@@ -124,7 +124,7 @@
       "default": {}
     },
     "secrets": {
-      "description": "Runtime secrets as references. The host resolves the values.",
+      "description": "Runtime secrets as references, written by `autopilot secrets set`. Each one must be op://autopilot/<owner>_<repo>/<NAME> (lowercase owner and repo). The host resolves the values for the stack checks only.",
       "type": "object",
       "propertyNames": { "pattern": "^[A-Z_][A-Z0-9_]*$" },
       "additionalProperties": {

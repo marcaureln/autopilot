@@ -24,6 +24,6 @@
   "preview": { "command": "npm run dev", "url": "http://localhost:3000" },
   "merge": "auto",
   "risk": { "high_paths": ["src/auth/**"], "max_diff_lines": 500 },
-  "secrets": { "STRIPE_KEY": "op://autopilot/app-a/STRIPE_KEY" },
+  "secrets": { "STRIPE_KEY": "op://autopilot/example-org_app-a/STRIPE_KEY" },
   "limits": { "fix_rounds": 3, "run_timeout_minutes": 45 }
 }

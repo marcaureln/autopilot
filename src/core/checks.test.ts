@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nodeInstallCommand, planChecks, redact } from "./checks.ts";
+import { HIDDEN_OUTPUT, hideOutput, nodeInstallCommand, planChecks, redact, type CheckResult } from "./checks.ts";
 
 test("each required check gets a stack command, a built-in scanner, or nothing", () => {
   assert.deepEqual(planChecks(["lint", "sast", "deps-scan", "secrets-scan", "types"], { lint: "npm run lint", sast: "make sast" }), [
@@ -37,5 +37,21 @@ const redactCases: { name: string; text: string; values: string[]; expected: str
 for (const { name, text, values, expected } of redactCases) {
   test(`redact: ${name}`, () => {
     assert.equal(redact(text, values), expected);
+  });
+}
+
+const hideCases: { name: string; result: CheckResult; expected: CheckResult }[] = [
+  { name: "a pass", result: { check: "test", state: "success", description: "passed", output: "ok KEY=abc" }, expected: { check: "test", state: "success", description: "passed", output: "" } },
+  {
+    name: "a failure",
+    result: { check: "test", state: "failure", description: "failed (exit 3)", output: "YWJj" },
+    expected: { check: "test", state: "failure", description: "failed", output: HIDDEN_OUTPUT },
+  },
+  { name: "a time-out", result: { check: "test", state: "error", description: "timed out", output: "616263" }, expected: { check: "test", state: "error", description: "error", output: HIDDEN_OUTPUT } },
+];
+
+for (const { name, result, expected } of hideCases) {
+  test(`a check with secrets shows only pass or fail: ${name}`, () => {
+    assert.deepEqual(hideOutput(result), expected);
   });
 }

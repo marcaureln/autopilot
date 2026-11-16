@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import type { Audit } from "./audit.ts";
 import type { Host } from "./host.ts";
+import { envFile } from "./repo-secrets.ts";
 
 const run = promisify(execFile);
 
@@ -17,7 +18,7 @@ export type ContainerRun = {
   network: "none" | "bridge";
   // Never a secret: the docker run arguments are in the process list.
   env?: Record<string, string>;
-  // Only the names go into the arguments: docker reads each value from its own environment.
+  // Sent to docker through a pipe as an env file, never in the arguments or the docker client environment.
   secrets?: Record<string, string>;
   limits: Host["limits"];
   timeoutMs: number;
@@ -28,15 +29,16 @@ export type ContainerResult = { exit: number; timedOut: boolean; output: string 
 
 const OUTPUT_TAIL = 16_000;
 
-// A secret goes into the environment of the docker client, so it must not change where or how docker runs.
-export function isClientEnvName(name: string): boolean {
-  return /^(DOCKER_|BUILDX_|XDG_)/.test(name) || ["PATH", "HOME", "TMPDIR", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR"].includes(name);
+const CLIENT_ENV = ["PATH", "HOME", "USER", "LANG", "TMPDIR", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"];
+
+// The docker client gets only what it needs to reach the daemon, not the environment of the host process.
+export function clientEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(CLIENT_ENV.flatMap((name) => (env[name] === undefined ? [] : [[name, env[name]]])));
 }
 
 export async function runContainer(job: ContainerRun): Promise<ContainerResult> {
   const secretNames = Object.keys(job.secrets ?? {});
-  const clientNames = secretNames.filter(isClientEnvName);
-  if (clientNames.length > 0) throw new Error(`the secret names ${clientNames.join(", ")} are reserved for the docker client`);
+  const envFileText = envFile(job.secrets ?? {});
   await run("docker", ["rm", "--force", job.name]).catch(() => undefined);
   const args = [
     "run",
@@ -58,7 +60,7 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
     "--security-opt",
     "no-new-privileges",
     ...Object.entries(job.env ?? {}).flatMap(([name, value]) => ["--env", `${name}=${value}`]),
-    ...secretNames.flatMap((name) => ["--env", name]),
+    ...(secretNames.length > 0 ? ["--env-file", "/dev/fd/3"] : []),
     ...job.mounts.flatMap(({ source, target, readonly }) => ["--volume", `${source}:${target}${readonly ? ":ro" : ""}`]),
     ...(job.entrypoint === undefined ? [] : ["--entrypoint", job.entrypoint]),
     job.image,
@@ -74,11 +76,16 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
     caps: { memory: job.limits.memory, cpus: job.limits.cpus, pids: job.limits.pids, timeout_seconds: Math.round(job.timeoutMs / 1000), cap_drop: "ALL", network: job.network },
   });
   const started = Date.now();
-  const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...job.secrets } });
+  const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe", "pipe"], env: clientEnv(process.env) });
+  const [, stdout, stderr, secretsPipe] = child.stdio;
+  if (!stdout || !stderr || !secretsPipe || !("end" in secretsPipe)) throw new Error("docker: the pipes did not open");
+  // docker can exit before it reads the pipe; its exit code reports why.
+  secretsPipe.on("error", () => undefined);
+  secretsPipe.end(envFileText);
   let output = "";
   const append = (chunk: Buffer) => (output = (output + chunk.toString()).slice(-OUTPUT_TAIL));
-  child.stdout.on("data", append);
-  child.stderr.on("data", append);
+  stdout.on("data", append);
+  stderr.on("data", append);
 
   let timedOut = false;
   const timer = setTimeout(() => {

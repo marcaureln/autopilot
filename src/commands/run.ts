@@ -11,6 +11,7 @@ import type { Host } from "../core/host.ts";
 import { branchName, fixVerdict, headVerdict, issuePhase, latestPull, type BotPull, type Statuses } from "../core/phase.ts";
 import type { PlannerJob, PlannerResult } from "../core/planner.ts";
 import type { Repo } from "../core/repo.ts";
+import { refusedSecrets } from "../core/repo-secrets.ts";
 import { isApproved, latestSpec, type Comment, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
 import { isOwnerTick, isVouched, trustedSpec, trustedThread, type TrustedSpec } from "../core/trust.ts";
 import { labelsFor, migrateLabels, STATES, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
@@ -291,6 +292,11 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
   const required = config.verify.required;
   const missing = planChecks(required, config.verify.commands).filter((plan) => plan.kind === "missing");
   if (missing.length > 0) throw new Blocked(`\`verify.required\` lists ${missing.map((plan) => `\`${plan.check}\``).join(", ")} with no command in \`verify.commands\`.`);
+  const refused = refusedSecrets(ctx.repo, config.secrets);
+  if (refused.length > 0) {
+    const names = refused.map((name) => `\`${name}\``).join(", ");
+    throw new Blocked(`The \`secrets\` in \`${CONFIG_PATH}\` for ${names} do not point to this repo's own 1Password item. Set each one again with \`autopilot secrets set <NAME>\`.`);
+  }
   const sha = pull.head.sha;
   // Someone with write access can push to the bot's branch. Only a head the host pushed for this
   // issue is fixed or merged; its ancestors are then the host's commits too.
