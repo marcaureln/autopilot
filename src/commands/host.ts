@@ -7,7 +7,7 @@ import { hostLayout, LOCAL_LAYOUT, parseOS, type Layout } from "../core/layout.t
 const RELEASE_REPO = "marcaureln/autopilot";
 const TAG = /^v\d+\.\d+\.\d+$/;
 // host/setup.sh and host/setup-macos.sh give the systemd unit and the launchd job this name.
-const SERVICE = "autopilot";
+export const SERVICE = "autopilot";
 export const LOCAL_TARGET = "local";
 
 export type Release = { kind: "github"; tag: string } | { kind: "checkout"; commit: string; archive: () => Buffer };

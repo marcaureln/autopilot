@@ -9,6 +9,7 @@ import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
 import { parseSecretsCommand, secrets } from "./commands/secrets.ts";
+import { setup } from "./commands/setup.ts";
 import { auditLog } from "./core/audit.ts";
 import { runBuilder } from "./core/builder.ts";
 import { runChecks } from "./core/checks.ts";
@@ -32,6 +33,11 @@ or runs them on this machine for the host "local":
   run [--once]                Plan, build, check and merge autopilot-labeled issues, one job at a time (never forwarded)
 
 Commands that run on the client:
+  setup [--config <file> --yes]
+                              Set up everything in one wizard: prerequisites, 1Password, the GitHub App, the
+                              Claude token, a host, the allowlist, a first repo and the alias. Run it again to
+                              fix what is missing. --config gives the answers (schema/setup.schema.json);
+                              with --yes, setup asks nothing
   app create [--key-out <path>]
                               Create your GitHub App in the browser (GitHub's App manifest flow). The private
                               key goes to 1Password (vault autopilot), or to a 0600 file with --key-out
@@ -54,7 +60,7 @@ Commands that run on the client:
 
 Options:
   --host <ssh-target>  Host to act on, or "local" for this machine (default: $AUTOPILOT_HOST)
-  --config <path>      Host file, on the host (default: ${HOST_FILE})
+  --config <path>      Host file, on the host (default: ${HOST_FILE}); for setup, the setup file
   --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
   --backend op         Where secrets are saved (default and only one: op, the 1Password CLI)`;
 
@@ -77,6 +83,7 @@ const { values, positionals } = parseArgs({
     "no-agent": { type: "boolean", default: false },
     remove: { type: "boolean", default: false },
     "key-out": { type: "string" },
+    yes: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 });
@@ -167,6 +174,9 @@ async function main(): Promise<void> {
       await hostSetup(target, { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"] });
       break;
     }
+    case "setup":
+      await setup({ configFile: values.config, yes: values.yes, host: target, version: values.version, fromCheckout: values["from-checkout"] });
+      break;
     case "app":
       if (positionals[1] !== "create") throw new Error("usage: autopilot app create [--key-out <path>]");
       await appCreate({ keyOut: values["key-out"] });

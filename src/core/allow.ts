@@ -2,10 +2,10 @@ import type { Host } from "./host.ts";
 
 export type AllowEntry = { owner: string; repo?: string };
 
-const ENTRY = /^([A-Za-z0-9-]+)(?:\/([A-Za-z0-9._-]+))?$/;
+export const ALLOW_ENTRY = /^([A-Za-z0-9-]+)(?:\/([A-Za-z0-9._-]+))?$/;
 
 export function parseAllowEntry(value: string): AllowEntry {
-  const match = ENTRY.exec(value);
+  const match = ALLOW_ENTRY.exec(value);
   if (!match?.[1]) throw new Error(`"${value}" must be owner or owner/repo`);
   return match[2] ? { owner: match[1], repo: match[2] } : { owner: match[1] };
 }

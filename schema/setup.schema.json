@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/setup.schema.json",
+  "title": "Autopilot setup answers",
+  "description": "Answers for `autopilot setup --config <file>`. With --yes, setup runs without prompts and fails on a missing answer it needs. Secret values are never in this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "app_id": {
+      "description": "ID of an existing GitHub App to use. Its private key must be in 1Password (vault autopilot, document github-app-private-key). Without it, setup creates a new App in the browser, which --yes cannot do.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "host": {
+      "description": "SSH target of the host (for example user@my-host), or local for this machine. Default: --host or AUTOPILOT_HOST.",
+      "type": "string",
+      "pattern": "^[^-\\s][^\\s]*$"
+    },
+    "owner": {
+      "description": "GitHub login that may start jobs, written to a new host.json. Default: the login of gh.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9-]+$"
+    },
+    "allow": {
+      "description": "Owners and owner/repo entries to allow on the host.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9-]+(/[A-Za-z0-9._-]+)?$"
+      }
+    },
+    "init": {
+      "description": "Repos (owner/repo) to onboard with autopilot init. Setup skips a repo that already has .github/autopilot.json.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$"
+      }
+    },
+    "alias": {
+      "description": "Shell alias for autopilot (for example ap), or false for none.",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+        },
+        {
+          "const": false
+        }
+      ]
+    }
+  }
+}
