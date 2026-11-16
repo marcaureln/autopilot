@@ -216,3 +216,16 @@ node src/cli.ts run --once --config host.json   # a dev host; op reads secrets w
 ```
 
 Node runs the TypeScript files directly. There is no build step.
+
+## References
+
+autopilot builds on these projects and ideas:
+
+- [Claude Code devcontainer](https://github.com/anthropics/claude-code/tree/main/.devcontainer): Anthropic's reference devcontainer for Claude Code.
+- [Anthropic devcontainer features](https://github.com/anthropics/devcontainer-features): the feature that installs Claude Code in a devcontainer.
+- [Dev Container CLI](https://github.com/devcontainers/cli) and the [Dev Container specification](https://containers.dev/).
+- [pstack](https://github.com/michael-denyer/pstack-claude): poteto's agent workflows, used as skills for the planner and the builder.
+- [superpowers](https://github.com/obra/superpowers): obra's skills for test-driven development and systematic debugging.
+- [GitHub App manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest): how `autopilot app create` makes your App in one click.
+- [1Password service accounts](https://developer.1password.com/docs/service-accounts/): how a host reads its secrets.
+- [Semgrep](https://github.com/semgrep/semgrep), [Grype](https://github.com/anchore/grype) and [TruffleHog](https://github.com/trufflesecurity/trufflehog): the scanners of the `sast`, `deps-scan` and `secrets-scan` checks.
