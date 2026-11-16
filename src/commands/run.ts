@@ -15,12 +15,7 @@ import type { Repo } from "../core/repo.ts";
 import { refusedSecrets } from "../core/repo-secrets.ts";
 import { isApproved, latestSpec, type Comment, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
 import { isOwnerTick, isVouched, trustedSpec, trustedThread, type TrustedSpec } from "../core/trust.ts";
-import { labelsFor, migrateLabels, STATES, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
-
-const LABELS = [
-  { name: TRIGGER_LABEL, color: "000000", description: "autopilot: build this issue" },
-  ...Object.entries(STATES).map(([state, label]) => ({ name: `${TRIGGER_LABEL}:${state}`, ...label })),
-];
+import { LABELS, labelsFor, migrateLabels, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
 
 const CLAIM_SETTLE_MS = 3000;
 

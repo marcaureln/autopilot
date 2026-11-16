@@ -53,6 +53,16 @@ Each repo has a `.github/autopilot.json` ([full example](examples/autopilot.json
 }
 ```
 
+### Onboarding
+
+`autopilot init` onboards a repo in one pull request that you review and merge. Run it in a checkout of the repo, or pass `--repo <owner>/<repo>`. It needs `gh`, and Docker for the last two steps.
+
+1. Detects the stack from the lockfiles (Node with npm, pnpm or yarn today) and writes `.github/autopilot.json` and `.devcontainer/` from the stack pack in `stacks/`. An existing config keeps its values.
+2. Creates the five `autopilot` labels. With `AUTOPILOT_HOST` set, allows the repo on the host, which prints the App install page if the App is not installed there.
+3. Runs an agent in a container (the Claude token comes from your 1Password) to correct the check commands and draft `AGENTS.md`. `--no-agent` skips it.
+4. Runs the checks once on the default branch. Existing `lint` and `types` errors go to `.github/autopilot-baseline.json`, so only new errors fail.
+5. Opens the pull request from your own account, with what to curate and the failing agent-readiness items.
+
 ### Secrets
 
 A test that needs a key gets it from 1Password. Run these in a checkout of the repo, with your own 1Password sign-in:
@@ -66,7 +76,7 @@ autopilot secrets rm STRIPE_KEY
 
 Each value goes to the `autopilot` vault, in one item per repo (`<owner>_<repo>`). The command adds the reference to `.github/autopilot.json`; commit it. A value is never a command argument, so it stays out of the shell history. A value must be on one line.
 
-The host reads only the references to the repo's own item. It gives the values to the `lint`, `types` and `test` checks, never to the scanners, the install step or the agent. A check that gets secrets shows only if it passed: autopilot keeps its output out of statuses, comments and the builder prompt.
+The host reads only the references to the repo's own item. It gives the values to the checks that run a command from `verify.commands` (such as `lint`, `types` and `test`), never to the scanners, the install step or the agent. A check that gets secrets shows only if it passed: autopilot keeps its output out of statuses, comments and the builder prompt.
 
 The trust boundary is the same as in CI: whoever can change the code of a repo can read the secrets that the repo gets, for example from a test. Hiding the output only prevents accidents. Give a repo only test-mode or low-value keys.
 

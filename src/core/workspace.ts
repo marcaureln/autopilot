@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, writeSync } from "node:fs";
+import { join, posix, sep } from "node:path";
 import { promisify } from "node:util";
 import type { GitHub } from "./github.ts";
 import { parseSource } from "./host.ts";
@@ -64,6 +64,32 @@ export function readAgentFile(workdir: string, path: string, maxBytes: number): 
     if (!stat.isFile()) throw new Error(`${path} is not a regular file`);
     if (stat.size > maxBytes) throw new Error(`${path} is larger than ${maxBytes} bytes`);
     return readFileSync(fd, "utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+export function writeRepoFile(root: string, path: string, text: string): void {
+  const parts = path.split("/");
+  if (path.startsWith("/") || posix.normalize(path) !== path || parts.some((part) => part === "" || part === "." || part === "..")) {
+    throw new Error(`${path} is not a plain relative path`);
+  }
+  let current = root;
+  for (const [index, part] of parts.entries()) {
+    current = join(current, part);
+    const shown = parts.slice(0, index + 1).join("/");
+    const stat = lstatSync(current, { throwIfNoEntry: false });
+    if (stat?.isSymbolicLink()) throw new Error(`${shown} is a symlink`);
+    if (index === parts.length - 1) break;
+    if (!stat) mkdirSync(current);
+    else if (!stat.isDirectory()) throw new Error(`${shown} is not a directory`);
+  }
+  const parent = realpathSync(join(current, ".."));
+  const realRoot = realpathSync(root);
+  if (parent !== realRoot && !parent.startsWith(`${realRoot}${sep}`)) throw new Error(`${path} leads outside the checkout`);
+  const fd = openSync(current, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o644);
+  try {
+    writeSync(fd, text);
   } finally {
     closeSync(fd);
   }

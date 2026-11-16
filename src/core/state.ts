@@ -8,6 +8,11 @@ export const STATES = {
 } as const;
 
 export type State = keyof typeof STATES;
+
+export const LABELS = [
+  { name: TRIGGER_LABEL, color: "000000", description: "autopilot: build this issue" },
+  ...Object.entries(STATES).map(([state, label]) => ({ name: `${TRIGGER_LABEL}:${state}`, ...label })),
+];
 export type IssueState = State | "new";
 
 const TRANSITIONS = {

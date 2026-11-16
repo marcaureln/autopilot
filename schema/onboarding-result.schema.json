@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/onboarding-result.schema.json",
+  "title": "Autopilot onboarding result",
+  "description": "What the onboarding agent writes to /work/.autopilot/result.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commands", "agents_md", "notes"],
+  "properties": {
+    "commands": {
+      "description": "The real shell command for each check that the repo supports. Leave out a check the repo cannot run.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lint": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "types": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "test": { "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    },
+    "agents_md": {
+      "description": "The full text of AGENTS.md.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "notes": {
+      "description": "Short items that a person must check or fix before agents work on the repo, such as a missing linter or test setup.",
+      "type": "array",
+      "maxItems": 10,
+      "items": { "type": "string", "minLength": 1, "maxLength": 300 }
+    }
+  }
+}

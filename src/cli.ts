@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { allow, allowed, deny } from "./commands/allow.ts";
 import { forward, hostSetup } from "./commands/client.ts";
+import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
 import { parseSecretsCommand, secrets } from "./commands/secrets.ts";
@@ -31,6 +32,9 @@ Commands that run on the client:
   host setup --host <ssh-target> [--owner <login> --app-id <id>] [--version <tag> | --from-checkout]
                               Push the 1Password service account token, write host.json if it is
                               missing, and install a release (or the current commit)
+  init [--no-agent]           Onboard the repo: scaffold the stack pack, create the labels, let an agent
+                              set the commands and draft AGENTS.md, run the checks once, and open a PR.
+                              With a host, also allow the repo there
   secrets set <NAME>          Save a secret in 1Password (hidden prompt, or stdin) and add its reference
                               to .github/autopilot.json in this checkout
   secrets set --from-env <file>
@@ -60,6 +64,7 @@ const { values, positionals } = parseArgs({
     repo: { type: "string" },
     backend: { type: "string", default: "op" },
     "from-env": { type: "string" },
+    "no-agent": { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 });
@@ -133,6 +138,9 @@ async function main(): Promise<void> {
       break;
     case "update":
       await update(values.config, values.version);
+      break;
+    case "init":
+      await init({ repo: targetRepo(), host: target, agent: !values["no-agent"] });
       break;
     case "secrets": {
       if (values.backend !== "op") throw new Error(`--backend ${values.backend} is not supported: the only backend is op (1Password)`);

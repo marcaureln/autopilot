@@ -6,7 +6,7 @@ import { installRelease, latestRelease, must, parseTag, sshShell, type Release, 
 const CLI_ROOT = new URL("../../", import.meta.url).pathname;
 const HOST_SCHEMA = "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/host.schema.json";
 const OP_TOKEN_REFERENCE = "op://autopilot/op-service-account-token/password";
-const SECRETS: Host["secrets"] = {
+export const HOST_SECRETS: Host["secrets"] = {
   app_key: "op://autopilot/github-app-private-key/app.pem",
   claude_token: "op://autopilot/claude-token/credential",
 };
@@ -47,7 +47,7 @@ export function initialHostFile({ name, owner, appId }: { name: string; owner: s
     $schema: HOST_SCHEMA,
     name,
     app_id: appId,
-    secrets: SECRETS,
+    secrets: HOST_SECRETS,
     owners: [owner],
     allow: [],
     docker: "rootless",
