@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: This skill should be used to set up and use autopilot, a tool that runs coding agents on your own machine to work on GitHub issues. Use it when the user asks to "set up autopilot", "install autopilot", "add a host", "onboard this repo to autopilot", "have autopilot build this", "write an issue for autopilot", "approve the autopilot spec", "answer autopilot's questions", "review the autopilot PR", "why is my autopilot issue blocked", "retry the autopilot issue", "stop autopilot on this issue", "move the issue to another host", "add a secret for autopilot", "allow a repo", or "read the autopilot logs".
+description: This skill should be used to set up and use autopilot, a tool that runs coding agents on your own machine to work on GitHub issues. Use it when the user asks to "set up autopilot", "install autopilot", "add a host", "onboard this repo to autopilot", "have autopilot build this", "write an issue for autopilot", "approve the autopilot spec", "answer autopilot's questions", "review the autopilot PR", "why is my autopilot issue blocked", "retry the autopilot issue", "stop autopilot on this issue", "move the issue to another host", "add a secret for autopilot", "allow a repo", "read the autopilot logs", "a check fails only in autopilot", or "debug the dev container".
 ---
 
 # autopilot
@@ -147,6 +147,27 @@ To ask for changes, do not comment on the pull request: autopilot does not read 
    - "Pull request #N was closed without a merge": comment on the issue to change the plan, then retry.
    - The `secrets` "do not point to this repo's own 1Password item": run `autopilot secrets set <NAME>` again for each one.
 3. Retry: an owner removes the label. `gh issue edit <n> --repo example-org/app --remove-label autopilot:blocked`. Checks and pull requests from before the retry do not count.
+
+### Debug the dev container
+
+Every job runs in the repo's `.devcontainer/`: the install (`postCreateCommand` and the other lifecycle commands), the checks and the builder. When a check fails only in autopilot, or the onboarding pull request shows a check that fails on the default branch, do these steps:
+
+1. Read the "Environment" and "Checks on the default branch" sections of the onboarding pull request, or the last bot comment of the issue. Then search `autopilot logs` for `owner/repo#n`.
+2. Look at `.devcontainer/` on the default branch. `autopilot init` keeps an existing `.devcontainer/` and does not change it. A repo onboarded by an older autopilot has the file of a stack pack, for example `{"name": "node", "image": "node:26.13.1", "workspaceFolder": "/work"}`. It can be out of date: an old image, no `postCreateCommand`, no services. To let the init agent write a new one, delete `.devcontainer/` on the default branch, then run `autopilot init` again. Or fix the file yourself.
+3. Start the same environment on your machine. Use the Dev Container CLI version that autopilot pins in its `package.json`:
+
+   ```sh
+   npx @devcontainers/cli@0.90.0 up --workspace-folder .
+   npx @devcontainers/cli@0.90.0 exec --workspace-folder . sh -c '<the check command>'
+   ```
+
+4. Remember what autopilot adds, because a local run does not have it: the user is `root`, the repo is mounted at `workspaceFolder`, memory, CPU and process caps apply, and the network is cut after the install. Only the compose services stay reachable, by their service name. Common causes:
+   - A command is not found: install the tool in the image, with a feature, or in `postCreateCommand`.
+   - A check downloads something: it fails with no network. Move the download into `postCreateCommand`.
+   - A file is not found: the check runs in `workspaceFolder`. Check that the path is relative to the repo root.
+   - A test cannot reach its database: add the service to the compose file of `.devcontainer/`, with an exact image tag, and use the service name as the host name.
+   - A test needs a secret: add it with `autopilot secrets set <NAME>`. The check commands get the values of `secrets` in `.github/autopilot.json`; the install does not.
+5. Fix `.devcontainer/` or the check commands in a pull request and merge it. Then run `autopilot init` again: it runs the checks again, writes a new baseline, and updates the same onboarding pull request. For a blocked issue, retry it.
 
 ### Stop a job
 

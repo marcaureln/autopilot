@@ -112,6 +112,8 @@ An agent writes `.devcontainer/` (only if the repo has none), the check commands
 
 Ask the user for skills and notes before you run it. `--skill <source>` (repeatable, `github.com/<owner>/<repo>[//<path>][#<ref>]` or a host path) gives the agent a skill and adds it to `skills.planner` and `skills.builder`. `--notes <file>` adds the user's own instructions to the prompt, for example "the tests need Postgres 18".
 
+`init` keeps an existing `.devcontainer/` and does not change it, even when it is out of date (for example the file of an older autopilot stack pack). If a check fails in the pull request but passes on the user's machine, see "Debug the dev container" in SKILL.md.
+
 A config from an older autopilot has a `stack` field. autopilot then stops each issue with an invalid config: run `autopilot init` again.
 
 Read the pull request with the user, then merge it. Its "Environment" section names the image, the services, the install, and why. autopilot needs `.github/autopilot.json` on the default branch. `init` sets `"merge": "manual"`, so every pull request of autopilot waits for a review. Change it to `"auto"` to let Gate 2 merge low-risk pull requests.
