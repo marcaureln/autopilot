@@ -141,4 +141,28 @@ fi
 systemctl restart autopilot
 printf '{"at":"%s","event":"host.updated","release":"%s","by":"%s"}\n' "$(date -u +%FT%TZ)" "$release" "${SUDO_USER:-root}" | systemd-cat --identifier autopilot-audit
 
+step "cleanup"
+prune_releases "$release" "$tools" "$user" /opt/autopilot-*
+home=$(getent passwd "$user" | cut -d: -f6)
+# Setup before v0.1.0 gave $user its own mise. $user can put links in its home, so $user removes it,
+# never root. Safe to remove once every host has run this setup.
+if [ -d "$home/.local/share/mise" ] && ! pgrep -u "$user" -f "$home/.local/share/mise" >/dev/null; then
+  echo "INFO: removing the mise of $user, which nothing uses"
+  sudo -u "$user" rm -rf -- "$home/.local/share/mise" "$home/.local/state/mise" "$home/.cache/mise"
+fi
+# Copies that migrations before v0.1.0 left. A copy for the same App has nothing that host.json needs,
+# but it can name accounts that the allowlist dropped, so setup prints them.
+for copy in /etc/autopilot/host.json.before-allow /etc/autopilot/host.json.pre-3c; do
+  [ -f "$copy" ] && [ -f /etc/autopilot/host.json ] || continue
+  if dropped=$("$node" -e '
+    const [old, now] = process.argv.slice(1).map((path) => JSON.parse(require("node:fs").readFileSync(path, "utf8")));
+    if (old.app_id !== now.app_id) process.exit(1);
+    console.log([...(old.installations ?? []), ...(old.allow ?? [])].filter((entry) => !now.allow.includes(entry)).join(", "));
+  ' "$copy" /etc/autopilot/host.json); then
+    [ -z "$dropped" ] || echo "INFO: $copy allowed $dropped; to keep one, run autopilot allow <entry>"
+    echo "INFO: removing $copy"
+    rm -f "$copy"
+  fi
+done
+
 step "done: $(systemctl is-active autopilot)"
