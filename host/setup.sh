@@ -38,6 +38,14 @@ if [ "${#missing[@]}" -gt 0 ]; then
   exit 1
 fi
 
+# The apt keys of mise and op come armored: gpg turns them into keyrings. Minimal images have no gpg.
+if { ! command -v mise || ! command -v op; } >/dev/null && ! command -v gpg >/dev/null; then
+  step "gnupg"
+  echo "INFO: gpg is missing, installing the gnupg package to add the apt keys of mise and op"
+  apt-get update -q
+  apt-get install -y -q gnupg
+fi
+
 if ! command -v mise >/dev/null; then
   step "mise"
   echo "INFO: mise is missing, installing it from its signed apt repository (https://mise.jdx.dev/installing-mise.html#apt)"
