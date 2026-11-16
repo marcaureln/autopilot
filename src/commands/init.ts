@@ -18,7 +18,7 @@ import { LABELS } from "../core/state.ts";
 import { readAgentFile, writeRepoFile } from "../core/workspace.ts";
 import { forward, HOST_SECRETS } from "./client.ts";
 
-const BRANCH = "autopilot/onboarding";
+export const BRANCH = "autopilot/onboarding";
 const LIMITS = { memory: "6g", cpus: 2, pids: 1024 };
 const AGENT_TIMEOUT_MINUTES = 20;
 const CHECKS_TIMEOUT_MS = 10 * 60 * 1000;

@@ -7,6 +7,7 @@ import type { Audit } from "../core/audit.ts";
 import { CONFIG_PATH } from "../core/config.ts";
 import { createGitHub } from "../core/github.ts";
 import { parseHost, type Host } from "../core/host.ts";
+import { ownPull, type PullListing } from "../core/onboarding.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret } from "../core/secrets.ts";
 import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type SetupConfig } from "../core/setup.ts";
@@ -14,7 +15,7 @@ import { alias, aliasFile, shellOf, withoutAlias } from "./alias.ts";
 import { appCreate, appKeyStored, githubLogin } from "./app.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, CLAUDE_TOKEN_ITEM, forward, HOST_SECRETS, hostSetup, OP_TOKEN_ITEM } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
-import { init } from "./init.ts";
+import { BRANCH as ONBOARDING_BRANCH, init } from "./init.ts";
 import { op } from "./secrets.ts";
 
 export type SetupOptions = { configFile?: string; yes: boolean; host?: string; version?: string; fromCheckout: boolean };
@@ -261,6 +262,14 @@ function onboarded(repo: string): boolean {
   return spawnSync("gh", ["api", `repos/${repo}/contents/${CONFIG_PATH}`, "--silent"], { stdio: "ignore" }).status === 0;
 }
 
+// init rewrites the branch and the pull request body on every run, so an open pull request means the repo waits for a merge.
+function onboardingPullOpen(repo: string, owner: string, name: string): boolean {
+  const listing = spawnSync("gh", ["pr", "list", "--repo", repo, "--head", ONBOARDING_BRANCH, "--state", "open", "--json", "url,isCrossRepository,headRepositoryOwner,headRepository"], { encoding: "utf8" });
+  if (listing.status !== 0) throw new Error(`gh could not list the pull requests of ${repo}: ${listing.stderr.trim()}`);
+  const pulls: PullListing[] = JSON.parse(listing.stdout);
+  return ownPull(pulls, { owner, name }) !== undefined;
+}
+
 async function chooseRepos(login: string): Promise<string[]> {
   if (!(await answer(confirm({ message: "Onboard a repo now? autopilot init opens a pull request on it." })))) return [];
   const listing = spawnSync("gh", ["repo", "list", login, "--limit", "100", "--no-archived", "--json", "nameWithOwner", "--jq", ".[].nameWithOwner"], { encoding: "utf8" });
@@ -283,6 +292,10 @@ async function onboard(options: SetupOptions, config: SetupConfig, target: strin
       continue;
     }
     const [owner = "", name = ""] = repo.split("/");
+    if (onboardingPullOpen(repo, owner, name)) {
+      record(`Onboard ${repo}`, "already done", "onboarding PR open");
+      continue;
+    }
     await init({ repo: { owner, name }, host: target, agent: true });
     record(`Onboard ${repo}`, "done", "merge the onboarding pull request");
   }
