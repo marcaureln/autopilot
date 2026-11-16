@@ -84,12 +84,16 @@ export async function appCreate(options: { keyOut?: string }): Promise<CreatedAp
   const created = Promise.withResolvers<CreatedAppSummary>();
   let origin = "";
   let exchanging = false;
+  let startServed = false;
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     // A page from another site can reach 127.0.0.1 through DNS rebinding, but it cannot send this Host header.
     if (request.method !== "GET" || `http://${request.headers.host}` !== origin) return send(response, 404, "");
     const url = new URL(request.url ?? "/", origin);
     if (url.pathname === "/") {
+      // The page carries the state, so only the first request gets it.
+      if (startServed) return send(response, 404, "");
+      startServed = true;
       const manifest = appManifest(name, REPO_URL, `${origin}/callback`);
       return send(response, 200, appStartPage({ action: `https://github.com/settings/apps/new?state=${state}`, manifest }));
     }
