@@ -15,7 +15,7 @@ import type { Repo } from "../core/repo.ts";
 import { refusedSecrets } from "../core/repo-secrets.ts";
 import { isApproved, latestSpec, type Comment, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
 import { isOwnerTick, isVouched, trustedSpec, trustedThread, type TrustedSpec } from "../core/trust.ts";
-import { LABELS, labelsFor, migrateLabels, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
+import { doneLabels, LABELS, labelsFor, migrateLabels, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
 
 const CLAIM_SETTLE_MS = 3000;
 
@@ -414,9 +414,16 @@ export async function runOnce(loop: Loop, state = loopState()): Promise<void> {
     const repos = entry.repo ? [{ owner: entry.owner, name: entry.repo }] : await github.listRepos(installationId, entry.owner);
     for (const repo of repos) {
       const repoGitHub = github.repo(installationId, repo);
-      const issues = await repoGitHub.listLabeledIssues(TRIGGER_LABEL);
-      if (issues.length === 0) continue;
       const repoKey = `${repo.owner}/${repo.name}`;
+      for (const closed of await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "closed")) {
+        const key = `${repoKey}#${closed.number}`;
+        await repoGitHub.setLabels(closed.number, doneLabels(closed.labels)).then(
+          () => log(key, `${key}: closed, autopilot labels removed`),
+          (error: unknown) => log(key, `${key}: error: ${messageOf(error)}`),
+        );
+      }
+      const issues = await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "open");
+      if (issues.length === 0) continue;
       if (!state.labelsReady.has(repoKey)) {
         await repoGitHub.ensureLabels(LABELS);
         state.labelsReady.add(repoKey);

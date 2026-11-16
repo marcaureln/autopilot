@@ -64,6 +64,11 @@ export function labelsFor(labels: string[], state: State): string[] {
   return [...labels.filter((label) => stateOfLabel(label) === undefined), stateLabel(state)];
 }
 
+// A closed issue has no job left, so it keeps none of the autopilot labels.
+export function doneLabels(labels: string[]): string[] {
+  return labels.filter((label) => label !== TRIGGER_LABEL && !label.startsWith(`${TRIGGER_LABEL}:`));
+}
+
 export function migrateLabels(labels: string[]): string[] | undefined {
   if (!labels.some((label) => Object.hasOwn(LEGACY, suffix(label)))) return undefined;
   const mapped = labels.map((label) => {

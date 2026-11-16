@@ -9,7 +9,7 @@ function unused(): never {
 
 function repoWith(issues: Awaited<ReturnType<RepoGitHub["listLabeledIssues"]>>): RepoGitHub {
   return {
-    listLabeledIssues: async () => issues,
+    listLabeledIssues: async (_, state) => (state === "open" ? issues : []),
     lastLabeled: unused,
     listComments: unused,
     postComment: unused,

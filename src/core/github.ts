@@ -17,7 +17,7 @@ export type Comparison = { behind: number; ahead: number; changes: string[] };
 export type LabelSpec = { name: string; color: string; description: string };
 
 export type RepoGitHub = {
-  listLabeledIssues(label: string): Promise<Issue[]>;
+  listLabeledIssues(label: string, state: "open" | "closed"): Promise<Issue[]>;
   lastLabeled(issue: number, label: string): Promise<{ actor: string; at: string } | undefined>;
   listComments(issue: number): Promise<Comment[]>;
   postComment(issue: number, body: string): Promise<void>;
@@ -126,8 +126,8 @@ type IssueProvenance = {
 function repoGitHub(octokit: Octokit, installationId: number, { owner, name: repo }: Repo, audit: Audit): RepoGitHub {
   const issueParams = (issue: number) => ({ owner, repo, issue_number: issue });
   return {
-    async listLabeledIssues(label) {
-      const issues = await octokit.paginate(octokit.issues.listForRepo, { owner, repo, labels: label, state: "open", per_page: 100 });
+    async listLabeledIssues(label, state) {
+      const issues = await octokit.paginate(octokit.issues.listForRepo, { owner, repo, labels: label, state, per_page: 100 });
       // The issues API also returns pull requests.
       return issues
         .filter((issue) => !issue.pull_request)

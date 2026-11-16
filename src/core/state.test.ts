@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { labelsFor, migrateLabels, stateOf, transition, type Event, type IssueState } from "./state.ts";
+import { doneLabels, labelsFor, migrateLabels, stateOf, transition, type Event, type IssueState } from "./state.ts";
 
 const stateCases: { labels: string[]; expected: IssueState | "ambiguous" }[] = [
   { labels: ["autopilot"], expected: "new" },
@@ -59,5 +59,18 @@ const migrateCases: { labels: string[]; expected: string[] | undefined }[] = [
 for (const { labels, expected } of migrateCases) {
   test(`migrate [${labels.join(", ")}] -> ${expected ? `[${expected.join(", ")}]` : "unchanged"}`, () => {
     assert.deepEqual(migrateLabels(labels), expected);
+  });
+}
+
+const done: { labels: string[]; expected: string[] }[] = [
+  { labels: ["autopilot", "autopilot:working"], expected: [] },
+  { labels: ["bug", "autopilot", "autopilot:blocked"], expected: ["bug"] },
+  { labels: ["autopilot", "autopilot:host:pi", "docs"], expected: ["docs"] },
+  { labels: ["autopilot-docs", "autopilot"], expected: ["autopilot-docs"] },
+];
+
+for (const { labels, expected } of done) {
+  test(`doneLabels drops the autopilot labels of ${labels.join(", ")}`, () => {
+    assert.deepEqual(doneLabels(labels), expected);
   });
 }

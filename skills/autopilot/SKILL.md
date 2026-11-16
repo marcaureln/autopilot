@@ -128,7 +128,7 @@ gh pr review <pr> --repo example-org/app --approve
 gh pr merge <pr> --repo example-org/app --squash --delete-branch
 ```
 
-The pull request body has `Fixes #<n>`, so the merge closes the issue.
+The pull request body has `Fixes #<n>`, so the merge closes the issue. At its next loop, the host removes the autopilot labels from a closed issue.
 
 To ask for changes, do not comment on the pull request: autopilot does not read pull request comments. Close the pull request, then write the correction as a comment on the issue. The host labels the issue `autopilot:blocked` because the pull request closed without a merge. Remove `autopilot:blocked`, and the planner writes a new spec that uses the comment.
 
