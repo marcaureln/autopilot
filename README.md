@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center"><b>A simple, self-hosted software factory.</b><br>Label a GitHub issue. Get a merged pull request.</p>
+<p align="center">Runs coding agents on your own machine to work on GitHub issues.</p>
 
 autopilot aims to stay small: one process, no server, no queue, no database. GitHub is the only interface and the only state. It is also agnostic: the agent harness, the models, the verification mode and the host are each one config field.
 

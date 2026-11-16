@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: This skill should be used to set up and use autopilot, a self-hosted tool that turns a GitHub issue with the `autopilot` label into a merged pull request. Use it when the user asks to "set up autopilot", "install autopilot", "add a host", "onboard this repo to autopilot", "have autopilot build this", "write an issue for autopilot", "approve the autopilot spec", "answer autopilot's questions", "review the autopilot PR", "why is my autopilot issue blocked", "retry the autopilot issue", "stop autopilot on this issue", "move the issue to another host", "add a secret for autopilot", "allow a repo", or "read the autopilot logs".
+description: This skill should be used to set up and use autopilot, a tool that runs coding agents on your own machine to work on GitHub issues. Use it when the user asks to "set up autopilot", "install autopilot", "add a host", "onboard this repo to autopilot", "have autopilot build this", "write an issue for autopilot", "approve the autopilot spec", "answer autopilot's questions", "review the autopilot PR", "why is my autopilot issue blocked", "retry the autopilot issue", "stop autopilot on this issue", "move the issue to another host", "add a secret for autopilot", "allow a repo", or "read the autopilot logs".
 ---
 
 # autopilot
