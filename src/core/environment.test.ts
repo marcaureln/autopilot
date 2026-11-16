@@ -102,6 +102,8 @@ function fakeDevcontainer(configuration: Record<string, unknown>, services: Reco
 const startCases: { name: string; configuration: Record<string, unknown>; services: Record<string, Record<string, unknown>>; refused: RegExp | undefined }[] = [
   { name: "an exact image starts", configuration: { image: "node:26.13.1" }, services: {}, refused: undefined },
   { name: "runArgs are refused", configuration: { image: "node:26.13.1", runArgs: ["--privileged"] }, services: {}, refused: /runArgs/ },
+  { name: "a build context outside the repo is refused", configuration: { build: { dockerfile: "Dockerfile", context: "../.." } }, services: {}, refused: /build context/ },
+  { name: "an absolute build context is refused", configuration: { build: { dockerfile: "Dockerfile", context: "/" } }, services: {}, refused: /build context/ },
   {
     name: "a dev container that shares the network of a service is refused",
     configuration: { dockerComposeFile: "compose.yaml", service: "app" },

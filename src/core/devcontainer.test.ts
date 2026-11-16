@@ -36,6 +36,8 @@ const refused: { name: string; config: Record<string, unknown>; match: RegExp }[
   { name: "workspaceMount", config: { workspaceMount: "source=/,target=/workspace,type=bind" }, match: /workspaceMount/ },
   { name: "appPort", config: { appPort: 3000 }, match: /appPort/ },
   { name: "a host environment variable", config: { containerEnv: { TOKEN: "${localEnv:GITHUB_TOKEN}" } }, match: /localEnv/ },
+  { name: "a host environment variable with env", config: { containerEnv: { TOKEN: "${env:GITHUB_TOKEN}" } }, match: /TOKEN/ },
+  { name: "build options", config: { build: { dockerfile: "Dockerfile", options: ["--network=host"] } }, match: /build\.options/ },
   { name: "an image with no version", config: { image: "node" }, match: /node/ },
 ];
 
@@ -52,6 +54,8 @@ test("devcontainer: an empty list or false is not a problem", () => {
 });
 
 const workspace = "/work/repo";
+// /work/repo/link is a symlink to /, and /work/repo/missing does not exist.
+const resolve = (path: string) => (path.startsWith("/work/repo/missing") ? undefined : path.replace(/^\/work\/repo\/link(\/|$)/, "/"));
 
 test("compose: an app with the workspace mount and a pinned service passes", () => {
   const compose = {
@@ -60,7 +64,7 @@ test("compose: an app with the workspace mount and a pinned service passes", () 
       redis: { image: "redis:8.4", volumes: [{ type: "volume", source: "data", target: "/data" }] },
     },
   };
-  assert.deepEqual(composeProblems(compose, workspace), []);
+  assert.deepEqual(composeProblems(compose, workspace, resolve), []);
 });
 
 const composeRefused: { name: string; service: Record<string, unknown>; match: RegExp }[] = [
@@ -76,19 +80,60 @@ const composeRefused: { name: string; service: Record<string, unknown>; match: R
   { name: "a bind mount outside the workspace", service: { volumes: [{ type: "bind", source: "/var/run/docker.sock", target: "/var/run/docker.sock" }] }, match: /docker\.sock/ },
   { name: "a bind mount next to the workspace", service: { volumes: [{ type: "bind", source: "/work/repo-other", target: "/x" }] }, match: /repo-other/ },
   { name: "an image with no version", service: { image: "postgres" }, match: /postgres/ },
+  { name: "a bind mount through a symlink to the host", service: { volumes: [{ type: "bind", source: "/work/repo/link/etc", target: "/x" }] }, match: /link\/etc/ },
+  { name: "a bind mount that does not exist", service: { volumes: [{ type: "bind", source: "/work/repo/missing", target: "/x" }] }, match: /missing/ },
+  { name: "volumes_from", service: { volumes_from: ["container:other"] }, match: /volumes_from/ },
+  { name: "the network of another container", service: { network_mode: "container:other" }, match: /network_mode: container:other/ },
+  { name: "the pid namespace of another container", service: { pid: "container:other" }, match: /pid/ },
+  { name: "host uts", service: { uts: "host" }, match: /uts/ },
+  { name: "a runtime", service: { runtime: "runc" }, match: /runtime/ },
+  { name: "cgroup_parent", service: { cgroup_parent: "/" }, match: /cgroup_parent/ },
+  { name: "device_cgroup_rules", service: { device_cgroup_rules: ["c 1:3 mr"] }, match: /device_cgroup_rules/ },
+  { name: "an env_file outside the repo", service: { env_file: [{ path: "/etc/autopilot/env", required: true }] }, match: /env_file/ },
+  { name: "a build context outside the repo", service: { build: { context: "/home/user" } }, match: /build context/ },
+  { name: "a build context through a symlink", service: { build: { context: "/work/repo/link" } }, match: /build context/ },
+  { name: "a build with the ssh agent", service: { build: { context: "/work/repo", ssh: ["default"] } }, match: /build\.ssh/ },
+  { name: "a build with more contexts", service: { build: { context: "/work/repo", additional_contexts: { host: "/" } } }, match: /additional_contexts/ },
+  { name: "a build on the host network", service: { build: { context: "/work/repo", network: "host" } }, match: /build\.network/ },
 ];
 
 for (const { name, service, match } of composeRefused) {
   test(`compose: ${name} is refused`, () => {
-    const problems = composeProblems({ services: { db: { image: "postgres:18.1", ...service } } }, workspace);
+    const problems = composeProblems({ services: { db: { image: "postgres:18.1", ...service } } }, workspace, resolve);
     assert.equal(problems.length, 1, problems.join("; "));
     assert.match(problems[0] ?? "", match);
     assert.match(problems[0] ?? "", /db/);
   });
 }
 
+test("compose: a service in the network of another service of the project passes", () => {
+  assert.deepEqual(composeProblems({ services: { app: { image: "node:26.13.1" }, sidecar: { image: "redis:8.4", network_mode: "service:app", env_file: ["/work/repo/.env", { path: "/work/repo/missing.env", required: false }] } } }, workspace, resolve), []);
+});
+
+const topLevel: { name: string; compose: Record<string, unknown>; match: RegExp | undefined }[] = [
+  { name: "a plain named volume", compose: { volumes: { data: { name: "app_data" } } }, match: undefined },
+  { name: "a volume with no fields", compose: { volumes: { data: null } }, match: undefined },
+  { name: "a volume that binds a host path", compose: { volumes: { data: { driver: "local", driver_opts: { type: "none", o: "bind", device: "/" } } } }, match: /volume data/ },
+  { name: "an external volume", compose: { volumes: { data: { external: true } } }, match: /volume data/ },
+  { name: "a volume with another driver", compose: { volumes: { data: { driver: "sshfs" } } }, match: /volume data/ },
+  { name: "a secret file in the repo", compose: { secrets: { key: { file: "/work/repo/.devcontainer/key" } } }, match: undefined },
+  { name: "inline config content", compose: { configs: { conf: { content: "a=1" } } }, match: undefined },
+  { name: "a secret file outside the repo", compose: { secrets: { key: { file: "/home/user/.ssh/id_ed25519" } } }, match: /secrets key/ },
+  { name: "a secret from a host variable", compose: { secrets: { key: { environment: "HOME" } } }, match: /secrets key/ },
+  { name: "a config file through a symlink", compose: { configs: { conf: { file: "/work/repo/link/etc/shadow" } } }, match: /configs conf/ },
+];
+
+for (const { name, compose, match } of topLevel) {
+  test(`compose: ${name} ${match ? "is refused" : "passes"}`, () => {
+    const problems = composeProblems(compose, workspace, resolve);
+    if (!match) return assert.deepEqual(problems, []);
+    assert.equal(problems.length, 1, problems.join("; "));
+    assert.match(problems[0] ?? "", match);
+  });
+}
+
 test("compose: a service built from a Dockerfile needs no image", () => {
-  assert.deepEqual(composeProblems({ services: { app: { build: { context: "/work/repo/.devcontainer" } } } }, workspace), []);
+  assert.deepEqual(composeProblems({ services: { app: { build: { context: "/work/repo/.devcontainer" } } } }, workspace, resolve), []);
 });
 
 const dockerfiles: { name: string; text: string; problems: number }[] = [

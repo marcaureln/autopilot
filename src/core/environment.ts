@@ -1,7 +1,7 @@
 import { cpSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Audit } from "./audit.ts";
-import { composeProblems, devcontainerProblems, dockerfileProblems } from "./devcontainer.ts";
+import { composeProblems, devcontainerProblems, dockerfileProblems, type Resolve } from "./devcontainer.ts";
 import type { Devcontainer, Features } from "./devcontainer-cli.ts";
 import type { ContainerResult, Mount } from "./docker.ts";
 import type { Host } from "./host.ts";
@@ -106,6 +106,14 @@ function inside(path: string, root: string): string | undefined {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)) ? rel : undefined;
 }
 
+const resolvePath: Resolve = (path) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return undefined;
+  }
+};
+
 function readDockerfile(workspace: string, path: string, problems: string[]): void {
   const rel = inside(path, workspace);
   if (rel === undefined) return void problems.push(`the Dockerfile ${path} is outside the repo`);
@@ -145,7 +153,7 @@ export async function startEnvironment(options: EnvironmentOptions): Promise<Sta
     const outside = files.filter((file) => inside(file, workspace) === undefined);
     if (outside.length > 0) throw new EnvironmentRefused(outside.map((file) => `the compose file ${file} is outside the repo`));
     const compose = await devcontainer.composeConfig(files);
-    problems.push(...composeProblems(compose, workspace));
+    problems.push(...composeProblems(compose, workspace, resolvePath));
     composeServices = compose.services ?? {};
     const service = read.configuration.service;
     // The host cuts the network of the dev container for the checks, and it cannot cut a shared one.
@@ -155,14 +163,18 @@ export async function startEnvironment(options: EnvironmentOptions): Promise<Sta
       if (typeof build !== "object" || build === null) continue;
       if ("dockerfile_inline" in build && typeof build.dockerfile_inline === "string") problems.push(...dockerfileProblems(build.dockerfile_inline));
       else if ("context" in build && typeof build.context === "string") {
+        // composeProblems already refuses a context outside the repo.
+        if (inside(resolvePath(build.context) ?? "/", workspace) === undefined) continue;
         const dockerfile = "dockerfile" in build && typeof build.dockerfile === "string" ? build.dockerfile : "Dockerfile";
         readDockerfile(workspace, isAbsolute(dockerfile) ? dockerfile : join(build.context, dockerfile), problems);
       } else problems.push(`compose service ${name}: autopilot cannot read its build`);
     }
   }
   const build = read.configuration.build;
+  const context = typeof build === "object" && build !== null && "context" in build && typeof build.context === "string" ? resolve(configDir, build.context) : undefined;
+  if (context !== undefined && inside(resolvePath(context) ?? "/", workspace) === undefined) problems.push(`devcontainer.json: the build context ${context} is outside the repo`);
   const dockerfile = typeof build === "object" && build !== null && "dockerfile" in build ? build.dockerfile : read.configuration.dockerFile;
-  if (typeof dockerfile === "string") readDockerfile(workspace, join(configDir, dockerfile), problems);
+  if (typeof dockerfile === "string") readDockerfile(workspace, resolve(configDir, dockerfile), problems);
   if (problems.length > 0) throw new EnvironmentRefused(problems);
 
   const features: Features = claudeCodeVersion === undefined ? {} : { [`./${CLAUDE_FEATURE_DIR}`]: { version: claudeCodeVersion } };

@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import type { ComposeConfig } from "./devcontainer.ts";
 import { clientEnv, type ContainerResult } from "./docker.ts";
 
 const run = promisify(execFile);
@@ -26,7 +27,7 @@ export type UpOptions = { workspace: string; overrideConfig: string; idLabel: st
 
 export type Devcontainer = {
   readConfiguration(workspace: string, additionalFeatures: Features): Promise<Configuration>;
-  composeConfig(files: string[]): Promise<{ services?: Record<string, Record<string, unknown>> }>;
+  composeConfig(files: string[]): Promise<ComposeConfig>;
   // Builds, starts and runs the lifecycle commands (the install). `stdout` holds the result line.
   up(options: UpOptions): Promise<ContainerResult & { stdout: string }>;
   exec(containerId: string, command: string[], options: { env?: Record<string, string>; timeoutMs: number }): Promise<ContainerResult>;
@@ -97,8 +98,9 @@ export const cliDevcontainer: Devcontainer = {
     return { configuration: { ...configuration }, merged: { ...merged }, configFile: path };
   },
 
+  // --no-env-resolution keeps the env_file paths, so the guardrails can check them.
   async composeConfig(files) {
-    return JSON.parse(await docker(["compose", ...files.flatMap((file) => ["--file", file]), "config", "--format", "json"]));
+    return JSON.parse(await docker(["compose", ...files.flatMap((file) => ["--file", file]), "config", "--no-env-resolution", "--format", "json"]));
   },
 
   up({ workspace, overrideConfig, idLabel, additionalFeatures, timeoutMs }) {
