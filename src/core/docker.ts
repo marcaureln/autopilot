@@ -17,6 +17,8 @@ export type ContainerRun = {
   network: "none" | "bridge";
   // Never a secret: the docker run arguments are in the process list.
   env?: Record<string, string>;
+  // Only the names go into the arguments: docker reads each value from its own environment.
+  secrets?: Record<string, string>;
   limits: Host["limits"];
   timeoutMs: number;
   audit: Audit;
@@ -26,7 +28,15 @@ export type ContainerResult = { exit: number; timedOut: boolean; output: string 
 
 const OUTPUT_TAIL = 16_000;
 
+// A secret goes into the environment of the docker client, so it must not change where or how docker runs.
+export function isClientEnvName(name: string): boolean {
+  return /^(DOCKER_|BUILDX_|XDG_)/.test(name) || ["PATH", "HOME", "TMPDIR", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR"].includes(name);
+}
+
 export async function runContainer(job: ContainerRun): Promise<ContainerResult> {
+  const secretNames = Object.keys(job.secrets ?? {});
+  const clientNames = secretNames.filter(isClientEnvName);
+  if (clientNames.length > 0) throw new Error(`the secret names ${clientNames.join(", ")} are reserved for the docker client`);
   await run("docker", ["rm", "--force", job.name]).catch(() => undefined);
   const args = [
     "run",
@@ -48,6 +58,7 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
     "--security-opt",
     "no-new-privileges",
     ...Object.entries(job.env ?? {}).flatMap(([name, value]) => ["--env", `${name}=${value}`]),
+    ...secretNames.flatMap((name) => ["--env", name]),
     ...job.mounts.flatMap(({ source, target, readonly }) => ["--volume", `${source}:${target}${readonly ? ":ro" : ""}`]),
     ...(job.entrypoint === undefined ? [] : ["--entrypoint", job.entrypoint]),
     job.image,
@@ -59,11 +70,11 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
     name: job.name,
     image: job.image,
     mounts: job.mounts.map((mount) => `${mount.target}${mount.readonly ? ":ro" : ""}`),
-    env: Object.keys(job.env ?? {}),
+    env: [...Object.keys(job.env ?? {}), ...secretNames],
     caps: { memory: job.limits.memory, cpus: job.limits.cpus, pids: job.limits.pids, timeout_seconds: Math.round(job.timeoutMs / 1000), cap_drop: "ALL", network: job.network },
   });
   const started = Date.now();
-  const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...job.secrets } });
   let output = "";
   const append = (chunk: Buffer) => (output = (output + chunk.toString()).slice(-OUTPUT_TAIL));
   child.stdout.on("data", append);

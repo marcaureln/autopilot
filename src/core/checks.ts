@@ -9,6 +9,7 @@ import { containerName, ensurePulled, runContainer, type ContainerResult, type M
 import type { Host } from "./host.ts";
 import type { BotPull } from "./phase.ts";
 import type { Repo } from "./repo.ts";
+import { readSecret } from "./secrets.ts";
 import { shallowClone } from "./workspace.ts";
 
 const exec = promisify(execFile);
@@ -53,6 +54,14 @@ export function nodeInstallCommand(files: (name: string) => boolean): string | u
   return undefined;
 }
 
+// Check output goes to the builder prompt and to issue comments.
+export function redact(text: string, values: string[]): string {
+  return values
+    .filter((value) => value.length > 0)
+    .toSorted((a, b) => b.length - a.length)
+    .reduce((out, value) => out.replaceAll(value, "***"), text);
+}
+
 function resultOf(check: string, run: ContainerResult, failedAs: "failure" | "error" = "failure"): CheckResult {
   if (run.timedOut) return { check, state: "error", description: "timed out", output: run.output };
   if (run.exit === 0) return { check, state: "success", description: "passed", output: run.output };
@@ -75,8 +84,26 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
   const jobDir = mkdtempSync(join(tmpdir(), "autopilot-checks-"));
   const src = join(jobDir, "src");
   const name = (step: string) => containerName(repo.owner, repo.name, pull.number, step);
-  const container = (step: string, image: string, command: string[], mounts: Mount[], options: { network?: "none" | "bridge"; env?: Record<string, string>; entrypoint?: string } = {}) =>
-    runContainer({ name: name(step), image, command, mounts, network: options.network ?? "none", env: options.env, entrypoint: options.entrypoint, limits: host.limits, timeoutMs: deadline - Date.now(), audit });
+  const container = (
+    step: string,
+    image: string,
+    command: string[],
+    mounts: Mount[],
+    options: { network?: "none" | "bridge"; env?: Record<string, string>; secrets?: Record<string, string>; entrypoint?: string } = {},
+  ) =>
+    runContainer({
+      name: name(step),
+      image,
+      command,
+      mounts,
+      network: options.network ?? "none",
+      env: options.env,
+      secrets: options.secrets,
+      entrypoint: options.entrypoint,
+      limits: host.limits,
+      timeoutMs: deadline - Date.now(),
+      audit,
+    });
   // Each container gets its own copy, so one check cannot change what the next one sees.
   const copy = (step: string) => {
     const dir = join(jobDir, step);
@@ -92,6 +119,8 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
 
     let stackDir: string | undefined;
     let installFailure: CheckResult | undefined;
+    // Only the stack checks get the values: they run with no network, after the install.
+    let secrets: Record<string, string> = {};
     const results: CheckResult[] = [];
     for (const plan of planChecks(config.verify.required, config.verify.commands)) {
       if (Date.now() >= deadline) {
@@ -101,6 +130,9 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
       if (plan.kind === "missing") throw new Error(`verify.required lists ${plan.check}, which has no command`);
       if (plan.kind === "stack") {
         if (!stackDir) {
+          secrets = Object.fromEntries(
+            Object.entries(config.secrets).map(([key, reference]) => [key, readSecret(reference, `checks: ${repo.owner}/${repo.name}#${pull.number}`, audit)]),
+          );
           stackDir = copy("stack");
           await ensurePulled(IMAGES.node);
           const dir = stackDir;
@@ -114,14 +146,15 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
           results.push({ ...installFailure, check: plan.check });
           continue;
         }
-        const run = await container(plan.check, IMAGES.node, ["sh", "-c", `cd /work && ${plan.command}`], [{ source: stackDir, target: "/work", readonly: false }]);
+        const run = await container(plan.check, IMAGES.node, ["sh", "-c", `cd /work && ${plan.command}`], [{ source: stackDir, target: "/work", readonly: false }], { secrets });
         results.push(resultOf(plan.check, run));
         continue;
       }
       await ensurePulled(IMAGES[plan.scanner]);
       results.push(await SCAN[plan.scanner]({ dir: copy(plan.check), baseline: baseline.trim(), jobDir, container }));
     }
-    return results;
+    const values = Object.values(secrets);
+    return results.map((result) => ({ ...result, output: redact(result.output, values) }));
   } finally {
     rmSync(jobDir, { recursive: true, force: true });
   }
