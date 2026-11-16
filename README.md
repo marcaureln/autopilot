@@ -146,6 +146,10 @@ autopilot update                 # install the latest release, or --version vX.Y
 
 Several hosts can share an allowlist. Before a host acts on an issue, it posts a claim comment. The oldest claim wins, and the other hosts skip the issue. To move an issue to another host, delete its claim comment.
 
+## Agent skill
+
+[`skills/autopilot`](skills/autopilot/SKILL.md) teaches a coding agent to set up autopilot and to use it: write issues that autopilot can build, answer its questions, approve a spec, review its pull requests, and retry a blocked issue. Install it with `npx skills add marcaureln/autopilot`, or copy the folder to the skills folder of your agent.
+
 ## Development
 
 ```sh
