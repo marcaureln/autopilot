@@ -40,6 +40,19 @@ autopilot setup --config setup.json --yes
 
 The unattended mode cannot create the GitHub App, because GitHub needs a click in the browser. Run `autopilot app create` first, or pass the `app_id` of an App whose private key is in 1Password. Secret values are never in the file: setup reads the Claude token from 1Password, or from `CLAUDE_CODE_OAUTH_TOKEN` the first time.
 
+### Set up with a coding agent
+
+Paste this prompt into Claude Code, Codex or another coding agent:
+
+```text
+Set up autopilot for me (https://github.com/marcaureln/autopilot).
+Install its agent skill with `npx skills add marcaureln/autopilot`, then follow the "Set up" section of the skill.
+Ask me before each step that needs my browser, my 1Password sign-in or a secret value.
+Never read, print or write a secret value yourself.
+```
+
+The skill also teaches the agent to use autopilot day to day: write issues that autopilot can build, answer its questions, approve a spec and review its pull requests.
+
 ## How it works
 
 ```mermaid
