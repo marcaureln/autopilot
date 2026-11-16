@@ -68,6 +68,7 @@ export function initialHostFile({ name, owner, appId }: { name: string; owner: s
     allow: [],
     docker: "rootless",
     poll_interval_seconds: 60,
+    concurrency: 1,
     limits: { memory: "6g", cpus: 2, pids: 1024 },
   };
 }

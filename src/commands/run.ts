@@ -35,10 +35,12 @@ export type Loop = {
   check: (job: Omit<ChecksJob, "devcontainer" | "audit">) => Promise<CheckResult[]>;
   log: Log;
   audit: Audit;
-  // Host work that must not overlap a job, such as a scanner database update. It runs after each
-  // issue and each loop, so a long queue of issues does not hold it back.
-  idle: () => Promise<void>;
+  // Host work that must not overlap a job, such as a scanner database update. When it is due, the
+  // loop starts no new job, waits for the running ones, then runs it: a long queue cannot hold it back.
+  idle: Idle;
 };
+
+export type Idle = { due: () => boolean; run: () => Promise<void> };
 
 // GitHub statuses do not hold the check output, so it lives in memory. After a restart, a failed
 // check runs again to get its output back.
@@ -400,13 +402,16 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
   loop.log(key, `${key}: pull request #${pull.number} waits for a review (${gate.reasons.join("; ")})`);
 }
 
-export type LoopState = { labelsReady: Set<string>; outputs: Map<string, CheckResult[]> };
+// `running` holds one job per issue: an issue never runs twice at once, and at most
+// `host.concurrency` issues run together.
+export type LoopState = { labelsReady: Set<string>; outputs: Map<string, CheckResult[]>; running: Map<string, Promise<void>> };
 
 export function loopState(): LoopState {
-  return { labelsReady: new Set(), outputs: new Map() };
+  return { labelsReady: new Set(), outputs: new Map(), running: new Map() };
 }
 
-export async function runOnce(loop: Loop, state = loopState()): Promise<void> {
+// Starts the jobs and returns without waiting for them: see `drain`.
+export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
   const { github, host, log } = loop;
   for (const value of host.allow) {
     const entry = parseAllowEntry(value);
@@ -426,8 +431,8 @@ export async function runOnce(loop: Loop, state = loopState()): Promise<void> {
           (error: unknown) => log(key, `${key}: error: ${messageOf(error)}`),
         );
       }
-      const issues = await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "open");
-      if (issues.length === 0) continue;
+      const issues = (await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "open")).filter((issue) => !state.running.has(`${repoKey}#${issue.number}`));
+      if (issues.length === 0 || state.running.size >= host.concurrency) continue;
       if (!state.labelsReady.has(repoKey)) {
         await repoGitHub.ensureLabels(LABELS);
         state.labelsReady.add(repoKey);
@@ -435,13 +440,19 @@ export async function runOnce(loop: Loop, state = loopState()): Promise<void> {
       const bot = await github.appLogin();
       const ctx: RepoContext = { repoGitHub, repo, bot, pulls: await repoGitHub.botPulls(bot), outputs: state.outputs };
       for (const issue of issues) {
-        await reconcile(loop, ctx, issue).catch((error: unknown) =>
-          log(`${repo.owner}/${repo.name}#${issue.number}`, `${repo.owner}/${repo.name}#${issue.number}: error: ${messageOf(error)}`),
-        );
-        await loop.idle();
+        if (state.running.size >= host.concurrency) break;
+        const key = `${repoKey}#${issue.number}`;
+        const job = reconcile(loop, ctx, issue)
+          .catch((error: unknown) => log(key, `${key}: error: ${messageOf(error)}`))
+          .finally(() => state.running.delete(key));
+        state.running.set(key, job);
       }
     }
   }
+}
+
+export async function drain(state: LoopState): Promise<void> {
+  while (state.running.size > 0) await Promise.all(state.running.values());
 }
 
 export function changesOnly(print: (line: string) => void): Log {
@@ -457,8 +468,12 @@ export async function run(loop: Omit<Loop, "log">, options: { once: boolean }): 
   const full: Loop = { ...loop, log: changesOnly(serviceLog) };
   const state = loopState();
   await runOnce(full, state);
-  while (!options.once) {
-    await loop.idle();
+  if (options.once) return drain(state);
+  for (;;) {
+    if (loop.idle.due()) {
+      await drain(state);
+      await loop.idle.run();
+    }
     await sleep(loop.host.poll_interval_seconds * 1000);
     await runOnce(full, state);
   }

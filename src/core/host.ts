@@ -13,6 +13,7 @@ export type Host = {
   allow: string[];
   docker: "rootless" | "rootful";
   poll_interval_seconds: number;
+  concurrency: number;
   limits: { memory: string; cpus: number; pids: number };
   claude?: { config?: string };
 };

@@ -88,35 +88,40 @@ export function grypeDbFresh(status: { exit: number; output: string }, now: numb
   return built !== undefined && now - Date.parse(built) < GRYPE_DB_MAX_AGE_MS;
 }
 
-// The run loop calls this between jobs. A failed update waits for the next interval: the jobs
+// The run loop runs this when no job runs. A failed update waits for the next interval: the jobs
 // still update a database that is missing or old.
-export function grypeDbUpdater(limits: Host["limits"], audit: Audit): () => Promise<void> {
+export function grypeDbUpdater(limits: Host["limits"], audit: Audit): { due: () => boolean; run: () => Promise<void> } {
   let last = 0;
-  return async () => {
-    if (Date.now() - last < GRYPE_DB_UPDATE_INTERVAL_MS) return;
-    last = Date.now();
-    const failure = await ensurePulled(IMAGES["deps-scan"])
-      .then(() =>
-        runContainer({
-          name: containerName("grype-db"),
-          image: IMAGES["deps-scan"],
-          command: ["db", "update"],
-          mounts: [GRYPE_DB_CACHE],
-          network: "bridge",
-          env: GRYPE_ENV,
-          limits,
-          timeoutMs: 15 * 60 * 1000,
-          audit,
-        }),
-      )
-      .then(
-        (result) => (result.exit !== 0 || result.timedOut ? result.output.slice(-500) : undefined),
-        (error: unknown) => (error instanceof Error ? error.message : String(error)),
-      );
-    // The loop goes on: an error here must not stop the service.
-    if (failure !== undefined) console.error(`could not update the Grype database: ${failure}`);
+  return {
+    due: () => Date.now() - last >= GRYPE_DB_UPDATE_INTERVAL_MS,
+    async run() {
+      last = Date.now();
+      const failure = await ensurePulled(IMAGES["deps-scan"])
+        .then(() =>
+          runContainer({
+            name: containerName("grype-db"),
+            image: IMAGES["deps-scan"],
+            command: ["db", "update"],
+            mounts: [GRYPE_DB_CACHE],
+            network: "bridge",
+            env: GRYPE_ENV,
+            limits,
+            timeoutMs: 15 * 60 * 1000,
+            audit,
+          }),
+        )
+        .then(
+          (result) => (result.exit !== 0 || result.timedOut ? result.output.slice(-500) : undefined),
+          (error: unknown) => (error instanceof Error ? error.message : String(error)),
+        );
+      // The loop goes on: an error here must not stop the service.
+      if (failure !== undefined) console.error(`could not update the Grype database: ${failure}`);
+    },
   };
 }
+
+// Jobs that run together share the database volume: one checks and updates it at a time.
+let grypeDbLock: Promise<unknown> = Promise.resolve();
 
 export type ChecksJob = {
   repo: Repo;
@@ -260,11 +265,14 @@ const SCAN: Record<keyof typeof SCANNERS, Scan> = {
     return resultOf("sast", run);
   },
   async "deps-scan"({ dir, container }) {
-    const status = await container("grype-db-status", IMAGES["deps-scan"], ["db", "status", "--output", "json"], [GRYPE_DB_CACHE], { env: GRYPE_ENV });
-    if (!grypeDbFresh(status, Date.now())) {
+    const ready = grypeDbLock.then(async () => {
+      const status = await container("grype-db-status", IMAGES["deps-scan"], ["db", "status", "--output", "json"], [GRYPE_DB_CACHE], { env: GRYPE_ENV });
+      if (grypeDbFresh(status, Date.now())) return;
       const update = await container("grype-db", IMAGES["deps-scan"], ["db", "update"], [GRYPE_DB_CACHE], { network: "bridge", env: GRYPE_ENV });
       if (update.exit !== 0 || update.timedOut) throw new Error(`could not update the Grype database: ${update.output.slice(-500)}`);
-    }
+    });
+    grypeDbLock = ready.catch(() => undefined);
+    await ready;
     const run = await container("deps-scan", IMAGES["deps-scan"], ["dir:/src", "--only-fixed", "--fail-on", "high"], [{ source: dir, target: "/src", readonly: true }, GRYPE_DB_CACHE], {
       env: { ...GRYPE_ENV, GRYPE_DB_AUTO_UPDATE: "false" },
     });

@@ -193,7 +193,8 @@ A host runs `autopilot run` as a service and holds everything it needs: its `hos
 A macOS host runs while you are logged in, and stops while the Mac sleeps.
 
 ```sh
-# Once per host: push the 1Password token, write host.json, install the latest release
+# Once per host: push the 1Password token, write host.json, install the latest release.
+# Run it again to repair or upgrade: it keeps the token the host has.
 autopilot host setup --host user@my-host --owner <login> --app-id <id>
 autopilot host setup --host local --owner <login> --app-id <id>     # this machine
 
@@ -204,6 +205,8 @@ autopilot logs
 autopilot audit --since 1d       # JSON audit events
 autopilot update                 # install the latest release, or --version vX.Y.Z
 ```
+
+A host works on one issue at a time by default. To run more at once, set `concurrency` in its `host.json`. Each issue gets its own containers and `limits`, so size it to the host's memory and to the rate limits of your Claude plan.
 
 Several hosts can share an allowlist. Before a host acts on an issue, it posts a claim comment. The oldest claim wins, and the other hosts skip the issue. To move an issue to another host, delete its claim comment.
 

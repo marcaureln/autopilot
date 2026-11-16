@@ -68,7 +68,7 @@ gh issue create --repo example-org/app --title "Add docs/limits.md" --body-file 
 
 To start on an existing issue: `gh issue edit <n> --repo example-org/app --add-label autopilot`.
 
-The host acts within one poll interval (60 s by default). It does one job at a time. The planner takes a few minutes. The build and the checks can take up to `limits.run_timeout_minutes` (default 45). Check the issue every few minutes:
+The host acts within one poll interval (60 s by default). It works on `concurrency` issues at a time (1 by default, in its `host.json`). The planner takes a few minutes. The build and the checks can take up to `limits.run_timeout_minutes` (default 45). Check the issue every few minutes:
 
 ```sh
 gh issue view <n> --repo example-org/app --json labels,state --jq '{state, labels: [.labels[].name]}'

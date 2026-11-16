@@ -79,6 +79,12 @@
       "minimum": 10,
       "default": 60
     },
+    "concurrency": {
+      "description": "How many issues the host works on at the same time. Each one gets its own containers and `limits`, so size it to the host's memory and the rate limits of the agent's plan.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
     "limits": {
       "description": "Caps for each agent container.",
       "type": "object",

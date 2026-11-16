@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { addAllowEntry, parseAllowEntry, removeAllowEntry } from "./allow.ts";
 
-const host = { name: "pi", app_id: 1, secrets: { app_key: "op://v/k/f", claude_token: "op://v/c/f" }, owners: ["me"], allow: ["me"], docker: "rootless" as const, poll_interval_seconds: 60, limits: { memory: "6g", cpus: 2, pids: 1024 } };
+const host = { name: "pi", app_id: 1, secrets: { app_key: "op://v/k/f", claude_token: "op://v/c/f" }, owners: ["me"], allow: ["me"], docker: "rootless" as const, poll_interval_seconds: 60, concurrency: 1, limits: { memory: "6g", cpus: 2, pids: 1024 } };
 
 test("parses owner and owner/repo entries", () => {
   assert.deepEqual(parseAllowEntry("example-org"), { owner: "example-org" });
