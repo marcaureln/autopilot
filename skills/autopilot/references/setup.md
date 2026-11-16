@@ -18,12 +18,12 @@ On the user's machine (the client):
 - `gh`, signed in as the owner (`gh auth status`).
 - The 1Password CLI `op`, signed in to the user's account (`op whoami`). If it fails, the user runs `op signin`.
 - Claude Code (`claude`), for `claude setup-token`.
-- Docker, for the agent and the checks of `autopilot init`. Without it, `init` skips them.
+- Docker with the Compose plugin, for the agent and the checks of `autopilot init`.
 
 On the host:
 
-- Linux: systemd, [Docker Engine](https://docs.docker.com/engine/install/), and for [rootless Docker](https://docs.docker.com/engine/security/rootless/) (the default) the rootless extras, `newuidmap` (package `uidmap`) and a systemd user session (package `dbus-user-session`). On Debian and Ubuntu, setup installs `mise` and `op` from their apt repositories.
-- macOS: OrbStack, Colima or Docker Desktop, running (`docker info` works). With Homebrew, setup installs `mise` and `op`. The Mac must not sleep, and the user must stay logged in.
+- Linux: systemd, [Docker Engine](https://docs.docker.com/engine/install/) with its [Compose plugin](https://docs.docker.com/compose/install/linux/), and for [rootless Docker](https://docs.docker.com/engine/security/rootless/) (the default) the rootless extras, `newuidmap` (package `uidmap`) and a systemd user session (package `dbus-user-session`). On Debian and Ubuntu, setup installs `mise` and `op` from their apt repositories.
+- macOS: OrbStack, Colima or Docker Desktop, running (`docker info` works), with Docker Compose (Colima: `brew install docker-compose`). With Homebrew, setup installs `mise` and `op`. The Mac must not sleep, and the user must stay logged in.
 - The SSH user can run `sudo` with no password prompt (Linux). The client uses `ssh <target> <command>` with no terminal.
 
 Setup checks these and prints an install link for each missing one. It does not install Docker.
@@ -108,9 +108,13 @@ If the App is not installed on that account, the command prints the install page
 autopilot init --repo example-org/app
 ```
 
-It writes `.github/autopilot.json` and `.devcontainer/` from the stack pack, creates the five labels, lets an agent set the check commands and draft `AGENTS.md`, runs the checks once, and opens a pull request from the user's account, on the branch `autopilot/onboarding`. It is safe to run again: it updates the same pull request. With `AUTOPILOT_HOST` set, it also allows the repo. Today only Node repos with a `package.json` at the root have a stack pack.
+An agent writes `.devcontainer/` (only if the repo has none), the check commands and a draft `AGENTS.md`. Then `init` checks `.devcontainer/` with the guardrails, starts it (which runs the install), runs each check once, creates the five labels, and opens a pull request from the user's account, on the branch `autopilot/onboarding`. It works for any language. It is safe to run again: it updates the same pull request. With `AUTOPILOT_HOST` set, it also allows the repo.
 
-Read the pull request with the user, then merge it. autopilot needs `.github/autopilot.json` on the default branch. The stack pack sets `"merge": "manual"`, so every pull request of autopilot waits for a review. Change it to `"auto"` to let Gate 2 merge low-risk pull requests.
+Ask the user for skills and notes before you run it. `--skill <source>` (repeatable, `github.com/<owner>/<repo>[//<path>][#<ref>]` or a host path) gives the agent a skill and adds it to `skills.planner` and `skills.builder`. `--notes <file>` adds the user's own instructions to the prompt, for example "the tests need Postgres 18".
+
+A config from an older autopilot has a `stack` field. autopilot then stops each issue with an invalid config: run `autopilot init` again.
+
+Read the pull request with the user, then merge it. Its "Environment" section names the image, the services, the install, and why. autopilot needs `.github/autopilot.json` on the default branch. `init` sets `"merge": "manual"`, so every pull request of autopilot waits for a review. Change it to `"auto"` to let Gate 2 merge low-risk pull requests.
 
 ## 9. Check
 

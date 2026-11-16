@@ -137,6 +137,9 @@ To ask for changes, do not comment on the pull request: autopilot does not read 
 1. Read the last comment of the bot. It starts with "autopilot stopped:" and gives the reason.
 2. Fix the cause. Common reasons:
    - "There is no `.github/autopilot.json` on the default branch", or an invalid config: run `autopilot init` and merge its pull request, or fix the file.
+   - An invalid config that names `stack`: the config is from an older autopilot. Run `autopilot init` again and merge its pull request.
+   - "autopilot does not start the repo's dev container": the comment lists what the guardrails refuse in `.devcontainer/`. Fix it on the default branch, then retry.
+   - "the dev container did not start", or the `install` check fails: fix the image or `postCreateCommand` in `.devcontainer/`.
    - "The planner failed" or "the builder failed": read `autopilot logs`, then retry.
    - "the builder made no commit": the spec asked for nothing to change, or the builder failed. Make the issue more precise in a comment, then retry.
    - A check "failed twice in a row", or the checks still fail after `limits.fix_rounds` rounds: the comment shows the output. Fix the code or the check command, or make the issue smaller.

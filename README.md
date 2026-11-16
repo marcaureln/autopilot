@@ -133,20 +133,24 @@ Each repo has a `.github/autopilot.json` ([full example](examples/autopilot.json
 {
 	"$schema": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/autopilot.schema.json",
 	"version": 1,
-	"stack": ["node"],
 	"merge": "auto"
 }
 ```
 
 ### Onboarding
 
-`autopilot init` onboards a repo in one pull request that you review and merge. Run it in a checkout of the repo, or pass `--repo <owner>/<repo>`. It needs `gh`, and Docker for the last two steps.
+`autopilot init` onboards a repo in one pull request that you review and merge. Run it in a checkout of the repo, or pass `--repo <owner>/<repo>`. It needs `gh` and Docker with the Compose plugin.
 
-1. Detects the stack from the lockfiles (Node with npm, pnpm or yarn today) and writes `.github/autopilot.json` and `.devcontainer/` from the stack pack in `stacks/`. An existing config keeps its values.
-2. Creates the five `autopilot` labels. With `AUTOPILOT_HOST` set, allows the repo on the host, which prints the App install page if the App is not installed there.
-3. Runs an agent in a container (the Claude token comes from your 1Password) to correct the check commands and draft `AGENTS.md`. `--no-agent` skips it.
-4. Runs the checks once on the default branch. Existing `lint` and `types` errors go to `.github/autopilot-baseline.json`, so only new errors fail.
-5. Opens the pull request from your own account, with what to curate and the failing agent-readiness items.
+The repo's own `.devcontainer/` is the environment of every job: the install, the checks and the builder run in it, with its compose services. There are no stack packs, so any language works.
+
+1. Runs an agent in a container (the Claude token comes from your 1Password). It writes `.devcontainer/` if the repo has none, from [Anthropic's dev container](https://github.com/anthropics/claude-code/tree/main/.devcontainer) without its firewall, with the base image and the services that the repo needs. A repo that has `.devcontainer/` keeps it: the agent only proposes changes. The agent also sets the check commands and drafts `AGENTS.md`. An existing config keeps its values.
+2. Checks `.devcontainer/` with the guardrails, starts it with `devcontainer up` (which runs the install), cuts its network, and runs each check once. Existing `lint` and `types` errors go to `.github/autopilot-baseline.json`, so only new errors fail.
+3. Creates the five `autopilot` labels. With `AUTOPILOT_HOST` set, allows the repo on the host, which prints the App install page if the App is not installed there.
+4. Opens the pull request from your own account, with the environment (image, services, install, and why), what to curate, and the failing agent-readiness items.
+
+`--skill <source>` (repeatable) gives the agent a skill and adds it to `skills.planner` and `skills.builder`. `--notes <file>` adds your own instructions to the agent's prompt.
+
+The host refuses a `.devcontainer/` that reaches outside its container: host commands (`initializeCommand`), `runArgs`, privileges, capabilities, host mounts, published ports, host namespaces, `${localEnv:...}`, and images without an exact version tag. It adds its own memory, CPU and process caps and `no-new-privileges`.
 
 ### Secrets
 
