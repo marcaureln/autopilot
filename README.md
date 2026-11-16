@@ -121,8 +121,8 @@ Each block sits behind a config field or a small interface. Only the "Today" col
 
 | Block         | Today                          | Possible later              |
 | ------------- | ------------------------------ | --------------------------- |
-| Forge         | GitHub (App, labels, statuses) | GitLab, Forgejo             |
-| Agent harness | Claude Code                    | OpenCode, Codex, pi         |
+| Forge         | GitHub                         | GitLab, Forgejo             |
+| Agent harness | [Claude Code](docker/claude)   | OpenCode, Codex, pi         |
 | Secrets       | 1Password CLI                  | OpenBao, age-encrypted file |
 
 ## Configuration
