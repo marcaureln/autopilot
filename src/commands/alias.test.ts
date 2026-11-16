@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aliasFile, aliasLine, parseAliasName, shellOf, withAlias, withoutAlias, type LoginShell } from "./alias.ts";
+import { AliasError, aliasFile, aliasNameProblem, aliasLine, parseAliasName, shellOf, withAlias, withoutAlias, type LoginShell } from "./alias.ts";
 
 const shellCases: { value: string | undefined; expected: LoginShell | undefined }[] = [
   { value: "/bin/zsh", expected: "zsh" },
@@ -82,11 +82,13 @@ test("adding then removing gives back a file that ends with a newline", () => {
 for (const value of ["ap", "auto_pilot", "ap2", "a-p"]) {
   test(`accepts the alias name ${value}`, () => {
     assert.equal(parseAliasName(value), value);
+    assert.equal(aliasNameProblem(value), undefined);
   });
 }
 
 for (const value of ["", "2ap", "a p", "ap;id", "$(id)", "a'b"]) {
   test(`rejects the alias name ${JSON.stringify(value)}`, () => {
-    assert.throws(() => parseAliasName(value), /not an alias name/);
+    assert.throws(() => parseAliasName(value), (error) => error instanceof AliasError && /not an alias name/.test(error.message));
+    assert.match(aliasNameProblem(value) ?? "", /not an alias name/);
   });
 }

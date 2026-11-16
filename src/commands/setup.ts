@@ -11,7 +11,7 @@ import { ownPull, type PullListing } from "../core/onboarding.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret } from "../core/secrets.ts";
 import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type SetupConfig } from "../core/setup.ts";
-import { alias, aliasFile, shellOf, withoutAlias } from "./alias.ts";
+import { alias, AliasError, aliasFile, aliasNameProblem, shellOf, withoutAlias } from "./alias.ts";
 import { appCreate, appKeyStored, githubLogin } from "./app.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, CLAUDE_TOKEN_ITEM, forward, HOST_SECRETS, hostSetup, OP_TOKEN_ITEM } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
@@ -310,9 +310,16 @@ async function shellAlias(options: SetupOptions, config: SetupConfig): Promise<v
   }
   const current = existsSync(file) ? readFileSync(file, "utf8") : "";
   if (withoutAlias(current) !== current) return record("Alias", "already done", `in ${file}`);
-  const name = config.alias ?? (options.yes ? false : (await answer(text({ message: "Short name for autopilot in your shell (empty for none)", initialValue: "ap" }))) || false);
+  const name =
+    config.alias ??
+    (options.yes ? false : (await answer(text({ message: "Short name for autopilot in your shell (empty for none)", initialValue: "ap", validate: (input) => (input ? aliasNameProblem(input) : undefined) }))) || false);
   if (name === false) return record("Alias", "skipped", "no alias wanted");
-  alias(name, false);
+  try {
+    alias(name, false);
+  } catch (error) {
+    if (!(error instanceof AliasError)) throw error;
+    return record("Alias", "skipped", error.message);
+  }
   record("Alias", "done", `${name} in ${file}`);
 }
 
