@@ -51,7 +51,7 @@ export type PlannerInput = {
 function plannerPrompt({ repo, issue, thread, risk }: PlannerInput): string {
   const comments = thread.map((comment) => `**@${comment.author}** (${comment.createdAt}):\n\n${comment.body}`).join("\n\n---\n\n");
   const highPaths = risk.high_paths.length > 0 ? `\n- These repo paths: ${risk.high_paths.map((glob) => `\`${glob}\``).join(", ")}` : "";
-  return `You are the planner of autopilot, a tool that turns a GitHub issue into a pull request. Another agent, the builder, implements your spec later. You plan; you do not change code.
+  return `You are the planner of autopilot, a tool that turns issues into features. Another agent, the builder, implements your spec later. You plan; you do not change code.
 
 The repository ${repo} is checked out at /work (default branch, shallow clone). Read the code you need. Do not edit, create or delete any file except the result file. Do not commit or push.
 
