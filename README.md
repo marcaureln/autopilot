@@ -140,7 +140,7 @@ autopilot does one job: it turns issues into features. Everything else stays out
 
 ## Configuration
 
-Each repo has a `.github/autopilot.json` ([full example](examples/autopilot.json)). The `$schema` field gives autocomplete and validation in VS Code.
+Each repo has a `.github/autopilot.json`, which `init` writes. The [schema](schema/autopilot.schema.json) describes each field and its default, and the `$schema` field gives autocomplete and validation in VS Code.
 
 ```json
 {

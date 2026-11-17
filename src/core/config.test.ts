@@ -1,10 +1,37 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { parseConfig } from "./config.ts";
 
-test("loads the sample config", () => {
-  const config = parseConfig(readFileSync(new URL("../../examples/autopilot.json", import.meta.url), "utf8"), "sample");
+const FULL_CONFIG = `{
+  "version": 1,
+  "agents": {
+    "planner": { "harness": "claude", "model": "claude-opus-5-5", "effort": "high" },
+    "builder": { "harness": "claude", "model": "claude-sonnet-5-5" }
+  },
+  "steps": { "spec": "planner", "build": "builder", "fix": "builder" },
+  "skills": {
+    "planner": ["github.com/example-org/skills//architect#main"],
+    "builder": [
+      "github.com/example-org/skills//poteto-mode#main",
+      "github.com/example-org/skills//test-driven-development#v1.2.0",
+      "/etc/autopilot/skills/systematic-debugging"
+    ]
+  },
+  "verify": {
+    "mode": "local",
+    "required": ["lint", "types", "test", "sast", "deps-scan", "secrets-scan"],
+    "commands": { "lint": "npm run lint", "types": "npx tsc --noEmit", "test": "npm test" },
+    "timeout_minutes": 10
+  },
+  "preview": { "command": "npm run dev", "url": "http://localhost:3000" },
+  "merge": "auto",
+  "risk": { "high_paths": ["src/auth/**"], "max_diff_lines": 500 },
+  "secrets": { "STRIPE_KEY": "op://autopilot/example-org_app-a/STRIPE_KEY" },
+  "limits": { "fix_rounds": 3, "run_timeout_minutes": 45 }
+}`;
+
+test("loads a config that sets every field", () => {
+  const config = parseConfig(FULL_CONFIG, "full");
   assert.equal(config.merge, "auto");
   assert.deepEqual(config.risk, { high_paths: ["src/auth/**"], max_diff_lines: 500 });
 });
