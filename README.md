@@ -214,6 +214,8 @@ autopilot start                  # or stop
 autopilot update                 # install the latest release, or --version vX.Y.Z
 ```
 
+To replace a host secret, for example a wrong Claude token, remove its file in the secrets folder: `/etc/autopilot/secrets` on Linux, or `~/.autopilot/secrets` on macOS. Then run `autopilot host setup` again. It asks only for the secret that the host lacks, writes it, and restarts the service.
+
 A host works on one issue at a time by default. To run more at once, set `concurrency` in its `host.json`. Each issue gets its own containers and `limits`, so size it to the host's memory and to the rate limits of your Claude plan.
 
 Several hosts can watch the same repos. The oldest claim comment on an issue wins. To move an issue to another host, delete its claim comment.
