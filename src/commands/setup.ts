@@ -116,7 +116,7 @@ async function githubApp(options: SetupOptions, config: SetupConfig): Promise<nu
           }),
         );
   if (choice === "create") {
-    const app = await appCreate({});
+    const app = await appCreate({ backend: "op" });
     record("GitHub App", "done", `created ${app.slug} (id ${app.id}). Install it: ${app.installUrl}`);
     return app.id;
   }

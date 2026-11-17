@@ -1,14 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { isCancel, text } from "@clack/prompts";
 import { appInstallUrl, appManifest, type CreatedApp, keyFileProblem, parseConversion, stateMatches, suggestAppName, writeFallbackKey } from "../core/app.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
+import type { Backend } from "../core/secrets.ts";
 import { appCreatedPage, appFailedPage, appStartPage } from "../web/pages.ts";
-import { APP_KEY_FILE, APP_KEY_ITEM, HOST_SECRETS, openInBrowser } from "./client.ts";
+import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, HOST_SECRETS, openInBrowser } from "./client.ts";
 import { op, opItemExists } from "./secrets.ts";
 
 const REPO_URL = "https://github.com/marcaureln/autopilot";
@@ -48,6 +49,10 @@ async function freeAppName(login: string): Promise<string> {
 // GitHub shows the private key only once, so the place for it must be ready before the App exists.
 function checkKeyDestination(destination: KeyDestination): void {
   if (destination.kind === "file") {
+    if (destination.path === APP_KEY_PATH) {
+      if (existsSync(APP_KEY_PATH)) throw new Error(`${APP_KEY_PATH} already exists: it is the key of an App that you created before. Push it to a host with autopilot host setup, or move it away to create another App`);
+      mkdirSync(dirname(APP_KEY_PATH), { recursive: true, mode: 0o700 });
+    }
     const problem = keyFileProblem(destination.path);
     if (problem) throw new Error(problem);
     return;
@@ -83,8 +88,8 @@ function send(response: ServerResponse, status: number, html: string, then?: () 
   response.end(html, then);
 }
 
-export async function appCreate(options: { keyOut?: string }): Promise<CreatedAppSummary> {
-  const destination: KeyDestination = options.keyOut ? { kind: "file", path: resolve(options.keyOut) } : { kind: "op" };
+export async function appCreate(options: { keyOut?: string; backend: Backend }): Promise<CreatedAppSummary> {
+  const destination: KeyDestination = options.keyOut ? { kind: "file", path: resolve(options.keyOut) } : options.backend === "op" ? { kind: "op" } : { kind: "file", path: APP_KEY_PATH };
   checkKeyDestination(destination);
   const name = await freeAppName(await askLogin());
   const state = randomBytes(16).toString("hex");
@@ -148,6 +153,7 @@ export async function appCreate(options: { keyOut?: string }): Promise<CreatedAp
     const summary = await created.promise;
     console.log(`App created: ${summary.slug} (id ${summary.id})`);
     console.log(`private key: ${summary.keyLocation}`);
+    if (summary.keyLocation === APP_KEY_PATH) console.log("autopilot host setup pushes it to the host");
     console.log(`install it: ${summary.installUrl}`);
     return summary;
   } finally {
