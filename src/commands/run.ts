@@ -9,7 +9,7 @@ import { CONFIG_PATH, parseConfig, type Config } from "../core/config.ts";
 import { EnvironmentRefused } from "../core/environment.ts";
 import { gate1, gate2 } from "../core/gate.ts";
 import type { GitHub, Issue, RepoGitHub } from "../core/github.ts";
-import type { Host } from "../core/host.ts";
+import { usesOnePassword, type Host } from "../core/host.ts";
 import { ANY_TIME, branchName, fixVerdict, headVerdict, issuePhase, latestPull, type BotPull, type HeadVerdict, type Statuses } from "../core/phase.ts";
 import type { PlannerJob, PlannerResult } from "../core/planner.ts";
 import type { Repo } from "../core/repo.ts";
@@ -396,6 +396,11 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
   if (refused.length > 0) {
     const names = refused.map((name) => `\`${name}\``).join(", ");
     throw new Blocked(`The \`secrets\` in \`${CONFIG_PATH}\` for ${names} do not point to this repo's own 1Password item. Set each one again with \`autopilot secrets set --backend op <NAME>\`.`);
+  }
+  if (config.verify.mode === "host" && Object.keys(config.secrets).length > 0 && !usesOnePassword(loop.host.secrets)) {
+    throw new Blocked(
+      `The \`secrets\` in \`${CONFIG_PATH}\` are 1Password references, and this host has no 1Password. Set each one again with \`autopilot secrets set <NAME>\` (the env backend), or set up the host with 1Password.`,
+    );
   }
   const sha = pull.head.sha;
   // Someone with write access can push to the bot's branch. Only a head the host pushed for this

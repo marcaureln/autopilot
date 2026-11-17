@@ -32,13 +32,16 @@ export const SECRET_LABELS: Record<HostSecret, string> = {
   op_token: "1Password service account token",
 };
 
+export function usesOnePassword(secrets: Host["secrets"]): boolean {
+  return Object.values(secrets).some((reference) => reference.startsWith("op://"));
+}
+
 export function hostSecretFiles(secrets: Host["secrets"], layout: Pick<Layout, "secretsDir" | "opToken">): HostSecretFile[] {
   const files = (["app_key", "claude_token"] as const).flatMap((secret) => {
     const reference = secrets[secret];
     return reference.startsWith("file:") ? [{ secret, path: `${layout.secretsDir}/${reference.slice("file:".length)}` }] : [];
   });
-  const usesOp = Object.values(secrets).some((reference) => reference.startsWith("op://"));
-  return usesOp ? [{ secret: "op_token", path: layout.opToken }, ...files] : files;
+  return usesOnePassword(secrets) ? [{ secret: "op_token", path: layout.opToken }, ...files] : files;
 }
 
 const ajv = new Ajv2020({ allErrors: true, useDefaults: true });

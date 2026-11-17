@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { PlannerResult } from "../core/planner.ts";
 import { SecretsMissing } from "../core/builder.ts";
 import type { FileChange } from "../core/risk.ts";
-import { BOT, FakeWorld, HOST_CONFIG, HOST_NAME, LOW_RISK_PLAN, OWNER } from "./fake-github.ts";
+import { BOT, FakeWorld, HOST, HOST_CONFIG, HOST_NAME, LOW_RISK_PLAN, OWNER } from "./fake-github.ts";
 
 const TITLE = "Add CONTRIBUTING.md";
 
@@ -277,6 +277,27 @@ describe("failing checks", () => {
     assert.deepEqual(world.builds, []);
     assert.equal(world.repo.merges.length, 0);
   });
+});
+
+describe("a repo with 1Password references", () => {
+  const withSecrets = { ...HOST_CONFIG, secrets: { API_KEY: "op://autopilot/owner_app/API_KEY" } };
+  const fileHost = { ...HOST, secrets: { app_key: "file:app-key", claude_token: "file:claude-token" } };
+  const rows = [
+    { name: "a host with 1Password runs the checks", host: HOST, config: withSecrets, blocked: false },
+    { name: "a host without 1Password blocks the issue before the checks", host: fileHost, config: withSecrets, blocked: true },
+    { name: "a host without 1Password runs a repo that has no secrets", host: fileHost, config: HOST_CONFIG, blocked: false },
+  ];
+  for (const row of rows) {
+    test(row.name, async () => {
+      const world = new FakeWorld(row.config, row.host);
+      const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+      await buildPull(world, issue);
+      await world.poll();
+      assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", row.blocked ? "autopilot:blocked" : "autopilot:working"]);
+      assert.equal(world.checkRuns, row.blocked ? 0 : 1);
+      if (row.blocked) assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^autopilot stopped: .*no 1Password.*autopilot secrets set/s);
+    });
+  }
 });
 
 describe("verify.mode ci", () => {
