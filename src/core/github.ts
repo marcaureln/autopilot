@@ -260,7 +260,12 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
       // Every open pull request, and the recently closed ones: a pull request closed long ago is history.
       const open = await octokit.paginate(octokit.pulls.list, { owner, repo, state: "open", per_page: 100 });
       const { data: closed } = await octokit.pulls.list({ owner, repo, state: "closed", sort: "updated", direction: "desc", per_page: 100 });
-      return [...open, ...closed].flatMap((pull) => {
+      const pulls = [...open, ...closed];
+      // When GitHub answers with an object instead of a list, paginate wraps that object as one pull.
+      if (!pulls.every((pull) => typeof pull.head?.ref === "string" && typeof pull.base?.ref === "string")) {
+        throw new Error("GitHub answered the pull request list in an unexpected shape; the next poll tries again");
+      }
+      return pulls.flatMap((pull) => {
         const issue = issueOfBranch(pull.head.ref);
         if (pull.user?.login !== botLogin || issue === undefined || pull.head.repo?.full_name !== `${owner}/${repo}`) return [];
         const state = pull.merged_at ? "merged" : pull.state === "open" ? "open" : "closed";
