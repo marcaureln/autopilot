@@ -3,7 +3,7 @@ import { accessSync, constants, existsSync, mkdtempSync, statSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-export const APP_PERMISSIONS = {
+const APP_PERMISSIONS = {
   metadata: "read",
   contents: "write",
   issues: "write",

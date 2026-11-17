@@ -53,7 +53,7 @@ export type RepoGitHub = {
   mergePull(pull: number, sha: string, title: string, message: string): Promise<void>;
 };
 
-export const STATUS_PREFIX = "autopilot/";
+const STATUS_PREFIX = "autopilot/";
 
 // The App id of GitHub Actions, the same on every repo of github.com.
 const GITHUB_ACTIONS_APP_ID = 15368;

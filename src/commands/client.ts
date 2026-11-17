@@ -63,7 +63,7 @@ function writeHostFile(remote: Connection, path: string, mode: "600" | "644"): s
   return `${remote.sudo}sh -c 'set -e; install -d -m 755 ${dirname(path)}; umask 077; cat > ${path}.tmp; chmod ${mode} ${path}.tmp; mv ${path}.tmp ${path}'`;
 }
 
-export function initialHostFile({ name, owner, appId }: { name: string; owner: string; appId: number }): Host {
+function initialHostFile({ name, owner, appId }: { name: string; owner: string; appId: number }): Host {
   return {
     $schema: HOST_SCHEMA,
     name,

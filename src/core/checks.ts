@@ -18,7 +18,7 @@ import { shallowClone } from "./workspace.ts";
 
 const exec = promisify(execFile);
 
-export const IMAGES = {
+const IMAGES = {
   sast: "semgrep/semgrep:1.185.0",
   "deps-scan": "anchore/grype:v0.121.0",
   "secrets-scan": "trufflesecurity/trufflehog:3.95.8",

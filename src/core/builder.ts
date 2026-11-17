@@ -54,7 +54,7 @@ export type Commit = { sha: string; parents: string[]; author: Identity; committ
 
 const ATTRIBUTION = [/^\s*co-authored-by:/im, /generated (with|by) /i, /🤖/u];
 
-export function hasAttribution(text: string): boolean {
+function hasAttribution(text: string): boolean {
   return ATTRIBUTION.some((pattern) => pattern.test(text));
 }
 

@@ -1,6 +1,6 @@
 export const TRIGGER_LABEL = "autopilot";
 
-export const STATES = {
+const STATES = {
   working: { color: "0e8a16", description: "autopilot: spec, build, checks or fix loop in progress" },
   "needs-info": { color: "fbca04", description: "autopilot: answer the questions in a comment" },
   "awaiting-approval": { color: "d93f0b", description: "autopilot: tick Approve and build in the spec" },
