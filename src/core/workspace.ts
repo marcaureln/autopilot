@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { closeSync, constants, cpSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, writeSync } from "node:fs";
+import { closeSync, constants, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, writeSync } from "node:fs";
 import { join, posix, sep } from "node:path";
 import { promisify } from "node:util";
 import type { GitHub } from "./github.ts";
@@ -25,11 +25,19 @@ export function gitAuthEnv(token: string): NodeJS.ProcessEnv {
   };
 }
 
+// A repo's .lfsconfig can name another LFS server. Git config from the environment wins over it, so
+// the LFS objects and the token go only to the repo's own LFS.
+// The endpoint follows git-lfs's own rule: an https remote serves LFS at <url>/info/lfs, a file:// remote at its path.
+function lfsEnv(url: string, token: string): NodeJS.ProcessEnv {
+  const lfs = url.startsWith("file://") ? url : `${url}/info/lfs`;
+  return { ...gitAuthEnv(token), GIT_CONFIG_COUNT: "3", GIT_CONFIG_KEY_1: "lfs.url", GIT_CONFIG_VALUE_1: lfs, GIT_CONFIG_KEY_2: "lfs.pushurl", GIT_CONFIG_VALUE_2: lfs };
+}
+
 export async function shallowClone(repo: Repo, token: string, dest: string, ref?: string, depth = 1): Promise<void> {
   const branch = ref ? ["--branch", ref] : [];
   // The LFS objects come from `fetchLfsObjects`, so a filter that is set up on the host cannot make the clone fail.
   await run("git", ["clone", "--quiet", "--depth", String(depth), "--single-branch", ...branch, repoUrl(repo), dest], { env: { ...gitAuthEnv(token), GIT_LFS_SKIP_SMUDGE: "1" } });
-  await fetchLfsObjects(dest, token);
+  await fetchLfsObjects(dest, repoUrl(repo), token);
 }
 
 // `git grep` exits with 1 when nothing matches.
@@ -51,25 +59,42 @@ async function requireGitLfs(): Promise<void> {
 
 // The checkout gets the real files. Its `.git/config` gets the LFS filters, so a copy of it turns the
 // files that the builder adds into LFS objects.
-async function fetchLfsObjects(dir: string, token: string): Promise<void> {
+async function fetchLfsObjects(dir: string, url: string, token: string): Promise<void> {
   if (!(await usesLfs(dir, "HEAD"))) return;
   await requireGitLfs();
   await run("git", ["lfs", "install", "--local"], { cwd: dir });
-  await run("git", ["lfs", "pull"], { cwd: dir, env: gitAuthEnv(token) });
+  await run("git", ["lfs", "pull"], { cwd: dir, env: lfsEnv(url, token) });
 }
 
-// The agent adds LFS objects to its own copy, and the bundle carries only the pointers. The server
-// checks the hash of each object it receives, so a bad file here fails the push.
-export function importLfsObjects(agentCheckout: string, dir: string): void {
+const LFS_OBJECT = /^([0-9a-f]{2})\/([0-9a-f]{2})\/(\1\2[0-9a-f]{60})$/;
+
+// The agent adds LFS objects to its own copy, and the bundle carries only the pointers. The agent
+// controls that copy, so the folder must be a real folder inside it, and only regular files named as
+// LFS objects come over. The server checks the hash of each object it receives. Returns a problem, if any.
+export function importLfsObjects(agentCheckout: string, dir: string, maxBytes: number): string | undefined {
   const from = join(agentCheckout, ".git", "lfs", "objects");
-  if (!existsSync(from)) return;
-  cpSync(from, join(dir, ".git", "lfs", "objects"), { recursive: true, force: false, filter: (path) => !lstatSync(path).isSymbolicLink() });
+  if (!existsSync(from)) return undefined;
+  if (realpathSync(from) !== join(realpathSync(agentCheckout), ".git", "lfs", "objects")) return "the LFS objects folder of the checkout is a symlink";
+  let total = 0;
+  for (const entry of readdirSync(from, { recursive: true, encoding: "utf8" })) {
+    const path = join(from, entry);
+    const stat = lstatSync(path);
+    if (stat.isDirectory()) continue;
+    if (!stat.isFile() || !LFS_OBJECT.test(entry.split(sep).join("/"))) return `${entry} in the LFS objects folder is not an LFS object`;
+    total += stat.size;
+    if (total > maxBytes) return `the new LFS objects are larger than ${maxBytes / 1024 / 1024} MB`;
+    const target = join(dir, ".git", "lfs", "objects", entry);
+    if (existsSync(target)) continue;
+    mkdirSync(join(target, ".."), { recursive: true });
+    copyFileSync(path, target);
+  }
+  return undefined;
 }
 
 // The objects go first, so the branch never points at an LFS object that the server lacks. `--no-verify`
 // skips the LFS pre-push hook, which would push the objects a second time.
 export async function pushBranch(dir: string, url: string, token: string, lease: string, head: string, branch: string): Promise<void> {
-  const env = gitAuthEnv(token);
+  const env = lfsEnv(url, token);
   if (await usesLfs(dir, head)) {
     await requireGitLfs();
     await run("git", ["lfs", "push", url, head], { cwd: dir, env });

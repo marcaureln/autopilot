@@ -25,6 +25,8 @@ export const RESULT_PATH = ".autopilot/result.json";
 
 const MAX_COMMITS = 50;
 const MAX_BUNDLE_BYTES = 100 * 1024 * 1024;
+// Game assets are large, so the LFS objects get their own cap.
+const MAX_LFS_BYTES = 1024 * 1024 * 1024;
 const MAX_FAILURE_CHARS = 6000;
 
 export type BuilderResult = { summary: string; missing_secrets?: string[]; blocked?: string };
@@ -301,7 +303,8 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
 
     const bundle = await bundleNewCommits(job, jobDir, work, start);
     await git(origin, ["fetch", "--quiet", bundle, "HEAD:refs/autopilot/result"]);
-    importLfsObjects(work, origin);
+    const lfsProblem = importLfsObjects(work, origin, MAX_LFS_BYTES);
+    if (lfsProblem) throw new BuildStopped(lfsProblem);
     const head = await git(origin, ["rev-parse", "refs/autopilot/result"]);
     await git(origin, ["merge-base", "--is-ancestor", start, head]).catch(() => {
       throw new BuildStopped("the new commits do not start from the checked-out commit");
