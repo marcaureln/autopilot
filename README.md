@@ -182,6 +182,8 @@ autopilot secrets rm STRIPE_KEY
 
 The file is `secrets/repos/<owner>_<repo>.env` in `/etc/autopilot` on Linux, or in `~/.autopilot` on macOS. A value is never a command argument, so it stays out of the shell history. A value must be on one line.
 
+The default backend is `env` for `setup`, `init`, `app create`, `host setup` and `secrets`. To keep using 1Password, pass `--backend op` to each of these commands.
+
 With `--backend op`, the values go to 1Password, with your own sign-in. Each repo gets one item (`<owner>_<repo>`) in the `autopilot` vault. The command adds the reference to `.github/autopilot.json`. Commit that change. A reference in the config wins over a value of the same name in the host's file.
 
 The host gives the values only to the checks that run a command from `verify.commands`. The scanners, the install step and the agent never get them. For such a check, the host shows only whether it passed. As in CI, a person who can change the code of a repo can read its secrets, for example from a test. Give a repo only test-mode or low-value keys.
