@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center">Runs coding agents on your own machine to work on GitHub issues.</p>
+<p align="center">Turns issues into features, with coding agents on your own machine.</p>
 
 autopilot aims to stay small: one process, no server, no queue, no database. GitHub is the only interface and the only state. It is also agnostic: the agent harness, the models, the verification mode and the host are each one config field.
 
@@ -22,7 +22,7 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
 
 ### Steps
 
-1. Install the client:
+1. Install the client. It installs for your user, without root, in `~/.local/share/autopilot` and `~/.local/bin/autopilot`. Update it later with `autopilot self-update`.
 
    ```sh
    curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
@@ -81,7 +81,7 @@ autopilot setup --config setup.json --yes
 }
 ```
 
-The unattended mode cannot create the GitHub App, because GitHub needs a click in the browser. Run `autopilot app create` first, or pass the `app_id` of an App whose private key is in 1Password. Secret values are never in the file: setup reads the Claude token from 1Password, or from `CLAUDE_CODE_OAUTH_TOKEN` the first time.
+GitHub needs a click in the browser to create an App, so run `autopilot app create` first, or pass the `app_id` of an App whose key is in 1Password. Secret values are never in the file: setup reads the Claude token from 1Password, or from `CLAUDE_CODE_OAUTH_TOKEN` the first time.
 
 ### Set up with a coding agent
 
@@ -94,7 +94,7 @@ Ask me before each step that needs my browser, my 1Password sign-in or a secret 
 Never read, print or write a secret value yourself.
 ```
 
-The skill also teaches the agent to use autopilot day to day: write issues that autopilot can build, answer its questions, approve a spec and review its pull requests.
+The [skill](skills/autopilot/SKILL.md) also teaches the agent to use autopilot day to day: write issues that autopilot can build, answer its questions, approve a spec, review its pull requests and debug a blocked issue.
 
 ## How it works
 
@@ -144,16 +144,15 @@ By default the host runs the checks (`verify.mode` `local`). With `"verify": { "
 
 `autopilot init` onboards a repo in one pull request that you review and merge. Run it in a checkout of the repo, or pass `--repo <owner>/<repo>`. It needs `gh` and Docker with the Compose plugin.
 
-The repo's own `.devcontainer/` is the environment of every job: the install, the checks and the builder run in it, with its compose services. There are no stack packs, so any language works.
+The repo's own `.devcontainer/` is the environment of every job: the install, the checks and the builder run in it, with its compose services, so any language works. `init`:
 
-1. Runs an agent in a container (the Claude token comes from your 1Password). It writes `.devcontainer/` if the repo has none, from [Anthropic's dev container](https://github.com/anthropics/claude-code/tree/main/.devcontainer) without its firewall, with the base image and the services that the repo needs. A repo that has `.devcontainer/` keeps it: the agent only proposes changes. The agent also sets the check commands and drafts `AGENTS.md`. An existing config keeps its values.
-2. Checks `.devcontainer/` with the guardrails, starts it with `devcontainer up` (which runs the install), cuts its network, and runs each check once. Existing `lint` and `types` errors go to `.github/autopilot-baseline.json`, so only new errors fail.
-3. Creates the five `autopilot` labels. With `AUTOPILOT_HOST` set, allows the repo on the host, which prints the App install page if the App is not installed there.
-4. Opens the pull request from your own account, with the environment (image, services, install, and why), what to curate, and the failing agent-readiness items.
+1. Runs an agent that writes `.devcontainer/` if the repo has none (from [Anthropic's dev container](https://github.com/anthropics/claude-code/tree/main/.devcontainer), without its firewall), sets the check commands and drafts `AGENTS.md`. An existing `.devcontainer/` or config keeps its values.
+2. Starts the dev container, cuts its network and runs each check once. Existing `lint` and `types` errors go to `.github/autopilot-baseline.json`, so only new errors fail.
+3. Creates the `autopilot` labels and opens the pull request from your account.
 
-`--skill <source>` (repeatable) gives the agent a skill and adds it to `skills.planner` and `skills.builder`. `--notes <file>` adds your own instructions to the agent's prompt.
+`--skill <source>` (repeatable) gives the agents a skill. `--notes <file>` adds your own instructions to the onboarding agent.
 
-The host refuses a `.devcontainer/` that reaches outside its container: host commands (`initializeCommand`), `runArgs`, privileges, capabilities, host mounts (also through a symlink, a volume driver, `volumes_from`, an `env_file`, a secret or a build context), published ports, the namespaces of the host or of another container, `${localEnv:...}`, and images without an exact version tag. It adds its own memory, CPU and process caps and `no-new-privileges`. During the checks, it also cuts the outside network of the compose services.
+The host refuses a `.devcontainer/` that reaches outside its container: host commands, `runArgs`, privileges, host mounts and namespaces, published ports, `${localEnv:...}`, and images without an exact version tag. It adds its own memory, CPU and process caps, and it cuts the outside network during the checks.
 
 ### Secrets
 
@@ -168,25 +167,11 @@ autopilot secrets rm STRIPE_KEY
 
 Each value goes to the `autopilot` vault, in one item per repo (`<owner>_<repo>`). The command adds the reference to `.github/autopilot.json`; commit it. A value is never a command argument, so it stays out of the shell history. A value must be on one line.
 
-The host reads only the references to the repo's own item. It gives the values to the checks that run a command from `verify.commands` (such as `lint`, `types` and `test`), never to the scanners, the install step or the agent. A check that gets secrets shows only if it passed: autopilot keeps its output out of statuses, comments and the builder prompt.
-
-The trust boundary is the same as in CI: whoever can change the code of a repo can read the secrets that the repo gets, for example from a test. Hiding the output only prevents accidents. Give a repo only test-mode or low-value keys.
-
-## Install
-
-The CLI on your machine is only a client. It installs for your user, without root. You need [mise](https://mise.jdx.dev/installing-mise.html), which installs the pinned Node.
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
-autopilot self-update            # install the latest release, or --version vX.Y.Z
-autopilot alias                  # add "alias ap=autopilot" to the rc file of your shell; --remove deletes it
-```
-
-The release goes to `~/.local/share/autopilot` and the command to `~/.local/bin/autopilot`.
+The host gives the values only to the checks that run a command from `verify.commands`, never to the scanners, the install step or the agent, and it shows only whether such a check passed. As in CI, whoever can change the code of a repo can read its secrets, for example from a test: give a repo only test-mode or low-value keys.
 
 ## Hosts
 
-A host runs `autopilot run` as a service and holds everything it needs: its `host.json`, the 1Password service account token, and a release from GitHub. At start, the host reads the App key and the Claude token with `op`. The client keeps no config and forwards each command to the host over SSH, like the Vault CLI with `VAULT_ADDR`. The host `local` is the machine you run the command on.
+A host runs `autopilot run` as a service. It holds its `host.json`, the 1Password service account token and a release, and it reads the App key and the Claude token with `op` at start. The client keeps no config: it forwards each command to the host over SSH. The host `local` is the machine you run the command on.
 
 | Host  | Service                                                                  | Files                              | Logs                       |
 | ----- | ------------------------------------------------------------------------ | ---------------------------------- | -------------------------- |
@@ -211,11 +196,7 @@ autopilot update                 # install the latest release, or --version vX.Y
 
 A host works on one issue at a time by default. To run more at once, set `concurrency` in its `host.json`. Each issue gets its own containers and `limits`, so size it to the host's memory and to the rate limits of your Claude plan.
 
-Several hosts can share an allowlist. Before a host acts on an issue, it posts a claim comment. The oldest claim wins, and the other hosts skip the issue. To move an issue to another host, delete its claim comment.
-
-## Agent skill
-
-[`skills/autopilot`](skills/autopilot/SKILL.md) teaches a coding agent to set up autopilot and to use it: write issues that autopilot can build, answer its questions, approve a spec, review its pull requests, and retry a blocked issue. Install it with `npx skills add marcaureln/autopilot`, or copy the folder to the skills folder of your agent.
+Several hosts can share an allowlist: the oldest claim comment on an issue wins. To move an issue to another host, delete its claim comment.
 
 ## Development
 
