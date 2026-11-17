@@ -145,9 +145,9 @@ async function validateEnvironment(clone: string, jobDir: string, repo: Repo, co
         writeFileSync(join(runDir, SECRETS_NAME), shellEnvFile(secrets), { mode: 0o600, flag: "wx" });
       }
       const result = await cliDevcontainer.exec(up.containerId, checkCommand(plan.command, up.workspaceFolder, withSecrets), { timeoutMs: deadline - Date.now() });
+      const lines = BASELINE_CHECKS.includes(plan.check) && !result.timedOut && !result.truncated ? knownFailureLines(result.output) : [];
       if (result.exit === 0 && !result.timedOut) results.push({ check: plan.check, outcome: "passed" });
-      else if (BASELINE_CHECKS.includes(plan.check) && !result.timedOut && !result.truncated && knownFailureLines(result.output).length > 0) {
-        const lines = knownFailureLines(result.output);
+      else if (lines.length > 0) {
         baseline[plan.check] = lines;
         results.push({ check: plan.check, outcome: "baseline", lines: lines.length });
       } else results.push({ check: plan.check, outcome: "failed" });
