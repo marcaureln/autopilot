@@ -32,6 +32,9 @@ fi
 if ! command -v op >/dev/null && ! command -v apt-get >/dev/null; then
   missing+=("1Password CLI: https://developer.1password.com/docs/cli/get-started/")
 fi
+if ! git lfs version >/dev/null 2>&1 && ! command -v apt-get >/dev/null; then
+  missing+=("Git LFS (package git-lfs): https://git-lfs.com")
+fi
 if [ "$docker_mode" = rootless ]; then
   command -v dockerd-rootless-setuptool.sh >/dev/null || missing+=("Docker rootless extras: https://docs.docker.com/engine/security/rootless/")
   command -v newuidmap >/dev/null || missing+=("newuidmap (package uidmap): https://docs.docker.com/engine/security/rootless/#prerequisites")
@@ -71,6 +74,13 @@ if ! command -v op >/dev/null; then
   curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --dearmor --yes -o /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg
   apt-get update -q
   apt-get install -y -q 1password-cli
+fi
+
+if ! git lfs version >/dev/null 2>&1; then
+  step "git-lfs"
+  echo "INFO: git-lfs is missing, installing it with apt: repos that use Git LFS need it"
+  apt-get update -q
+  apt-get install -y -q git-lfs
 fi
 
 step "user $user"

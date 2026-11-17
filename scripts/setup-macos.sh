@@ -34,6 +34,7 @@ fi
 if ! command -v brew >/dev/null; then
   command -v mise >/dev/null || missing+=("mise: https://mise.jdx.dev/installing-mise.html (or Homebrew, https://brew.sh, and setup installs it)")
   command -v op >/dev/null || missing+=("1Password CLI: https://developer.1password.com/docs/cli/get-started/ (or Homebrew, https://brew.sh, and setup installs it)")
+  git lfs version >/dev/null 2>&1 || missing+=("Git LFS: https://git-lfs.com (or Homebrew, https://brew.sh, and setup installs it)")
 fi
 if [ "${#missing[@]}" -gt 0 ]; then
   printf 'missing: %s\n' "${missing[@]}" >&2
@@ -49,6 +50,11 @@ if ! command -v op >/dev/null; then
   step "1password cli"
   echo "INFO: op is missing, installing it with Homebrew (https://developer.1password.com/docs/cli/get-started/)"
   brew install --quiet --cask 1password-cli
+fi
+if ! git lfs version >/dev/null 2>&1; then
+  step "git-lfs"
+  echo "INFO: git-lfs is missing, installing it with Homebrew: repos that use Git LFS need it"
+  brew install --quiet git-lfs
 fi
 
 step "docker"
