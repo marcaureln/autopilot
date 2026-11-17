@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/autopilot.schema.json",
   "title": "Autopilot repo config",
-  "description": "Tells autopilot what to do in this repo. Lives at .github/autopilot.json.",
+  "description": "The autopilot config of a repo, at .github/autopilot.json.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version"],
@@ -40,7 +40,7 @@
       "default": {}
     },
     "skills": {
-      "description": "Skills installed for each role. Each entry is one skill directory with a SKILL.md: github.com/<owner>/<repo>[//<path>][#<ref>] (fetched per job with the App token; the repo must be in the host allowlist) or a path under /etc/autopilot/skills on the host.",
+      "description": "Skills installed for each role. Each entry is one skill directory with a SKILL.md: github.com/<owner>/<repo>[//<path>][#<ref>] (fetched per job with the App token, from a repo that the host watches) or a path under /etc/autopilot/skills on the host.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -82,7 +82,7 @@
       "default": {}
     },
     "preview": {
-      "description": "Declares that screenshots are possible. The builder decides per task.",
+      "description": "A command that starts a preview of the app, and its URL. autopilot reads this field but does not use it yet.",
       "type": "object",
       "additionalProperties": false,
       "required": ["command", "url"],
@@ -92,12 +92,12 @@
       }
     },
     "merge": {
-      "description": "auto: merge when checks pass and risk is low. manual: always leave the merge to a human.",
+      "description": "auto: merge when the checks pass and the risk is low. manual: a person always does the merge.",
       "enum": ["auto", "manual"],
       "default": "manual"
     },
     "risk": {
-      "description": "Extra risk rules on top of the built-in ones.",
+      "description": "Risk rules in addition to the built-in ones.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -117,7 +117,7 @@
       "default": {}
     },
     "secrets": {
-      "description": "Runtime secrets as references, written by `autopilot secrets set`. Each one must be op://autopilot/<owner>_<repo>/<NAME> (lowercase owner and repo). The host resolves the values for the verify.commands checks only.",
+      "description": "1Password references to runtime secrets, written by `autopilot secrets set --backend op`. Each one must be op://autopilot/<owner>_<repo>/<NAME> (lowercase owner and repo). The host reads the values for the verify.commands checks only. A reference here wins over a value of the same name in the repo's env file on the host.",
       "type": "object",
       "propertyNames": { "pattern": "^[A-Z_][A-Z0-9_]*$" },
       "additionalProperties": {
