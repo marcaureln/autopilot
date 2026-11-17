@@ -327,7 +327,7 @@ export async function setup(options: SetupOptions): Promise<void> {
   if (options.yes && !options.configFile) throw new Error("--yes needs --config <setup file>");
   const config = options.configFile ? parseSetupConfig(readFileSync(options.configFile, "utf8"), options.configFile) : {};
   intro("autopilot setup");
-  log.info("Each step checks what is in place and only does what is missing.");
+  log.info("Each step checks what is in place and does only what is missing.");
   prerequisites();
   const login = githubSignIn(options);
   await onePassword(options);

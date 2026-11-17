@@ -23,5 +23,5 @@ test("adds an entry once", () => {
 
 test("removes an entry, and fails for an unknown one", () => {
   assert.deepEqual(removeWatchEntry(host, "me").allow, []);
-  assert.throws(() => removeWatchEntry(host, "other"), /is not watched/);
+  assert.throws(() => removeWatchEntry(host, "other"), /the host does not watch other/);
 });

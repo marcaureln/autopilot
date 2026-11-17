@@ -31,7 +31,7 @@ export async function prepareAgent(host: Host, roleSkills: string[], github: Git
 
   for (const [index, entry] of roleSkills.entries()) {
     const source = parseSource(entry, "skills");
-    if (source.kind === "github" && !isWatchedRepo(source.owner, source.repo, host.allow)) throw new Error(`skills: ${source.owner}/${source.repo} is not watched by the host`);
+    if (source.kind === "github" && !isWatchedRepo(source.owner, source.repo, host.allow)) throw new Error(`skills: ${source.owner}/${source.repo} is not a repo that the host watches`);
     const dest = join(jobDir, "sources", String(index));
     const dir = await fetchSource(entry, github, dest, "skills");
     // A symlink in the clone or on the host path must not lead out of it.

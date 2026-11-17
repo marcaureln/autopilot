@@ -41,7 +41,7 @@ export function parseConfig(text: string, source: string): Config {
     throw new Error(`Invalid config ${source}: ${error instanceof Error ? error.message : error}`);
   }
   if (typeof data === "object" && data !== null && "stack" in data) {
-    throw new Error(`Invalid config ${source}: \`stack\` is gone, the repo's .devcontainer/ is the environment now. Run \`autopilot init\` again.`);
+    throw new Error(`Invalid config ${source}: \`stack\` is from an older autopilot. The repo's .devcontainer/ is now the environment. Run \`autopilot init\` again.`);
   }
   if (!validate(data)) {
     throw new Error(`Invalid config ${source}: ${ajv.errorsText(validate.errors, { dataVar: "config" })}`);

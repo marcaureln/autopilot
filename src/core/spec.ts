@@ -10,8 +10,8 @@ const CHECKBOX = "Approve and build";
 
 const NEXT_STEP: Record<Gate1["event"], string> = {
   needs_info: "Answer the questions in a comment. autopilot then writes a new spec.",
-  approval_required: "Waits for approval. Tick the box below; only a tick by an owner counts.",
-  go: "Building starts now.",
+  approval_required: "autopilot waits for approval. Tick the box below. Only a tick by an owner counts.",
+  go: "The build starts now.",
 };
 
 function fileLine(file: PlannerResult["planned_files"][number]): string {

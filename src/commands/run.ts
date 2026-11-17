@@ -223,7 +223,7 @@ async function working(job: Working): Promise<void> {
     case "merged":
       return log(key, `${key}: pull request #${phase.pull.number} is merged`);
     case "closed":
-      throw new Blocked(`Pull request #${phase.pull.number} was closed without a merge. To build again, remove the label; to change the plan first, comment on the issue.`);
+      throw new Blocked(`Pull request #${phase.pull.number} was closed without a merge. To build again, remove the label. To change the plan first, comment on the issue.`);
     case "pull": {
       const config = await readConfig(repoGitHub);
       return checksAndGate2(job, config, phase.pull, retryAt, currentSpec);
@@ -324,7 +324,7 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
   const refused = refusedSecrets(ctx.repo, config.secrets);
   if (refused.length > 0) {
     const names = refused.map((name) => `\`${name}\``).join(", ");
-    throw new Blocked(`The \`secrets\` in \`${CONFIG_PATH}\` for ${names} do not point to this repo's own 1Password item. Set each one again with \`autopilot secrets set <NAME>\`.`);
+    throw new Blocked(`The \`secrets\` in \`${CONFIG_PATH}\` for ${names} do not point to this repo's own 1Password item. Set each one again with \`autopilot secrets set --backend op <NAME>\`.`);
   }
   const sha = pull.head.sha;
   // Someone with write access can push to the bot's branch. Only a head the host pushed for this

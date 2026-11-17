@@ -29,7 +29,7 @@ export async function watch(path: string, value: string, audit: Audit): Promise<
   const host = loadHost(path);
   const github = createGitHub({ appId: host.app_id, privateKey: readSecret(host.secrets.app_key, "watch: check the App installation", audit) }, audit);
   if ((await github.findInstallation(entry)) === undefined) {
-    console.log(`The App is not installed for ${value}. Install it; the host starts polling it at the next loop.`);
+    console.log(`The App is not installed for ${value}. Install it. The host starts to poll it at the next loop.`);
     console.log(`open: ${await installUrl(await github.appSlug(), entry.owner)}`);
   }
   if (host.allow.includes(value)) return console.log(`${host.name} already watches ${value}`);

@@ -16,6 +16,6 @@ export function addWatchEntry(host: Host, value: string): Host {
 }
 
 export function removeWatchEntry(host: Host, value: string): Host {
-  if (!host.allow.includes(value)) throw new Error(`${value} is not watched`);
+  if (!host.allow.includes(value)) throw new Error(`the host does not watch ${value}`);
   return { ...host, allow: host.allow.filter((entry) => entry !== value) };
 }
