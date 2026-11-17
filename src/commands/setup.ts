@@ -12,7 +12,7 @@ import { readSecret, type Backend } from "../core/secrets.ts";
 import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, repoFileStored, requiredTools, RESOURCES_PROBE, type HostFacts, type SetupConfig } from "../core/setup.ts";
 import { alias, AliasError, aliasFile, aliasNameProblem, shellOf, withoutAlias } from "./alias.ts";
 import { appCreate, githubLogin } from "./app.ts";
-import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, checkAppKey, CLAUDE_TOKEN_ITEM, clientClaudeToken, forward, found, HOST_SECRETS, hostSetup, missingSecrets, OP_TOKEN_ITEM, readAppKey } from "./client.ts";
+import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, checkAppKey, CLAUDE_TOKEN_ITEM, clientClaudeToken, forward, found, HOST_SECRETS, hostSetup, missingSecrets, OP_TOKEN_ITEM, readAppKey, readKeyFile } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
 import { BRANCH as ONBOARDING_BRANCH, init } from "./init.ts";
 import { op, opItemExists } from "./secrets.ts";
@@ -133,7 +133,7 @@ async function githubApp(options: SetupOptions, config: SetupConfig, backend: Ba
       record("GitHub App", "already done", `id ${appId}. Host setup asks for its private key if the host has none`);
       return { id: appId };
     }
-    const slug = await checkAppKey(appId, readFileSync(localKey, "utf8"), localKey);
+    const slug = await checkAppKey(appId, readKeyFile(localKey), localKey);
     record("GitHub App", "already done", `${slug} (id ${appId}), key in ${localKey}`);
     return { id: appId, keyFile: localKey };
   }

@@ -83,6 +83,11 @@ export async function checkAppKey(appId: number, privateKey: string, where: stri
     });
 }
 
+export function readKeyFile(path: string): string {
+  if (!existsSync(path)) throw new Error(`no App key file at ${path}`);
+  return readFileSync(path, "utf8");
+}
+
 export async function readAppKey(path: string | undefined, interactive: boolean): Promise<string> {
   let file = path ?? (existsSync(APP_KEY_PATH) ? APP_KEY_PATH : undefined);
   if (!file) {
@@ -91,7 +96,7 @@ export async function readAppKey(path: string | undefined, interactive: boolean)
     if (isCancel(answer)) throw new Error("cancelled");
     file = answer;
   }
-  return readFileSync(file, "utf8");
+  return readKeyFile(file);
 }
 
 export async function readClaudeToken(interactive: boolean): Promise<string> {
