@@ -35,7 +35,6 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
    ```
 
    The wizard does these steps in this order. Each step checks what is in place and only does what is missing, so you can run it again at any time.
-
    1. **Tools.** It checks git, ssh, mise, op and gh.
    2. **1Password.** It creates the vault `autopilot` and a service account that can only read that vault. The host uses this account to read its secrets.
    3. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page: click **Create GitHub App**. The private key goes to the vault. To use an App that you already have, give its App ID and the path of its `.pem` file.
@@ -55,12 +54,12 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
 
 5. Follow the issue on GitHub. Within one minute, the host posts a claim comment, then a spec. Then it builds the change, runs the checks and opens a pull request. The labels tell you when you must act:
 
-   | Label | What to do |
-   | --- | --- |
-   | `autopilot:working` | Nothing. Wait. |
-   | `autopilot:needs-info` | Answer the questions of the spec in one comment. |
-   | `autopilot:awaiting-approval` | Read the spec, then tick **Approve and build**. |
-   | `autopilot:blocked` | Read the last comment, fix the cause, then remove the label to try again. |
+   | Label                         | What to do                                                                |
+   | ----------------------------- | ------------------------------------------------------------------------- |
+   | `autopilot:working`           | Nothing. Wait.                                                            |
+   | `autopilot:needs-info`        | Answer the questions of the spec in one comment.                          |
+   | `autopilot:awaiting-approval` | Read the spec, then tick **Approve and build**.                           |
+   | `autopilot:blocked`           | Read the last comment, fix the cause, then remove the label to try again. |
 
    With `"merge": "manual"` (the default from `init`), you review and merge each pull request. To see what the host does, run `autopilot logs` with `AUTOPILOT_HOST` set to your host.
 
@@ -119,11 +118,11 @@ Models propose and rules decide. The risk rules are deterministic, and a model c
 
 Each block sits behind a config field or a small interface. Only the "Today" column is built.
 
-| Block         | Today                          | Possible later              |
-| ------------- | ------------------------------ | --------------------------- |
-| Forge         | GitHub                         | GitLab, Forgejo             |
-| Agent harness | [Claude Code](docker/claude)   | OpenCode, Codex, pi         |
-| Secrets       | 1Password CLI                  | OpenBao, age-encrypted file |
+| Block         | Today                        | Possible later      |
+| ------------- | ---------------------------- | ------------------- |
+| Forge         | GitHub                       | GitLab              |
+| Agent harness | [Claude Code](docker/claude) | Codex, OpenCode, pi |
+| Secrets       | 1Password CLI                | age-encrypted file  |
 
 ## Configuration
 
@@ -189,10 +188,10 @@ The release goes to `~/.local/share/autopilot` and the command to `~/.local/bin/
 
 A host runs `autopilot run` as a service and holds everything it needs: its `host.json`, the 1Password service account token, and a release from GitHub. At start, the host reads the App key and the Claude token with `op`. The client keeps no config and forwards each command to the host over SSH, like the Vault CLI with `VAULT_ADDR`. The host `local` is the machine you run the command on.
 
-| Host | Service | Files | Logs |
-| --- | --- | --- | --- |
-| Linux | systemd, as the user `autopilot` with rootless Docker | `/etc/autopilot`, `/opt/autopilot` | journald |
-| macOS | launchd agent of your user, with your OrbStack, Colima or Docker Desktop | `~/.autopilot` | `~/Library/Logs/autopilot` |
+| Host  | Service                                                                  | Files                              | Logs                       |
+| ----- | ------------------------------------------------------------------------ | ---------------------------------- | -------------------------- |
+| Linux | systemd, as the user `autopilot` with rootless Docker                    | `/etc/autopilot`, `/opt/autopilot` | journald                   |
+| macOS | launchd agent of your user, with your OrbStack, Colima or Docker Desktop | `~/.autopilot`                     | `~/Library/Logs/autopilot` |
 
 A macOS host runs while you are logged in, and stops while the Mac sleeps.
 
@@ -233,10 +232,6 @@ Node runs the TypeScript files directly. There is no build step.
 autopilot builds on these projects and ideas:
 
 - [Claude Code devcontainer](https://github.com/anthropics/claude-code/tree/main/.devcontainer): Anthropic's reference devcontainer for Claude Code.
-- [Anthropic devcontainer features](https://github.com/anthropics/devcontainer-features): the feature that installs Claude Code in a devcontainer.
 - [Dev Container CLI](https://github.com/devcontainers/cli) and the [Dev Container specification](https://containers.dev/).
 - [pstack](https://github.com/michael-denyer/pstack-claude): poteto's agent workflows, used as skills for the planner and the builder.
 - [superpowers](https://github.com/obra/superpowers): obra's skills for test-driven development and systematic debugging.
-- [GitHub App manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest): how `autopilot app create` makes your App in one click.
-- [1Password service accounts](https://developer.1password.com/docs/service-accounts/): how a host reads its secrets.
-- [Semgrep](https://github.com/semgrep/semgrep), [Grype](https://github.com/anchore/grype) and [TruffleHog](https://github.com/trufflesecurity/trufflehog): the scanners of the `sast`, `deps-scan` and `secrets-scan` checks.
