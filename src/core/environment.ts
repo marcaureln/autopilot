@@ -22,11 +22,11 @@ const SERVICES_NETWORK = "autopilot-services";
 export const RUN_DIR = "/autopilot";
 export const SECRETS_NAME = "secrets.sh";
 export const SECRETS_FILE = `${RUN_DIR}/${SECRETS_NAME}`;
+export const PROMPT_FILE = `${RUN_DIR}/prompt.md`;
 
-// Our own feature, because Anthropic's always installs the latest Claude Code. The CLI finds a local
-// feature next to the config file, so the host copies it next to its override file.
-export const CLAUDE_FEATURE_DIR = "autopilot-claude-code";
-const CLAUDE_FEATURE_SOURCE = new URL("../../docker/claude/feature/", import.meta.url).pathname;
+// A feature of autopilot that installs one exact version of the agent. The CLI finds a local feature
+// next to the config file, so the host copies the source folder there, in a folder named by the id.
+export type AgentFeature = { id: string; source: string; version: string };
 
 export class EnvironmentRefused extends Error {
   readonly problems: string[];
@@ -134,8 +134,8 @@ export type EnvironmentOptions = {
   idLabel: string;
   limits: Host["limits"];
   mounts: Mount[];
-  // The Claude Code version to install in the dev container, or undefined for none (the checks).
-  claudeCodeVersion: string | undefined;
+  // The agent to install in the dev container, or undefined for none (the checks).
+  agentFeature: AgentFeature | undefined;
   timeoutMs: number;
   audit: Audit;
 };
@@ -143,7 +143,7 @@ export type EnvironmentOptions = {
 export type Started = { kind: "up"; containerId: string; workspaceFolder: string } | { kind: "failed"; result: ContainerResult };
 
 export async function startEnvironment(options: EnvironmentOptions): Promise<Started> {
-  const { devcontainer, idLabel, limits, mounts, claudeCodeVersion, audit } = options;
+  const { devcontainer, idLabel, limits, mounts, agentFeature, audit } = options;
   const workspace = realpathSync(options.workspace);
   const read = await devcontainer.readConfiguration(workspace, {});
   const configDir = dirname(realpathSync(read.configFile));
@@ -184,8 +184,8 @@ export async function startEnvironment(options: EnvironmentOptions): Promise<Sta
   if (typeof dockerfile === "string") readDockerfile(workspace, resolve(configDir, dockerfile), problems);
   if (problems.length > 0) throw new EnvironmentRefused(problems);
 
-  const features: Features = claudeCodeVersion === undefined ? {} : { [`./${CLAUDE_FEATURE_DIR}`]: { version: claudeCodeVersion } };
-  if (claudeCodeVersion !== undefined) cpSync(CLAUDE_FEATURE_SOURCE, join(configDir, CLAUDE_FEATURE_DIR), { recursive: true });
+  const features: Features = agentFeature === undefined ? {} : { [`./${agentFeature.id}`]: { version: agentFeature.version } };
+  if (agentFeature !== undefined) cpSync(agentFeature.source, join(configDir, agentFeature.id), { recursive: true });
   const overrides = overrideFiles(read.configuration, { limits, mounts, composeServices });
   const overridePath = join(configRel, OVERRIDE_FILE);
   writeRepoFile(workspace, overridePath, `${JSON.stringify(overrides.devcontainer, null, 2)}\n`);

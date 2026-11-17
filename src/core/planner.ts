@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/planner-result.schema.json" with { type: "json" };
-import { runClaude } from "../harness/claude.ts";
+import { HARNESSES, runAgent, type Credentials } from "../harness/harness.ts";
 import type { Audit } from "./audit.ts";
 import type { Config } from "./config.ts";
 import { containerName } from "./docker.ts";
@@ -100,9 +100,9 @@ export type PlannerJob = {
   thread: Comment[];
 };
 
-export type Harness = { claudeToken: string; audit: Audit };
+export type AgentAccess = { credentials: Credentials; audit: Audit };
 
-export async function runPlanner({ github, repoGitHub, repo, host, config, issue, thread }: PlannerJob, harness: Harness): Promise<PlannerResult> {
+export async function runPlanner({ github, repoGitHub, repo, host, config, issue, thread }: PlannerJob, access: AgentAccess): Promise<PlannerResult> {
   const job = mkdtempSync(join(tmpdir(), "autopilot-job-"));
   try {
     const work = join(job, "work");
@@ -117,17 +117,18 @@ export async function runPlanner({ github, repoGitHub, repo, host, config, issue
     writeFileSync(promptFile, plannerPrompt({ repo: `${repo.owner}/${repo.name}`, issue, thread, risk: config.risk }));
 
     const agent = config.agents[role];
-    await runClaude({
+    await runAgent({
+      harness: HARNESSES[agent.harness],
       name: containerName(repo.owner, repo.name, issue.number),
       model: agent.model,
       effort: agent.effort,
       promptFile,
       skillsDir,
       workdir: work,
-      claudeConfigDir,
+      configDir: claudeConfigDir,
       limits: host.limits,
       timeoutMinutes: config.limits.run_timeout_minutes,
-      ...harness,
+      ...access,
     });
 
     const result = readAgentFile(work, RESULT_PATH, 64 * 1024);

@@ -1,16 +1,16 @@
 import { execFile } from "node:child_process";
-import { appendFileSync, cpSync, lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, lstatSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/builder-result.schema.json" with { type: "json" };
-import { claudeCodeVersion, claudeImage, claudeMounts, MANAGED_SETTINGS, PROMPT_NAME, runClaudeInDevcontainer, TOKEN_NAME } from "../harness/claude.ts";
+import { agentImage, devcontainerSetup, HARNESSES, runAgentInDevcontainer, type Credentials } from "../harness/harness.ts";
 import type { Audit } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { Devcontainer } from "./devcontainer-cli.ts";
 import { containerName, runContainer } from "./docker.ts";
-import { CLAUDE_FEATURE_DIR, COMPOSE_OVERRIDE_FILE, OVERRIDE_FILE, RUN_DIR, startEnvironment, stopEnvironment } from "./environment.ts";
+import { COMPOSE_OVERRIDE_FILE, OVERRIDE_FILE, startEnvironment, stopEnvironment } from "./environment.ts";
 import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
@@ -172,7 +172,7 @@ export type BuildJob = {
   thread: Comment[];
   identity: Identity;
   mode: BuildMode;
-  claudeToken: string;
+  credentials: Credentials;
   devcontainer: Devcontainer;
   audit: Audit;
 };
@@ -212,13 +212,14 @@ async function readCommits(cwd: string, range: string): Promise<Commit[]> {
 
 // The host never runs git in the agent's checkout: its .git/config is agent-controlled and could run
 // commands (core.fsmonitor, hooks). A throwaway container with no network turns the new commits into
-// a bundle, which is plain data that the host fetches into its own clean clone.
+// a bundle, which is plain data that the host fetches into its own clean clone. It only needs git,
+// so it is the Claude agent image whatever harness the builder uses.
 async function bundleNewCommits(job: BuildJob, jobDir: string, work: string, start: string): Promise<string> {
   const out = join(jobDir, "out");
   mkdirSync(out);
   const result = await runContainer({
     name: containerName(job.repo.owner, job.repo.name, job.issue.number, "bundle"),
-    image: await claudeImage(),
+    image: await agentImage(HARNESSES.claude),
     command: ["git", "-c", "safe.directory=*", "-C", "/work", "bundle", "create", "--quiet", "/out/result.bundle", `^${start}`, "HEAD"],
     mounts: [
       { source: work, target: "/work", readonly: true },
@@ -257,13 +258,15 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     cpSync(origin, work, { recursive: true, verbatimSymlinks: true });
     await git(work, ["config", "user.name", identity.name]);
     await git(work, ["config", "user.email", identity.email]);
-    mkdirSync(join(work, ".autopilot"));
-    appendFileSync(join(work, ".git", "info", "exclude"), `/.autopilot/\n${OVERRIDE_FILE}\n${COMPOSE_OVERRIDE_FILE}\n${CLAUDE_FEATURE_DIR}/\n`);
-
     const role = mode.kind === "build" ? config.steps.build : config.steps.fix;
+    const agent = config.agents[role];
+    const harness = HARNESSES[agent.harness];
     const { skillsDir, claudeConfigDir } = await prepareAgent(host, config.skills[role], github, jobDir);
     const runDir = join(jobDir, "run");
     mkdirSync(runDir, { mode: 0o700 });
+    const setup = devcontainerSetup(harness, runDir, skillsDir, claudeConfigDir);
+    mkdirSync(join(work, ".autopilot"));
+    appendFileSync(join(work, ".git", "info", "exclude"), `/.autopilot/\n${OVERRIDE_FILE}\n${COMPOSE_OVERRIDE_FILE}\n${setup.feature.id}/\n`);
     started = true;
     const deadline = Date.now() + config.limits.run_timeout_minutes * 60 * 1000;
     const up = await startEnvironment({
@@ -271,8 +274,8 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
       workspace: work,
       idLabel,
       limits: host.limits,
-      mounts: [{ source: runDir, target: RUN_DIR, readonly: true }, MANAGED_SETTINGS, ...claudeMounts(skillsDir, claudeConfigDir)],
-      claudeCodeVersion: claudeCodeVersion(),
+      mounts: setup.mounts,
+      agentFeature: setup.feature,
       timeoutMs: deadline - Date.now(),
       audit: job.audit,
     });
@@ -280,12 +283,13 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
 
     const failures = mode.kind === "fix" ? mode.failures : undefined;
     const prompt = builderPrompt({ repo: `${repo.owner}/${repo.name}`, workdir: up.workspaceFolder, issue, thread, secrets: [...new Set([...repoSecretNames(repo), ...Object.keys(config.secrets)])], failures });
-    writeFileSync(join(runDir, PROMPT_NAME), prompt);
-    writeFileSync(join(runDir, TOKEN_NAME), job.claudeToken, { mode: 0o600, flag: "wx" });
-    const agent = config.agents[role];
-    await runClaudeInDevcontainer({
+    await runAgentInDevcontainer({
+      harness,
+      credentials: job.credentials,
       devcontainer: job.devcontainer,
       containerId: up.containerId,
+      runDir,
+      prompt,
       workdir: up.workspaceFolder,
       model: agent.model,
       effort: agent.effort,
@@ -293,7 +297,6 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     }).catch((error: unknown) => {
       throw new BuildStopped(`the builder failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     });
-    rmSync(join(runDir, TOKEN_NAME));
 
     const resultText = readAgentFile(work, RESULT_PATH, 64 * 1024);
     if (resultText === undefined) throw new BuildStopped(`the builder wrote no ${RESULT_PATH}`);

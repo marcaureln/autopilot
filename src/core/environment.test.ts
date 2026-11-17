@@ -123,7 +123,7 @@ for (const { name, configuration, services, refused } of startCases) {
     mkdirSync(join(workspace, ".devcontainer"));
     writeFileSync(join(workspace, ".devcontainer", "devcontainer.json"), JSON.stringify(configuration));
     const calls: string[] = [];
-    const start = startEnvironment({ devcontainer: fakeDevcontainer(configuration, services, calls), workspace, idLabel: "x=y", limits, mounts: [], claudeCodeVersion: undefined, timeoutMs: 1000, audit: () => {} });
+    const start = startEnvironment({ devcontainer: fakeDevcontainer(configuration, services, calls), workspace, idLabel: "x=y", limits, mounts: [], agentFeature: undefined, timeoutMs: 1000, audit: () => {} });
     if (refused) {
       await assert.rejects(start, (error: unknown) => error instanceof EnvironmentRefused && refused.test(error.message));
       assert.deepEqual(calls, []);

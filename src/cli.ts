@@ -184,7 +184,10 @@ async function main(): Promise<void> {
       }
       const host = loadHost(hostFile);
       const privateKey = readSecret(host.secrets.app_key, "start: GitHub App key", auditLog);
-      const claudeToken = readSecret(host.secrets.claude_token, "start: token for the agent containers", auditLog);
+      const credentials = {
+        claudeToken: readSecret(host.secrets.claude_token, "start: token for the agent containers", auditLog),
+        apiKeys: Object.fromEntries(Object.entries(host.secrets.api_keys ?? {}).map(([name, reference]) => [name, readSecret(reference, `start: ${name} for the agent containers`, auditLog)])),
+      };
       const github = createGitHub({ appId: host.app_id, privateKey }, auditLog);
       await run(
         {
@@ -192,8 +195,8 @@ async function main(): Promise<void> {
           host,
           audit: auditLog,
           idle: grypeDbUpdater(host.limits, auditLog),
-          plan: (job) => runPlanner(job, { claudeToken, audit: auditLog }),
-          build: (job) => runBuilder({ ...job, claudeToken, devcontainer: cliDevcontainer, audit: auditLog }),
+          plan: (job) => runPlanner(job, { credentials, audit: auditLog }),
+          build: (job) => runBuilder({ ...job, credentials, devcontainer: cliDevcontainer, audit: auditLog }),
           check: (job) => runChecks({ ...job, devcontainer: cliDevcontainer, audit: auditLog }),
         },
         { once: values.once },

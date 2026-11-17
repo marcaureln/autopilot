@@ -31,7 +31,7 @@ export type Loop = {
   github: GitHub;
   host: Host;
   plan: (job: PlannerJob) => Promise<PlannerResult>;
-  build: (job: Omit<BuildJob, "claudeToken" | "devcontainer" | "audit">) => Promise<Built>;
+  build: (job: Omit<BuildJob, "credentials" | "devcontainer" | "audit">) => Promise<Built>;
   check: (job: Omit<ChecksJob, "devcontainer" | "audit">) => Promise<CheckResult[]>;
   log: Log;
   audit: Audit;

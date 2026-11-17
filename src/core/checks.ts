@@ -195,7 +195,7 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
         idLabel,
         limits: host.limits,
         mounts: [{ source: runDir, target: RUN_DIR, readonly: true }],
-        claudeCodeVersion: undefined,
+        agentFeature: undefined,
         timeoutMs: deadline - Date.now(),
         audit,
       });

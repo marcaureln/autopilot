@@ -319,7 +319,7 @@ export class FakeWorld {
     return this.script.plan;
   }
 
-  private async build(job: Omit<BuildJob, "claudeToken" | "devcontainer" | "audit">): Promise<Built> {
+  private async build(job: Omit<BuildJob, "credentials" | "devcontainer" | "audit">): Promise<Built> {
     this.builds.push(job.mode);
     if (this.script.buildError) throw this.script.buildError;
     const head = `sha-${++this.commits}`;

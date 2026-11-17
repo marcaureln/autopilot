@@ -2,7 +2,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { claudeCodeVersion, runClaude } from "../harness/claude.ts";
+import { claudeCodeVersion } from "../harness/claude.ts";
+import { HARNESSES, runAgent } from "../harness/harness.ts";
 import type { Audit } from "../core/audit.ts";
 import { BASELINE_PATH, knownFailureLines, renderBaseline, type Baseline } from "../core/baseline.ts";
 import { planChecks } from "../core/checks.ts";
@@ -93,7 +94,9 @@ async function onboardingAgent({ clone, jobDir, repo, hasDevcontainer, notes, sk
   writeFileSync(promptFile, onboardingPrompt({ repo, hasDevcontainer, claudeCodeVersion: claudeCodeVersion(), notes }));
   const planner = parseConfig('{ "version": 1 }', "the defaults").agents.planner;
   console.log(`==> onboarding agent (${planner.model}), up to ${AGENT_TIMEOUT_MINUTES} minutes`);
-  await runClaude({
+  await runAgent({
+    harness: HARNESSES[planner.harness],
+    credentials: { claudeToken, apiKeys: {} },
     name: containerName("init", repo),
     model: planner.model,
     effort: planner.effort,
@@ -102,7 +105,6 @@ async function onboardingAgent({ clone, jobDir, repo, hasDevcontainer, notes, sk
     workdir: work,
     limits: LIMITS,
     timeoutMinutes: AGENT_TIMEOUT_MINUTES,
-    claudeToken,
     audit: noAudit,
   });
   const text = readAgentFile(work, RESULT_PATH, 256 * 1024);
@@ -128,7 +130,7 @@ async function validateEnvironment(clone: string, jobDir: string, repo: Repo, co
       idLabel,
       limits: LIMITS,
       mounts: [{ source: runDir, target: RUN_DIR, readonly: true }],
-      claudeCodeVersion: undefined,
+      agentFeature: undefined,
       timeoutMs: deadline - Date.now(),
       audit: noAudit,
     });

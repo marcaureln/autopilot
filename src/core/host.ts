@@ -8,7 +8,7 @@ export type Host = {
   $schema?: string;
   name: string;
   app_id: number;
-  secrets: { app_key: string; claude_token: string };
+  secrets: { app_key: string; claude_token: string; api_keys?: Record<string, string> };
   owners: string[];
   allow: string[];
   docker: "rootless" | "rootful";
@@ -33,7 +33,8 @@ export const SECRET_LABELS: Record<HostSecret, string> = {
 };
 
 export function usesOnePassword(secrets: Host["secrets"]): boolean {
-  return Object.values(secrets).some((reference) => reference.startsWith("op://"));
+  const { api_keys = {}, ...named } = secrets;
+  return [...Object.values(named), ...Object.values(api_keys)].some((reference) => reference.startsWith("op://"));
 }
 
 export function hostSecretFiles(secrets: Host["secrets"], layout: Pick<Layout, "secretsDir" | "opToken">): HostSecretFile[] {
