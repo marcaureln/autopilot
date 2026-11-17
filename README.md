@@ -137,6 +137,10 @@ Each repo has a `.github/autopilot.json` ([full example](examples/autopilot.json
 }
 ```
 
+### Checks in your own CI
+
+By default the host runs the checks (`verify.mode` `local`). With `"verify": { "mode": "remote", "required": ["sast", "deps-scan", "secrets-scan", "test"] }`, the host runs nothing: it waits for the repo's own CI on the pull request's head. Each name in `required` is a GitHub Actions job name (a check run) or a commit status context. A failed check gives its output and annotations to the builder for a fix round. [marcaureln/actions](https://github.com/marcaureln/actions) has the `sast`, `deps-scan` and `secrets-scan` scanners as composite actions.
+
 ### Onboarding
 
 `autopilot init` onboards a repo in one pull request that you review and merge. Run it in a checkout of the repo, or pass `--repo <owner>/<repo>`. It needs `gh` and Docker with the Compose plugin.

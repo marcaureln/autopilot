@@ -57,6 +57,25 @@ export type Status = { state: CheckState; description: string; at: string };
 
 export type Statuses = Record<string, Status>;
 
+// The epoch: in remote mode the CI results on a head count whenever they ran.
+export const ANY_TIME = "1970-01-01T00:00:00Z";
+
+// A cancelled run or one that waits for a person is not a code failure: it counts as an error.
+export function checkRunState(run: { status: string; conclusion: string | null }): CheckState {
+  if (run.status !== "completed") return "pending";
+  switch (run.conclusion) {
+    case "success":
+    case "neutral":
+    case "skipped":
+      return "success";
+    case "failure":
+    case "timed_out":
+      return "failure";
+    default:
+      return "error";
+  }
+}
+
 export type HeadVerdict = { kind: "run" } | { kind: "green" } | { kind: "failed"; failing: string[] };
 
 export type FixVerdict =

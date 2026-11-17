@@ -2,7 +2,7 @@ import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import type { AllowEntry } from "./allow.ts";
 import type { Audit } from "./audit.ts";
-import { issueOfBranch, type BotPull, type CheckState, type Statuses } from "./phase.ts";
+import { checkRunState, issueOfBranch, type BotPull, type CheckState, type Statuses } from "./phase.ts";
 import type { Repo } from "./repo.ts";
 import type { FileChange } from "./risk.ts";
 import type { Comment } from "./spec.ts";
@@ -37,6 +37,10 @@ export type RepoGitHub = {
   pullFiles(pull: number): Promise<FileChange[]>;
   pullCommits(pull: number): Promise<string[]>;
   statuses(sha: string, botLogin: string): Promise<Statuses>;
+  // The repo's own CI on sha (remote mode): the latest check run of each name, else a commit status with that context.
+  ciStatuses(sha: string, names: string[]): Promise<Statuses>;
+  // What a failed check run of the repo's CI says: its output, annotations and link.
+  ciOutput(sha: string, name: string): Promise<string>;
   setStatus(sha: string, check: string, state: CheckState, description: string): Promise<void>;
   markPushed(sha: string, issue: number): Promise<void>;
   pushedFor(sha: string, botLogin: string): Promise<number | undefined>;
@@ -269,6 +273,37 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
         statuses[check] = { state: status.state, description: status.description ?? "", at: status.updated_at };
       }
       return statuses;
+    },
+    async ciStatuses(sha, names) {
+      const runs = await octokit.paginate(octokit.checks.listForRef, { owner, repo, ref: sha, filter: "latest", per_page: 100 });
+      const { data } = await octokit.repos.listCommitStatusesForRef({ owner, repo, ref: sha, per_page: 100 });
+      const statuses: Statuses = {};
+      for (const name of names) {
+        const run = runs.find((candidate) => candidate.name === name);
+        if (run) {
+          statuses[name] = { state: checkRunState(run), description: run.conclusion ?? run.status, at: run.completed_at ?? run.started_at ?? new Date().toISOString() };
+          continue;
+        }
+        // GitHub lists the statuses newest first.
+        const status = data.find((candidate) => candidate.context === name);
+        if (status && isCheckState(status.state)) statuses[name] = { state: status.state, description: status.description ?? "", at: status.updated_at };
+      }
+      return statuses;
+    },
+    async ciOutput(sha, name) {
+      const runs = await octokit.paginate(octokit.checks.listForRef, { owner, repo, ref: sha, check_name: name, filter: "latest", per_page: 100 });
+      const run = runs[0];
+      if (!run) return "";
+      const annotations = await octokit.paginate(octokit.checks.listAnnotations, { owner, repo, check_run_id: run.id, per_page: 100 });
+      return [
+        run.output.title,
+        run.output.summary,
+        run.output.text,
+        ...annotations.map((annotation) => `${annotation.path}:${annotation.start_line}: ${annotation.annotation_level}: ${annotation.message}`),
+        run.details_url && `Logs: ${run.details_url}`,
+      ]
+        .filter((part) => typeof part === "string" && part.length > 0)
+        .join("\n");
     },
     async setStatus(sha, check, state, description) {
       // GitHub rejects a description longer than 140 characters.

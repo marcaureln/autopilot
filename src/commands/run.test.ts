@@ -28,6 +28,8 @@ function repoWith(issues: Awaited<ReturnType<RepoGitHub["listLabeledIssues"]>>):
     pullFiles: unused,
     pullCommits: unused,
     statuses: unused,
+    ciStatuses: unused,
+    ciOutput: unused,
     setStatus: unused,
     markPushed: unused,
     pushedFor: unused,

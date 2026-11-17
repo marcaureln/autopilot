@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { branchName, fixVerdict, headVerdict, issueOfBranch, issuePhase, latestPull, type BotPull, type FixVerdict, type HeadVerdict, type Phase, type Statuses } from "./phase.ts";
+import { branchName, checkRunState, fixVerdict, headVerdict, issueOfBranch, issuePhase, latestPull, type BotPull, type CheckState, type FixVerdict, type HeadVerdict, type Phase, type Statuses } from "./phase.ts";
 type TrustedSpec = Parameters<typeof issuePhase>[0] & { plannerRisk: "low" | "high" };
 
 const RETRY_AT = "2026-11-15T10:00:00Z";
@@ -132,4 +132,19 @@ for (const { name, failing, earlier, rounds, expected } of fixCases) {
   test(`fix loop: ${name}`, () => {
     assert.deepEqual(fixVerdict(failing, earlier, REQUIRED, rounds ?? 3, RETRY_AT), expected);
   });
+}
+
+const ciCases: { name: string; run: Parameters<typeof checkRunState>[0]; state: CheckState }[] = [
+  { name: "queued", run: { status: "queued", conclusion: null }, state: "pending" },
+  { name: "in progress", run: { status: "in_progress", conclusion: null }, state: "pending" },
+  { name: "success", run: { status: "completed", conclusion: "success" }, state: "success" },
+  { name: "skipped", run: { status: "completed", conclusion: "skipped" }, state: "success" },
+  { name: "neutral", run: { status: "completed", conclusion: "neutral" }, state: "success" },
+  { name: "failure", run: { status: "completed", conclusion: "failure" }, state: "failure" },
+  { name: "timed out", run: { status: "completed", conclusion: "timed_out" }, state: "failure" },
+  { name: "cancelled", run: { status: "completed", conclusion: "cancelled" }, state: "error" },
+  { name: "action required", run: { status: "completed", conclusion: "action_required" }, state: "error" },
+];
+for (const { name, run, state } of ciCases) {
+  test(`a check run that is ${name} counts as ${state}`, () => assert.equal(checkRunState(run), state));
 }

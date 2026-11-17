@@ -55,7 +55,7 @@
       "additionalProperties": false,
       "properties": {
         "mode": {
-          "description": "local: the host runs checks and posts autopilot/<check> statuses. remote: wait for these check names from the repo's own CI.",
+          "description": "local: the host runs the checks and posts autopilot/<check> statuses. remote: the host runs nothing and waits for the repo's own CI: each name in `required` is a check run (a GitHub Actions job name) or a commit status context on the pull request's head.",
           "enum": ["local", "remote"],
           "default": "local"
         },
@@ -73,7 +73,7 @@
           "default": {}
         },
         "timeout_minutes": {
-          "description": "Time limit for all checks together.",
+          "description": "local: time limit for all checks together. remote: how long the host waits for the repo's CI on one head before it blocks the issue.",
           "type": "integer",
           "minimum": 1,
           "default": 10
