@@ -1,0 +1,10 @@
+services:
+  app:
+    image: node:26.13.1
+    command: sleep infinity
+    volumes:
+      - ..:/workspace
+  # A service the checks reach by name after the network cut. It answers like Redis.
+  redis:
+    image: node:26.13.1
+    command: ["node", "-e", "require('node:net').createServer((socket) => socket.end('+PONG\\r\\n')).listen(6379)"]

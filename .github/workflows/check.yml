@@ -13,3 +13,49 @@ jobs:
       - uses: jdx/mise-action@v5
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+
+  # A clean Linux host: `scripts/setup.sh` as `autopilot host setup` runs it, then real dev containers
+  # under the `autopilot` user's rootless Docker. No App, no Claude token, no 1Password.
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prerequisites of a rootless host
+        run: |
+          # The runner's Docker has no rootless extras: replace it with Docker's own packages, as on a real host.
+          sudo apt-get remove -y -q moby-engine moby-cli moby-buildx moby-compose moby-containerd moby-runc || true
+          sudo install -d -m 755 /etc/apt/keyrings
+          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list
+          sudo apt-get update -q
+          sudo apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-ce-rootless-extras uidmap dbus-user-session
+          # Ubuntu blocks unprivileged user namespaces through AppArmor, and rootless Docker needs them.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          # The runner image sets its own user's XDG folders for every user through PAM.
+          grep '^XDG_' /etc/environment || true
+          sudo sed -i '/^XDG_/d' /etc/environment
+      - name: Host setup from the checkout
+        run: |
+          release=/opt/autopilot-ci
+          sudo install -d -m 755 "$release"
+          git archive HEAD | sudo tar -x --no-same-owner -C "$release"
+          # The unit loads this file. The service then stops on the missing host.json, before it reads a secret.
+          sudo install -d -m 755 /etc/autopilot
+          echo placeholder | sudo install -m 600 /dev/stdin /etc/autopilot/op-token
+          sudo bash "$release/scripts/setup.sh" "$release" rootless
+      - name: The host has its user, rootless Docker, the service and the command
+        run: |
+          uid=$(id -u autopilot)
+          sudo -u autopilot env XDG_RUNTIME_DIR=/run/user/$uid systemctl --user is-active docker
+          systemctl is-enabled autopilot
+          test "$(readlink /opt/autopilot)" = /opt/autopilot-ci
+          autopilot --help | head -1
+      - name: Dev containers under the autopilot user
+        run: |
+          uid=$(id -u autopilot)
+          node=$(sed -n 's/^exec \([^ ]*\) .*/\1/p' /usr/local/bin/autopilot)
+          cd /opt/autopilot
+          # With the runner's /tmp, rootless BuildKit failed to copy the feature files ("preserving
+          # permissions: Invalid argument"). The cause is not known; a Pi host builds from /tmp.
+          sudo -u autopilot mkdir -p /home/autopilot/tmp
+          sudo -u autopilot env -i HOME=/home/autopilot TMPDIR=/home/autopilot/tmp PATH="$PATH" XDG_RUNTIME_DIR=/run/user/$uid DOCKER_HOST=unix:///run/user/$uid/docker.sock "$node" scripts/smoke/devcontainer.ts
