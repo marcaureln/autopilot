@@ -37,7 +37,7 @@ export type RepoGitHub = {
   pullFiles(pull: number): Promise<FileChange[]>;
   pullCommits(pull: number): Promise<string[]>;
   statuses(sha: string, botLogin: string): Promise<Statuses>;
-  // The repo's own CI on sha (remote mode): the latest check run of each name, else a commit status with that context.
+  // The repo's own CI on sha (remote mode): the newest GitHub Actions check run of each name.
   ciStatuses(sha: string, names: string[]): Promise<Statuses>;
   // What a failed check run of the repo's CI says: its output, annotations and link.
   ciOutput(sha: string, name: string): Promise<string>;
@@ -54,6 +54,12 @@ export type RepoGitHub = {
 };
 
 export const STATUS_PREFIX = "autopilot/";
+
+// The App id of GitHub Actions, the same on every repo of github.com.
+const GITHUB_ACTIONS_APP_ID = 15368;
+
+// The CI output goes into the builder prompt: a cap keeps one noisy check from filling it.
+const CI_OUTPUT_CHARS = 20_000;
 
 // A context that no check name in verify.required can produce.
 const PUSHED_CONTEXT = "autopilot-host/pushed";
@@ -129,6 +135,13 @@ type IssueProvenance = {
 
 function repoGitHub(octokit: Octokit, installationId: number, { owner, name: repo }: Repo, audit: Audit): RepoGitHub {
   const issueParams = (issue: number) => ({ owner, repo, issue_number: issue });
+  // Any App with the checks permission, or anyone with write access through a commit status, can post
+  // a result with any name. Only GitHub Actions runs count, so the repo's workflows decide.
+  async function actionsRun(sha: string, name: string) {
+    const runs = await octokit.paginate(octokit.checks.listForRef, { owner, repo, ref: sha, check_name: name, app_id: GITHUB_ACTIONS_APP_ID, per_page: 100 });
+    return runs.filter((run) => run.app?.id === GITHUB_ACTIONS_APP_ID).sort((a, b) => b.id - a.id)[0];
+  }
+
   return {
     async listLabeledIssues(label, state) {
       const issues = await octokit.paginate(octokit.issues.listForRepo, { owner, repo, labels: label, state, per_page: 100 });
@@ -275,24 +288,15 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
       return statuses;
     },
     async ciStatuses(sha, names) {
-      const runs = await octokit.paginate(octokit.checks.listForRef, { owner, repo, ref: sha, filter: "latest", per_page: 100 });
-      const { data } = await octokit.repos.listCommitStatusesForRef({ owner, repo, ref: sha, per_page: 100 });
       const statuses: Statuses = {};
       for (const name of names) {
-        const run = runs.find((candidate) => candidate.name === name);
-        if (run) {
-          statuses[name] = { state: checkRunState(run), description: run.conclusion ?? run.status, at: run.completed_at ?? run.started_at ?? new Date().toISOString() };
-          continue;
-        }
-        // GitHub lists the statuses newest first.
-        const status = data.find((candidate) => candidate.context === name);
-        if (status && isCheckState(status.state)) statuses[name] = { state: status.state, description: status.description ?? "", at: status.updated_at };
+        const run = await actionsRun(sha, name);
+        if (run) statuses[name] = { state: checkRunState(run), description: run.conclusion ?? run.status, at: run.completed_at ?? run.started_at ?? new Date().toISOString() };
       }
       return statuses;
     },
     async ciOutput(sha, name) {
-      const runs = await octokit.paginate(octokit.checks.listForRef, { owner, repo, ref: sha, check_name: name, filter: "latest", per_page: 100 });
-      const run = runs[0];
+      const run = await actionsRun(sha, name);
       if (!run) return "";
       const annotations = await octokit.paginate(octokit.checks.listAnnotations, { owner, repo, check_run_id: run.id, per_page: 100 });
       return [
@@ -303,7 +307,8 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
         run.details_url && `Logs: ${run.details_url}`,
       ]
         .filter((part) => typeof part === "string" && part.length > 0)
-        .join("\n");
+        .join("\n")
+        .slice(0, CI_OUTPUT_CHARS);
     },
     async setStatus(sha, check, state, description) {
       // GitHub rejects a description longer than 140 characters.
