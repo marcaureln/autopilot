@@ -86,7 +86,7 @@ export async function checkAppKey(appId: number, privateKey: string, where: stri
 export async function readAppKey(path: string | undefined, interactive: boolean): Promise<string> {
   let file = path ?? (existsSync(APP_KEY_PATH) ? APP_KEY_PATH : undefined);
   if (!file) {
-    if (!interactive) throw new Error(`no GitHub App key: pass --app-key <pem file> with the private key of the App, or create the App with autopilot app create`);
+    if (!interactive) throw new Error(`no GitHub App key: pass --app-key <pem file> (the app_key field of the setup file) with the private key of the App, or create the App with autopilot app create`);
     const answer = await text({ message: "Path of the App's private key file (.pem)", validate: (input) => (existsSync(input ?? "") ? undefined : "No file at this path") });
     if (isCancel(answer)) throw new Error("cancelled");
     file = answer;
