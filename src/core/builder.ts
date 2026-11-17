@@ -17,7 +17,7 @@ import type { Repo } from "./repo.ts";
 import { repoSecretNames } from "./secrets.ts";
 import { prepareAgent } from "./skills.ts";
 import type { Comment } from "./spec.ts";
-import { gitAuthEnv, readAgentFile, repoUrl, shallowClone } from "./workspace.ts";
+import { importLfsObjects, pushBranch, readAgentFile, repoUrl, shallowClone } from "./workspace.ts";
 
 const exec = promisify(execFile);
 
@@ -301,6 +301,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
 
     const bundle = await bundleNewCommits(job, jobDir, work, start);
     await git(origin, ["fetch", "--quiet", bundle, "HEAD:refs/autopilot/result"]);
+    importLfsObjects(work, origin);
     const head = await git(origin, ["rev-parse", "refs/autopilot/result"]);
     await git(origin, ["merge-base", "--is-ancestor", start, head]).catch(() => {
       throw new BuildStopped("the new commits do not start from the checked-out commit");
@@ -312,7 +313,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     // A first build replaces what an earlier attempt left on the branch. A fix round only adds on top of the commit it checked out.
     const lease = mode.kind === "build" ? "--force" : `--force-with-lease=refs/heads/${mode.branch}:${start}`;
     const pushToken = await repoGitHub.token(true);
-    await git(origin, ["push", "--quiet", lease, repoUrl(repo), `${head}:refs/heads/${mode.branch}`], gitAuthEnv(pushToken)).catch((error: unknown) => {
+    await pushBranch(origin, repoUrl(repo), pushToken, lease, head, mode.branch).catch((error: unknown) => {
       const stderr = typeof error === "object" && error !== null && "stderr" in error ? String(error.stderr).trim() : String(error);
       throw new BuildStopped(`the push to ${mode.branch} failed: ${stderr.slice(-500)}`);
     });
