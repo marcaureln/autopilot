@@ -122,3 +122,22 @@ test("the loop runs at most `concurrency` issues at once and never one issue twi
   assert.deepEqual(await startedWith(2), [1, 2]);
   assert.deepEqual(await startedWith(5), [1, 2, 3]);
 });
+
+test("an error on one repo is logged and the other repos are still polled", async () => {
+  const lines: string[] = [];
+  const broken: RepoGitHub = { ...repoWith([]), listLabeledIssues: async () => Promise.reject(new Error("HTTP 410: issues are off")) };
+  const loop = {
+    github: { ...github, repo: (_: number, repo: { name: string }) => (repo.name === "app-a" ? broken : repoWith([{ number: 9, title: "x", body: "", labels: ["autopilot", "autopilot:blocked"] }])) },
+    host: { ...host, allow: ["owner"] },
+    plan: unused,
+    build: unused,
+    check: unused,
+    log: (_: string, line: string) => lines.push(line),
+    audit: unused,
+    idle: { due: () => false, run: unused },
+  };
+  const state = loopState();
+  await runOnce(loop, state);
+  await drain(state);
+  assert.deepEqual(lines, ["owner/app-a: error: HTTP 410: issues are off", "owner/app-b#9: blocked"]);
+});

@@ -433,44 +433,58 @@ export function loopState(): LoopState {
   return { labelsReady: new Set(), outputs: new Map(), waitingSince: new Map(), running: new Map() };
 }
 
-// Starts the jobs and returns without waiting for them: see `drain`.
+// Starts the jobs and returns without waiting for them: see `drain`. An error on one entry or repo
+// is logged, so it does not stop the loop for the others.
 export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
-  const { github, host, log } = loop;
-  for (const value of host.allow) {
+  const { github, log } = loop;
+  for (const value of loop.host.allow) {
     const entry = parseAllowEntry(value);
-    const installationId = await github.findInstallation(entry);
+    const installationId = await github.findInstallation(entry).catch((error: unknown) => {
+      log(value, `${value}: error: ${messageOf(error)}`);
+      return null;
+    });
+    if (installationId === null) continue;
     if (installationId === undefined) {
       log(value, `not installed: ${value}`);
       continue;
     }
-    const repos = entry.repo ? [{ owner: entry.owner, name: entry.repo }] : await github.listRepos(installationId, entry.owner);
+    const repos = entry.repo ? [{ owner: entry.owner, name: entry.repo }] : await github.listRepos(installationId, entry.owner).catch((error: unknown) => {
+      log(value, `${value}: error: ${messageOf(error)}`);
+      return [];
+    });
     for (const repo of repos) {
-      const repoGitHub = github.repo(installationId, repo);
       const repoKey = `${repo.owner}/${repo.name}`;
-      for (const closed of await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "closed")) {
-        const key = `${repoKey}#${closed.number}`;
-        await repoGitHub.setLabels(closed.number, doneLabels(closed.labels)).then(
-          () => log(key, `${key}: closed, autopilot labels removed`),
-          (error: unknown) => log(key, `${key}: error: ${messageOf(error)}`),
-        );
-      }
-      const issues = (await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "open")).filter((issue) => !state.running.has(`${repoKey}#${issue.number}`));
-      if (issues.length === 0 || state.running.size >= host.concurrency) continue;
-      if (!state.labelsReady.has(repoKey)) {
-        await repoGitHub.ensureLabels(LABELS);
-        state.labelsReady.add(repoKey);
-      }
-      const bot = await github.appLogin();
-      const ctx: RepoContext = { repoGitHub, repo, bot, pulls: await repoGitHub.botPulls(bot), outputs: state.outputs, waitingSince: state.waitingSince };
-      for (const issue of issues) {
-        if (state.running.size >= host.concurrency) break;
-        const key = `${repoKey}#${issue.number}`;
-        const job = reconcile(loop, ctx, issue)
-          .catch((error: unknown) => log(key, `${key}: error: ${messageOf(error)}`))
-          .finally(() => state.running.delete(key));
-        state.running.set(key, job);
-      }
+      await pollRepo(loop, state, installationId, repo).catch((error: unknown) => log(repoKey, `${repoKey}: error: ${messageOf(error)}`));
     }
+  }
+}
+
+async function pollRepo(loop: Loop, state: LoopState, installationId: number, repo: Repo): Promise<void> {
+  const { github, host, log } = loop;
+  const repoGitHub = github.repo(installationId, repo);
+  const repoKey = `${repo.owner}/${repo.name}`;
+  for (const closed of await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "closed")) {
+    const key = `${repoKey}#${closed.number}`;
+    await repoGitHub.setLabels(closed.number, doneLabels(closed.labels)).then(
+      () => log(key, `${key}: closed, autopilot labels removed`),
+      (error: unknown) => log(key, `${key}: error: ${messageOf(error)}`),
+    );
+  }
+  const issues = (await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "open")).filter((issue) => !state.running.has(`${repoKey}#${issue.number}`));
+  if (issues.length === 0 || state.running.size >= host.concurrency) return;
+  if (!state.labelsReady.has(repoKey)) {
+    await repoGitHub.ensureLabels(LABELS);
+    state.labelsReady.add(repoKey);
+  }
+  const bot = await github.appLogin();
+  const ctx: RepoContext = { repoGitHub, repo, bot, pulls: await repoGitHub.botPulls(bot), outputs: state.outputs, waitingSince: state.waitingSince };
+  for (const issue of issues) {
+    if (state.running.size >= host.concurrency) break;
+    const key = `${repoKey}#${issue.number}`;
+    const job = reconcile(loop, ctx, issue)
+      .catch((error: unknown) => log(key, `${key}: error: ${messageOf(error)}`))
+      .finally(() => state.running.delete(key));
+    state.running.set(key, job);
   }
 }
 
