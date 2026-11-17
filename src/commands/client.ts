@@ -45,6 +45,8 @@ export function forward(target: string, args: string[], input?: string): Promise
   const [program, through]: [string, string[]] = target === LOCAL_TARGET ? ["sh", ["-c"]] : ["ssh", [target]];
   const command = [...through, hostCommand(args)];
   const child = input === undefined ? spawn(program, command, { stdio: ["inherit", "pipe", "inherit"], env }) : spawn(program, command, { stdio: ["pipe", "pipe", "inherit"], env });
+  // If the host command exits before it reads stdin, the exit code reports it: the EPIPE adds nothing.
+  child.stdin?.on("error", () => undefined);
   if (input !== undefined) child.stdin?.end(input);
   createInterface({ input: child.stdout }).on("line", (line) => {
     console.log(line);
