@@ -75,9 +75,16 @@ function within(path: string, root: string): boolean {
   return path === root || path.startsWith(`${root}/`);
 }
 
-// use_api_socket mounts the Docker API; a lifecycle hook can run with its own privileged flag.
-const SERVICE_REFUSED = ["cap_add", "security_opt", "devices", "device_cgroup_rules", "ports", "volumes_from", "cgroup_parent", "runtime", "use_api_socket", "post_start", "pre_stop"];
 const NAMESPACES = ["network_mode", "pid", "ipc", "userns_mode", "uts", "cgroup"];
+// Fields that act only inside the container, or that the checks below cover. Compose keeps adding
+// fields that reach the host (use_api_socket, gpus, lifecycle hooks with privileges), so the rest is refused.
+const SERVICE_ALLOWED = new Set([
+  ...NAMESPACES,
+  "image", "build", "command", "entrypoint", "environment", "env_file", "volumes", "networks", "depends_on", "healthcheck",
+  "working_dir", "user", "restart", "labels", "tmpfs", "shm_size", "stop_signal", "stop_grace_period", "init", "tty", "stdin_open",
+  "expose", "hostname", "domainname", "extra_hosts", "dns", "dns_search", "dns_opt", "ulimits", "platform", "pull_policy",
+  "secrets", "configs", "profiles", "read_only", "cap_drop", "attach", "privileged",
+]);
 // Other build fields reach the host: caches with a host path, entitlements, privileges, the ssh agent, tags.
 const BUILD_ALLOWED = new Set(["context", "dockerfile", "dockerfile_inline", "args", "target", "labels"]);
 // Compose names a volume or a network <project>_<key>. Another name can join one that already exists on the host.
@@ -96,7 +103,7 @@ export function composeProblems(compose: ComposeConfig, workspace: string, resol
     const problems: string[] = [];
     const add = (problem: string) => problems.push(`compose service ${name}: ${problem}`);
     if (isSet(service.privileged)) add("`privileged` gives the container full access to the host");
-    for (const key of SERVICE_REFUSED) if (isSet(service[key])) add(`\`${key}\` is not allowed`);
+    for (const key of Object.keys(service)) if (!SERVICE_ALLOWED.has(key) && isSet(service[key])) add(`\`${key}\` is not allowed`);
     for (const key of NAMESPACES) {
       const value = service[key];
       if (value === "host" || (typeof value === "string" && value.startsWith("container:"))) add(`\`${key}: ${value}\` shares a namespace of the host or of another container`);
