@@ -116,13 +116,26 @@ Models propose and rules decide. The risk rules are deterministic, and a model c
 
 ## Building blocks
 
-Each block sits behind a config field or a small interface. Only the "Today" column is built.
+autopilot is a small, agnostic software factory: a minimal core, with each block behind a config field or a small interface. Only the "Today" column is built.
 
-| Block         | Today                        | Possible later      |
-| ------------- | ---------------------------- | ------------------- |
-| Forge         | GitHub                       | GitLab              |
-| Agent harness | [Claude Code](docker/claude) | Codex, OpenCode, pi |
-| Secrets       | 1Password CLI                | age-encrypted file  |
+| Block         | Today                                                                                                                                                                                      | Possible later                                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Forge         | [GitHub](https://github.com)                                                                                                                                                               | [GitLab](https://gitlab.com)                                                                                                           |
+| Agent harness | [Claude Code](https://github.com/anthropics/claude-code) ([image](docker/claude))                                                                                                          | [OpenCode](https://github.com/anomalyco/opencode), [Codex](https://github.com/openai/codex), [pi](https://github.com/earendil-works/pi) |
+| Environment   | The repo's [dev container](https://containers.dev/), run with the [Dev Container CLI](https://github.com/devcontainers/cli)                                                                | -                                                                                                                                      |
+| Checks        | Your commands, [Semgrep](https://github.com/semgrep/semgrep), [Grype](https://github.com/anchore/grype), [TruffleHog](https://github.com/trufflesecurity/trufflehog), or your own CI with [marcaureln/actions](https://github.com/marcaureln/actions) | -                                                                                                                                      |
+| Secrets       | [1Password CLI](https://developer.1password.com/docs/cli/)                                                                                                                                 | Env files on the host, [age](https://github.com/FiloSottile/age)                                                                       |
+
+## Non-goals
+
+autopilot stays a minimal core. It will not have:
+
+- **Network control for the agents.** Egress filtering, proxies and firewalls are the job of whoever maintains the host.
+- **A self-improving factory.** To make the agents better, maintain your own skills and `AGENTS.md`.
+- **State of its own.** No database, queue or server: GitHub holds the state. The host keeps only its config and secrets, the client only a list of hosts.
+- **A UI.** GitHub is the UI: issues, labels, comments and pull requests.
+- **Stack templates.** The repo's own dev container is the environment, so autopilot knows no language.
+- **A hosted service.** You run it on your own machines.
 
 ## Configuration
 
