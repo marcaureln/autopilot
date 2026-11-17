@@ -87,6 +87,7 @@ export class FakeRepoGitHub implements RepoGitHub {
   // A commit on a branch that the host did not push: anyone with write access can do this.
   pushCommit(branch: string, sha: string, issue?: number): void {
     this.branches.set(branch, [...(this.branches.get(branch) ?? []), sha]);
+    for (const pull of this.pulls) if (pull.state === "open" && pull.head.ref === branch) pull.head.sha = sha;
     if (issue !== undefined) this.pushed.set(sha, issue);
   }
 
@@ -176,7 +177,7 @@ export class FakeRepoGitHub implements RepoGitHub {
     return 1;
   }
   async botPulls(): Promise<BotPull[]> {
-    return this.pulls.map(({ files: _, ...pull }) => ({ ...pull, head: { ...pull.head } }));
+    return this.pulls.map(({ number, issue, state, base, head, closedAt }) => ({ number, issue, state, base, head: { ...head }, closedAt }));
   }
   async pullFiles(pull: number): Promise<FileChange[]> {
     return this.pulls.find((candidate) => candidate.number === pull)?.files ?? [];
