@@ -16,8 +16,9 @@ autopilot is small. It is one process, with no server, no queue and no database.
 
 ### What you need
 
-- **On your machine:** git, ssh, [mise](https://mise.jdx.dev/installing-mise.html), [gh](https://cli.github.com/) signed in to GitHub, and the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`) signed in to your account. Setup prints the install command for a missing tool. `autopilot init` also needs Docker with the Compose plugin.
-- **A Claude account** that can run `claude setup-token`. The agents use this token.
+- **On your machine:** git, ssh, [mise](https://mise.jdx.dev/installing-mise.html) and [gh](https://cli.github.com/) signed in to GitHub. Setup prints the install command for a missing tool. `autopilot init` also needs Docker with the Compose plugin.
+- **A Claude account.** Run `claude setup-token` on any machine with Claude Code. It prints a token, which the agents use.
+- **Optional: 1Password.** By default, the host keeps its secrets in files. To keep them in 1Password, you also need the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`) signed in to your account. Pass `--backend op` to the wizard.
 - **A host** that runs the jobs. It is a Linux machine that you can reach with SSH and sudo, with [Docker Engine](https://docs.docker.com/engine/install/), its [rootless extras](https://docs.docker.com/engine/security/rootless/) and the [Compose plugin](https://docs.docker.com/compose/install/linux/). It can also be a Mac with OrbStack, Colima or Docker Desktop. The host can be the machine you work on.
 
 ### Steps
@@ -35,14 +36,14 @@ autopilot is small. It is one process, with no server, no queue and no database.
    ```
 
    The wizard does these steps in this order. Each step checks what is in place and does only what is missing, so you can run the wizard again at any time.
-   1. **Tools.** It checks git, ssh, mise, op and gh.
-   2. **1Password.** It creates the vault `autopilot` and a service account that can only read that vault. The host uses this account to read its secrets.
-   3. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page. Click **Create GitHub App**. The wizard saves the private key in the vault. To use an App that you already have, give its App ID and the path of its `.pem` file.
-   4. **Claude token.** The wizard runs `claude setup-token`, which signs you in to Claude in the browser and prints a token. Paste the token at the hidden prompt. The wizard saves it in the vault.
-   5. **Host.** Give an SSH target such as `user@my-host`, or `local` for this machine. The wizard installs the latest release on the host and starts the service.
-   6. **Owner and watched repos.** Your GitHub login becomes the owner. Only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that the host watches. If the App is not installed there, the wizard opens the install page. Select the repos, then click **Install**.
-   7. **First repo.** The wizard runs `autopilot init` on a repo that you select. It opens an onboarding pull request (see [Onboarding](#onboarding)).
-   8. **Alias.** It adds `ap` as a short name for `autopilot` to your shell.
+   1. **Tools.** It checks git, ssh, mise and gh.
+   2. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page. Click **Create GitHub App**. The wizard saves the private key in `~/.config/autopilot/app-key.pem` (mode 600). To use an App that you already have, give its App ID. The host step then asks for the path of its `.pem` file.
+   3. **Host.** Give an SSH target such as `user@my-host`, or `local` for this machine. The wizard installs the latest release on the host. Then it pushes the App key and the Claude token to files on the host, and starts the service. For the token, it runs `claude setup-token` if Claude Code is on this machine. If not, run `claude setup-token` on any machine with Claude Code. Paste the token at the hidden prompt.
+   4. **Owner and watched repos.** Your GitHub login becomes the owner. Only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that the host watches. If the App is not installed there, the wizard opens the install page. Select the repos, then click **Install**.
+   5. **First repo.** The wizard runs `autopilot init` on a repo that you select. It opens an onboarding pull request (see [Onboarding](#onboarding)).
+   6. **Alias.** It adds `ap` as a short name for `autopilot` to your shell.
+
+   With `--backend op`, the wizard also checks `op`. It creates the vault `autopilot` and a service account that can only read that vault. It saves the App key and the Claude token in the vault, and the host reads them with the service account.
 
 3. Review and merge the onboarding pull request. Make sure that the check commands in `.github/autopilot.json` are correct. Until you merge this pull request, autopilot stops each issue in the repo.
 
@@ -81,7 +82,7 @@ autopilot setup --config setup.json --yes
 }
 ```
 
-GitHub needs a click in the browser to create an App, so run `autopilot app create` first, or pass the `app_id` of an App whose key is in 1Password. The file never holds a secret value. Setup reads the Claude token from 1Password, or from `CLAUDE_CODE_OAUTH_TOKEN` the first time.
+GitHub needs a click in the browser to create an App, so run `autopilot app create` first. It saves the key in `~/.config/autopilot/app-key.pem`, where setup finds it. For an App that you already have, also set `app_key` to the path of its `.pem` file. Give the Claude token in `CLAUDE_CODE_OAUTH_TOKEN`. The file never holds a secret value. With `"backend": "op"`, the key and the token must be in 1Password.
 
 ### Set up with a coding agent
 
@@ -90,7 +91,7 @@ Paste this prompt into Claude Code, Codex or another coding agent:
 ```text
 Set up autopilot for me (https://github.com/marcaureln/autopilot).
 Install its agent skill with `npx skills add marcaureln/autopilot`, then follow the "Set up" section of the skill.
-Ask me before each step that needs my browser, my 1Password sign-in or a secret value.
+Ask me before each step that needs my browser or a secret value.
 Never read, print or write a secret value yourself.
 ```
 
@@ -125,7 +126,7 @@ autopilot has a small core. Each block is behind a config field or a small inter
 | Environment   | The repo's dev container ([environment](src/core/environment.ts), [guardrails](src/core/devcontainer.ts)) | -                    |
 | Checks        | [Commands and scanners](src/core/checks.ts), on the host or in the repo's own CI       | -                    |
 | Risk          | [Rules](src/core/risk.ts) and [gates](src/core/gate.ts)                                | -                    |
-| Secrets       | [Env files on the host](src/core/secrets.ts), or the [1Password CLI](src/commands/secrets.ts) | -                    |
+| Secrets       | [Files on the host](src/core/secrets.ts), or the [1Password CLI](src/commands/secrets.ts) | -                    |
 
 ## Out of scope
 
@@ -133,7 +134,7 @@ autopilot does one job. It turns issues into features. It does not do these thin
 
 - **Network control.** autopilot does not filter what the agents reach on the internet. If you need that, set it up on the host.
 - **Learning by itself.** autopilot does not change its own prompts. To get better results, improve your skills and your `AGENTS.md`.
-- **A database.** GitHub holds the state. A host keeps only its config and its secrets. Your machine keeps nothing.
+- **A database.** GitHub holds the state. A host keeps only its config and its secrets. Your machine keeps only the App key that `app create` saves.
 - **A UI.** You work in GitHub: issues, labels, comments and pull requests.
 - **Project templates.** Each repo brings its own dev container, so autopilot works with any language or engine.
 - **A hosted service.** It runs on your machines, with your accounts.
@@ -187,7 +188,7 @@ The host gives the values only to the checks that run a command from `verify.com
 
 ## Hosts
 
-A host runs autopilot as a service. It holds its `host.json`, the 1Password service account token, the repo secrets and a release. At start, it reads the App key and the Claude token with `op`. The client keeps no config. It forwards each command to the host over SSH. The host `local` is the machine you run the command on.
+A host runs autopilot as a service. It holds its `host.json`, its secrets and a release. At start, it reads the App key and the Claude token that `host.json` names. By default, these are the files `app-key.pem` and `claude-token` in the secrets folder: `/etc/autopilot/secrets` on Linux (owner root, group `autopilot`, mode 640), or `~/.autopilot/secrets` on macOS (mode 600). An `op://` reference makes the host read the value with `op` and a 1Password service account token. The client keeps no config. It forwards each command to the host over SSH. The host `local` is the machine you run the command on.
 
 | Host  | Service                                                                  | Files                              | Logs                       |
 | ----- | ------------------------------------------------------------------------ | ---------------------------------- | -------------------------- |
@@ -197,9 +198,11 @@ A host runs autopilot as a service. It holds its `host.json`, the 1Password serv
 A macOS host runs while you are logged in, and stops while the Mac sleeps.
 
 ```sh
-# Once per host: push the 1Password token, write host.json, install the latest release.
-# Run it again to repair or upgrade: it keeps the token the host has.
-autopilot host setup --host user@my-host --owner <login> --app-id <id>
+# Once per host: write host.json, install the latest release, push the App key and the Claude token.
+# The key comes from --app-key, or from ~/.config/autopilot/app-key.pem. The token comes from
+# CLAUDE_CODE_OAUTH_TOKEN, or from a hidden prompt. Run it again to repair or upgrade: it keeps the
+# secrets the host has. To replace a secret, remove its file on the host, then run it again.
+autopilot host setup --host user@my-host --owner <login> --app-id <id> --app-key app.pem
 autopilot host setup --host local --owner <login> --app-id <id>     # this machine
 
 export AUTOPILOT_HOST=user@my-host
@@ -220,7 +223,7 @@ Several hosts can watch the same repos. The oldest claim comment on an issue win
 ```sh
 mise install && pnpm install
 pnpm check               # types + lint + tests
-node src/cli.ts start --foreground --once --config host.json   # one loop on a dev host; op reads secrets with your sign-in
+node src/cli.ts start --foreground --once --config host.json   # one loop on a dev host, with the secrets that host.json names
 ```
 
 Node runs the TypeScript files directly. There is no build step.

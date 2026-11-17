@@ -14,7 +14,7 @@ Before any command, run `autopilot --help` and use only the commands that it lis
 ## Rules for the agent
 
 - Never read, print, or put a secret value in a command argument, an issue, a comment, or a file. Let the user type secret values at a hidden prompt.
-- Interactive commands (`autopilot setup`, `autopilot secrets set <NAME>` with a hidden prompt, `op signin`) need a terminal. Ask the user to run them in their own terminal, then continue.
+- Interactive commands (`autopilot setup`, `autopilot host setup` and `autopilot init` when they ask for the Claude token, `autopilot secrets set <NAME>` with a hidden prompt, `op signin`) need a terminal. Ask the user to run them in their own terminal, then continue.
 - Approve a spec or merge a pull request only when the user asked for it, or after you show the user the spec or the diff and they agree.
 - The user's `gh` account must be an owner on the host (`owners` in `host.json`). autopilot ignores labels, replies and ticks from other accounts.
 
@@ -23,8 +23,8 @@ Before any command, run `autopilot --help` and use only the commands that it lis
 To set up from nothing, read `references/setup.md` and follow it. In short:
 
 1. Install the client: `curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh`. It needs `mise`, `curl` and `tar`.
-2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the 1Password items, the host, the watched entries and the first onboarding PR.
-3. If `setup` is not available, or it stops, do the steps one by one: GitHub App, 1Password vault and items, `autopilot host setup`, `autopilot watch`, `autopilot init`. `references/setup.md` gives each step.
+2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the host with its secrets, the watched entries and the first onboarding PR. By default, the host keeps its secrets in files. With `--backend op`, they go to 1Password.
+3. If `setup` is not available, or it stops, do the steps one by one: `autopilot app create`, `autopilot host setup`, `autopilot watch`, `autopilot init`. `references/setup.md` gives each step.
 4. Check the host with `autopilot status`. The service must be `active` (Linux) or `running` (macOS), and the watched entries must show the repo.
 5. Merge the onboarding pull request that `autopilot init` opened. Before the merge, autopilot stops each issue with "There is no `.github/autopilot.json` on the default branch".
 
