@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { closeSync, constants, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, writeSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, writeFileSync, writeSync } from "node:fs";
 import { join, posix, sep } from "node:path";
 import { promisify } from "node:util";
 import type { GitHub } from "./github.ts";
@@ -69,8 +70,8 @@ async function fetchLfsObjects(dir: string, url: string, token: string): Promise
 const LFS_OBJECT = /^([0-9a-f]{2})\/([0-9a-f]{2})\/(\1\2[0-9a-f]{60})$/;
 
 // The agent adds LFS objects to its own copy, and the bundle carries only the pointers. The agent
-// controls that copy, so the folder must be a real folder inside it, and only regular files named as
-// LFS objects come over. The server checks the hash of each object it receives. Returns a problem, if any.
+// controls that copy, and a process it left can still change it, so each file is read through one
+// no-follow handle and must hash to its own name. Returns a problem, if any.
 export function importLfsObjects(agentCheckout: string, dir: string, maxBytes: number): string | undefined {
   const from = join(agentCheckout, ".git", "lfs", "objects");
   if (!existsSync(from)) return undefined;
@@ -78,15 +79,25 @@ export function importLfsObjects(agentCheckout: string, dir: string, maxBytes: n
   let total = 0;
   for (const entry of readdirSync(from, { recursive: true, encoding: "utf8" })) {
     const path = join(from, entry);
-    const stat = lstatSync(path);
-    if (stat.isDirectory()) continue;
-    if (!stat.isFile() || !LFS_OBJECT.test(entry.split(sep).join("/"))) return `${entry} in the LFS objects folder is not an LFS object`;
-    total += stat.size;
-    if (total > maxBytes) return `the new LFS objects are larger than ${maxBytes / 1024 / 1024} MB`;
+    if (lstatSync(path).isDirectory()) continue;
+    const oid = LFS_OBJECT.exec(entry.split(sep).join("/"))?.[3];
+    if (!oid) return `${entry} in the LFS objects folder is not an LFS object`;
+    const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    let content: Buffer;
+    try {
+      const stat = fstatSync(fd);
+      if (!stat.isFile()) return `${entry} in the LFS objects folder is not a regular file`;
+      total += stat.size;
+      if (total > maxBytes) return `the new LFS objects are larger than ${maxBytes / 1024 / 1024} MB`;
+      content = readFileSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    if (createHash("sha256").update(content).digest("hex") !== oid) return `${entry} in the LFS objects folder does not match its hash`;
     const target = join(dir, ".git", "lfs", "objects", entry);
     if (existsSync(target)) continue;
     mkdirSync(join(target, ".."), { recursive: true });
-    copyFileSync(path, target);
+    writeFileSync(target, content);
   }
   return undefined;
 }
