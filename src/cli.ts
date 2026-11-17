@@ -150,8 +150,8 @@ async function main(): Promise<void> {
         break;
       }
       const host = loadHost(hostFile);
-      const privateKey = readSecret(host.secrets.app_key, "run: GitHub App key", auditLog);
-      const claudeToken = readSecret(host.secrets.claude_token, "run: token for the agent containers", auditLog);
+      const privateKey = readSecret(host.secrets.app_key, "start: GitHub App key", auditLog);
+      const claudeToken = readSecret(host.secrets.claude_token, "start: token for the agent containers", auditLog);
       const github = createGitHub({ appId: host.app_id, privateKey }, auditLog);
       await run(
         {
