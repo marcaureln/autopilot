@@ -42,6 +42,20 @@ export function parseEnvFile(text: string): [string, string][] {
   });
 }
 
+// The host's own secrets files: one NAME=value per line, the value exactly as `envFile` wrote it.
+// A .env file from a person goes through parseEnvFile instead, which reads quotes and comments.
+export function parseSecretsFile(text: string): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    if (line === "") continue;
+    const at = line.indexOf("=");
+    const name = line.slice(0, at);
+    if (!SECRET_NAME.test(name)) throw new Error("a line of the secrets file is not NAME=value");
+    values[name] = line.slice(at + 1);
+  }
+  return values;
+}
+
 // The docker env file format has no quoting: one NAME=value per line.
 export function assertEnvFileValues(secrets: Record<string, string>): void {
   const multiLine = Object.keys(secrets).filter((name) => /[\r\n\0]/.test(secrets[name] ?? ""));

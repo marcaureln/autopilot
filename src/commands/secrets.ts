@@ -5,8 +5,12 @@ import { CONFIG_PATH } from "../core/config.ts";
 import type { Repo } from "../core/repo.ts";
 import { detectRepo } from "../core/repo.ts";
 import { itemStored } from "../core/setup.ts";
+import type { Audit } from "../core/audit.ts";
+import { readRepoSecrets, repoSecretNames, writeRepoSecrets } from "../core/secrets.ts";
+import { forward } from "./client.ts";
 import {
   assertEnvFileValues,
+  envFile,
   parseEnvFile,
   parseOpItem,
   referencedSecrets,
@@ -16,12 +20,13 @@ import {
   secretReference,
   SECRETS_VAULT,
   itemTitle,
+  parseSecretsFile,
   setSecretReference,
   withSecrets,
   type OpItem,
 } from "../core/repo-secrets.ts";
 
-export type SecretsCommand = { action: "set"; name: string } | { action: "set-from-env"; file: string } | { action: "list" } | { action: "rm"; name: string };
+export type SecretsCommand = { action: "set"; name: string } | { action: "set-from-env"; file: string } | { action: "list" } | { action: "rm"; name: string } | { action: "import" };
 
 // op reads an item from stdin only when stdin is a pipe, and Node gives a child a socket, so a
 // shell pipeline feeds it.
@@ -128,17 +133,76 @@ async function readValue(name: string): Promise<string> {
   return value;
 }
 
-export async function secrets(command: SecretsCommand, repo: Repo): Promise<void> {
-  ensureOp();
+async function valuesOf(command: { action: "set"; name: string } | { action: "set-from-env"; file: string }): Promise<Record<string, string>> {
+  const values = command.action === "set" ? { [command.name]: await readValue(command.name) } : Object.fromEntries(parseEnvFile(readFileSync(command.file, "utf8")));
+  if (Object.keys(values).length === 0) throw new Error(`no secret in ${command.action === "set-from-env" ? command.file : "the input"}`);
+  assertEnvFileValues(values);
+  return values;
+}
+
+// ---- env backend: the values live in the repo's env file on the host ----
+
+// On the client.
+export async function sendSecrets(target: string, command: SecretsCommand, repo: Repo): Promise<number> {
+  const repoArgs = ["--repo", `${repo.owner}/${repo.name}`];
   switch (command.action) {
     case "set":
     case "set-from-env": {
-      const values =
-        command.action === "set"
-          ? { [command.name]: await readValue(command.name) }
-          : Object.fromEntries(parseEnvFile(readFileSync(command.file, "utf8")));
+      const values = await valuesOf(command);
+      // A reference in the config wins over the host's file, so a new value there would have no effect.
+      const path = checkoutConfigOf(repo);
+      const referenced = path ? referencedSecrets(readFileSync(path, "utf8")).filter((name) => Object.hasOwn(values, name)) : [];
+      if (referenced.length > 0) throw new Error(`${referenced.join(", ")} is a 1Password reference in ${CONFIG_PATH}: set it with --backend op, or remove the reference first`);
+      return forward(target, ["secrets", "import", ...repoArgs], envFile(values));
+    }
+    case "list":
+      return forward(target, ["secrets", "list", ...repoArgs]);
+    case "rm":
+      return forward(target, ["secrets", "rm", command.name, ...repoArgs]);
+    case "import":
+      throw new Error("secrets import runs on the host");
+  }
+}
+
+// On the host, through `sudo autopilot`.
+export async function hostSecrets(command: SecretsCommand, repo: Repo, audit: Audit): Promise<void> {
+  const name = `${repo.owner}/${repo.name}`;
+  const current = () => readRepoSecrets(repo, "secrets: update the repo file", audit);
+  switch (command.action) {
+    case "import": {
+      const values = parseSecretsFile(await readStdin());
+      writeRepoSecrets(repo, { ...current(), ...values });
+      audit({ event: "secrets.changed", repo: name, action: "set", names: Object.keys(values), by: process.env.SUDO_USER });
+      return console.log(`Saved ${Object.keys(values).join(", ")} for ${name} on this host. The next checks get them.`);
+    }
+    case "rm": {
+      const values = current();
+      if (!Object.hasOwn(values, command.name)) return console.log(`${name} has no secret ${command.name} on this host.`);
+      delete values[command.name];
+      writeRepoSecrets(repo, values);
+      audit({ event: "secrets.changed", repo: name, action: "rm", names: [command.name], by: process.env.SUDO_USER });
+      return console.log(`Removed ${command.name} for ${name}.`);
+    }
+    case "list": {
+      const names = repoSecretNames(repo);
+      return console.log(names.length > 0 ? names.join("\n") : `${name} has no secrets on this host.`);
+    }
+    default:
+      throw new Error(`secrets ${command.action} runs on the client: pass --host or set AUTOPILOT_HOST`);
+  }
+}
+
+// ---- op backend: the values live in 1Password, the references in the repo's config ----
+
+export async function secrets(command: SecretsCommand, repo: Repo): Promise<void> {
+  ensureOp();
+  switch (command.action) {
+    case "import":
+      throw new Error("secrets import is for the env backend");
+    case "set":
+    case "set-from-env": {
+      const values = await valuesOf(command);
       const names = Object.keys(values);
-      if (names.length === 0) throw new Error(`no secret in ${command.action === "set-from-env" ? command.file : "the input"}`);
       writeValues(repo, values);
       console.log(`Saved ${names.join(", ")} in 1Password (${SECRETS_VAULT}/${itemTitle(repo)}).`);
       const references = names.map((name) => `"${name}": "${secretReference(repo, name)}"`).join(", ");
@@ -184,6 +248,7 @@ export function parseSecretsCommand(positionals: string[], fromEnv: string | und
   if (action === "set" && fromEnv === undefined) return { action: "set", name: checked(name) };
   if (action === "rm") return { action: "rm", name: checked(name) };
   if (action === "list" && name === undefined) return { action: "list" };
+  if (action === "import" && name === undefined) return { action: "import" };
   throw new Error(usage);
 }
 

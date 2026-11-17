@@ -13,7 +13,7 @@ import type { Host } from "./host.ts";
 import type { BotPull } from "./phase.ts";
 import type { Repo } from "./repo.ts";
 import { refusedSecrets } from "./repo-secrets.ts";
-import { readSecret } from "./secrets.ts";
+import { readRepoSecrets, readSecret } from "./secrets.ts";
 import { shallowClone } from "./workspace.ts";
 
 const exec = promisify(execFile);
@@ -182,7 +182,9 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
     const openEnvironment = async (): Promise<NonNullable<typeof environment>> => {
       const refused = refusedSecrets(repo, config.secrets);
       if (refused.length > 0) throw new Error(`the secrets ${refused.join(", ")} point outside the repo's own 1Password item`);
-      secrets = Object.fromEntries(Object.entries(config.secrets).map(([key, reference]) => [key, readSecret(reference, `checks: ${repo.owner}/${repo.name}#${pull.number}`, audit)]));
+      const reason = `checks: ${repo.owner}/${repo.name}#${pull.number}`;
+      // A reference in the config wins over a value of the same name in the repo's env file.
+      secrets = { ...readRepoSecrets(repo, reason, audit), ...Object.fromEntries(Object.entries(config.secrets).map(([key, reference]) => [key, readSecret(reference, reason, audit)])) };
       const runDir = join(jobDir, "run");
       mkdirSync(runDir, { mode: 0o700 });
       started = true;

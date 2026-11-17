@@ -174,7 +174,7 @@ async function reconcile(loop: Loop, ctx: RepoContext, issue: Issue): Promise<vo
       const names = error.names.map((name) => `\`${name}\``).join(", ");
       await repoGitHub.postComment(
         issue.number,
-        `The builder needs secrets that the checks do not get: ${names}. In a checkout of this repo, run \`autopilot secrets set <NAME>\` for each one, merge the change to \`.github/autopilot.json\`, then reply here.`,
+        `The builder needs secrets that the checks do not get: ${names}. In a checkout of this repo, run \`autopilot secrets set <NAME>\` for each one, then reply here. With the 1Password backend, also merge the change to \`.github/autopilot.json\`.`,
       );
       return;
     }

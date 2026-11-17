@@ -60,7 +60,7 @@ step "cli $release"
 tools=$base/tools
 install -d -m 755 "$base" "$tools" "$base/bin" "$HOME/Library/LaunchAgents"
 # Colima shares only the home folder with its VM, and the jobs mount folders from TMPDIR.
-install -d -m 700 "$base/tmp" "$logs"
+install -d -m 700 "$base/tmp" "$logs" "$base/secrets" "$base/secrets/repos"
 tool_mise "$release" "$tools" install --yes
 tool_mise "$release" "$tools" exec -- pnpm install --prod --frozen-lockfile --silent
 node=$(tool_mise "$release" "$tools" which node)

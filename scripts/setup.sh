@@ -79,6 +79,10 @@ if ! id "$user" >/dev/null 2>&1; then
 fi
 uid=$(id -u "$user")
 
+step "secrets folder"
+# Root writes the secrets through `sudo autopilot`; the service reads them through the group.
+install -d -m 750 -o root -g "$user" /etc/autopilot/secrets /etc/autopilot/secrets/repos
+
 step "linger"
 if [ "$(loginctl show-user "$user" -p Linger --value 2>/dev/null)" != "yes" ]; then
   loginctl enable-linger "$user"

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { envFile, itemTitle, parseEnvFile, referencedSecrets, refusedSecrets, removeSecretReference, secretNames, secretReference, setSecretReference, withSecrets } from "./repo-secrets.ts";
+import { envFile, itemTitle, parseEnvFile, parseSecretsFile, referencedSecrets, refusedSecrets, removeSecretReference, secretNames, secretReference, setSecretReference, withSecrets } from "./repo-secrets.ts";
 
 const repo = { owner: "Acme", name: "App.Web" };
 
@@ -123,4 +123,22 @@ for (const { name, item, expected } of namesCases) {
 test("the referenced secrets are the keys of the config's secrets", () => {
   assert.deepEqual(referencedSecrets(setSecretReference(config, "A", "op://autopilot/x_y/A")), ["A"]);
   assert.deepEqual(referencedSecrets(config), []);
+});
+
+const exactCases: { name: string; values: Record<string, string> }[] = [
+  { name: "a value with a comment sign", values: { DB_PASSWORD: "hunter2 #prod" } },
+  { name: "quotes", values: { A: '"quoted"', B: "'open" } },
+  { name: "spaces at both ends", values: { A: "  lead", B: "trail  " } },
+  { name: "an equal sign and a tab", values: { URL: "a=b=c\t#c" } },
+  { name: "a backslash", values: { A: "x\\ny" } },
+  { name: "an empty value", values: { A: "" } },
+];
+for (const { name, values } of exactCases) {
+  test(`the host secrets file keeps ${name} exactly`, () => {
+    assert.deepEqual(parseSecretsFile(envFile(values)), values);
+  });
+}
+
+test("the host secrets file refuses a line that is not NAME=value", () => {
+  assert.throws(() => parseSecretsFile("not a secret\n"), /NAME=value/);
 });

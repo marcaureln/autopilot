@@ -8,7 +8,7 @@ import { forward, hostSetup, selfUpdate } from "./commands/client.ts";
 import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, startService, stopService, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
-import { parseSecretsCommand, secrets } from "./commands/secrets.ts";
+import { hostSecrets, parseSecretsCommand, secrets, sendSecrets } from "./commands/secrets.ts";
 import { setup } from "./commands/setup.ts";
 import { auditLog } from "./core/audit.ts";
 import { runBuilder } from "./core/builder.ts";
@@ -56,12 +56,12 @@ Commands that run on the client:
                               --skill adds a skill (github.com/<owner>/<repo>[//<path>][#<ref>] or a host
                               path) for the agent and for skills.planner and skills.builder. --notes adds
                               your own instructions to the prompt. With a host, also allow the repo there
-  secrets set <NAME>          Save a secret in 1Password (hidden prompt, or stdin) and add its reference
-                              to .github/autopilot.json in this checkout
+  secrets set <NAME>          Save a secret of the repo on the host (hidden prompt, or stdin). The checks
+                              that run a command get it
   secrets set --from-env <file>
                               The same for every key in a .env file
-  secrets list                Show the secrets of the repo
-  secrets rm <NAME>           Remove a secret and its reference
+  secrets list                Show the names of the repo's secrets
+  secrets rm <NAME>           Remove a secret
   self-update [--version <tag>]
                               Install a release of this CLI (default: the latest), as install.sh does
   alias [<name>] [--remove]   Add "alias <name>=autopilot" (default: ap) to the rc file of $SHELL
@@ -70,7 +70,8 @@ Options:
   --host <ssh-target>  Host to act on, or "local" for this machine (default: $AUTOPILOT_HOST)
   --config <path>      Host file, on the host (default: ${HOST_FILE}); for setup, the setup file
   --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
-  --backend op         Where secrets are saved (default and only one: op, the 1Password CLI)`;
+  --backend env|op     Where secrets are saved: env (default), an env file per repo on the host;
+                       op, 1Password, with a reference in .github/autopilot.json`;
 
 const HOST_COMMANDS = ["watch", "start", "stop", "status", "logs", "update"];
 
@@ -99,7 +100,7 @@ const { values, positionals } = parseCommandLine({
     "app-id": { type: "string" },
     "from-checkout": { type: "boolean", default: false },
     repo: { type: "string" },
-    backend: { type: "string", default: "op" },
+    backend: { type: "string", default: "env" },
     "from-env": { type: "string" },
     skill: { type: "string", multiple: true, default: [] },
     notes: { type: "string" },
@@ -128,7 +129,7 @@ async function main(): Promise<void> {
   const target = hostTarget();
   const hostFile = values.config ?? HOST_FILE;
   // The service runs `start --foreground` on the host itself: never forwarded.
-  if (HOST_COMMANDS.includes(command) && !values.foreground) {
+  if (HOST_COMMANDS.includes(command) && !(command === "start" && values.foreground)) {
     if (target) {
       const options = [
         ...(values.since ? ["--since", values.since] : []),
@@ -190,8 +191,12 @@ async function main(): Promise<void> {
       await init({ repo: targetRepo(), host: target, skills: values.skill, notesFile: values.notes });
       break;
     case "secrets": {
-      if (values.backend !== "op") throw new Error(`--backend ${values.backend} is not supported: the only backend is op (1Password)`);
-      await secrets(parseSecretsCommand(positionals.slice(1), values["from-env"]), targetRepo());
+      const command = parseSecretsCommand(positionals.slice(1), values["from-env"]);
+      if (values.backend === "op") await secrets(command, targetRepo());
+      else if (values.backend !== "env") throw new Error(`--backend ${values.backend} is not a backend: env (the default) or op`);
+      // `import` is what the client sends: it always runs here, on the host.
+      else if (target && command.action !== "import") process.exitCode = await sendSecrets(target, command, targetRepo());
+      else await hostSecrets(command, targetRepo(), auditLog);
       break;
     }
     case "host": {

@@ -14,6 +14,7 @@ import { CLAUDE_FEATURE_DIR, COMPOSE_OVERRIDE_FILE, OVERRIDE_FILE, RUN_DIR, star
 import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
+import { repoSecretNames } from "./secrets.ts";
 import { prepareAgent } from "./skills.ts";
 import type { Comment } from "./spec.ts";
 import { gitAuthEnv, readAgentFile, repoUrl, shallowClone } from "./workspace.ts";
@@ -276,7 +277,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     if (up.kind === "failed") throw new BuildStopped(`the dev container did not start:\n\n${up.result.output.slice(-MAX_FAILURE_CHARS)}`);
 
     const failures = mode.kind === "fix" ? mode.failures : undefined;
-    const prompt = builderPrompt({ repo: `${repo.owner}/${repo.name}`, workdir: up.workspaceFolder, issue, thread, secrets: Object.keys(config.secrets), failures });
+    const prompt = builderPrompt({ repo: `${repo.owner}/${repo.name}`, workdir: up.workspaceFolder, issue, thread, secrets: [...new Set([...repoSecretNames(repo), ...Object.keys(config.secrets)])], failures });
     writeFileSync(join(runDir, PROMPT_NAME), prompt);
     writeFileSync(join(runDir, TOKEN_NAME), job.claudeToken, { mode: 0o600, flag: "wx" });
     const agent = config.agents[role];

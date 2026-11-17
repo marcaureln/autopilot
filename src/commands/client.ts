@@ -38,11 +38,14 @@ export function hostCommand(args: string[]): string {
   return `case $(uname -s) in Darwin) exec "$HOME/.autopilot/bin/autopilot" ${quoted} ;; *) exec sudo autopilot ${quoted} ;; esac`;
 }
 
-export function forward(target: string, args: string[]): Promise<number> {
+// `input` goes to the host command on stdin, so a secret value never becomes an argument.
+export function forward(target: string, args: string[], input?: string): Promise<number> {
   // On the local host, the host command would read AUTOPILOT_HOST=local and forward to itself again.
   const env = { ...process.env, AUTOPILOT_HOST: undefined };
   const [program, through]: [string, string[]] = target === LOCAL_TARGET ? ["sh", ["-c"]] : ["ssh", [target]];
-  const child = spawn(program, [...through, hostCommand(args)], { stdio: ["inherit", "pipe", "inherit"], env });
+  const command = [...through, hostCommand(args)];
+  const child = input === undefined ? spawn(program, command, { stdio: ["inherit", "pipe", "inherit"], env }) : spawn(program, command, { stdio: ["pipe", "pipe", "inherit"], env });
+  if (input !== undefined) child.stdin?.end(input);
   createInterface({ input: child.stdout }).on("line", (line) => {
     console.log(line);
     const url = urlToOpen(args[0] ?? "", line);

@@ -27,7 +27,7 @@
       "minimum": 1
     },
     "secrets": {
-      "description": "1Password references that the host reads with op when the service starts.",
+      "description": "Where the host reads its secrets when the service starts: file:<name> for a file in the host's secrets folder (/etc/autopilot/secrets, or ~/.autopilot/secrets on macOS), or an op:// reference that it reads with 1Password.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -38,12 +38,12 @@
         "app_key": {
           "description": "GitHub App private key (PEM).",
           "type": "string",
-          "pattern": "^op://"
+          "pattern": "^(op://|file:[A-Za-z0-9][A-Za-z0-9._-]*$)"
         },
         "claude_token": {
           "description": "Claude Code OAuth token for the agent containers.",
           "type": "string",
-          "pattern": "^op://"
+          "pattern": "^(op://|file:[A-Za-z0-9][A-Za-z0-9._-]*$)"
         }
       }
     },
@@ -58,7 +58,7 @@
       }
     },
     "allow": {
-      "description": "Owners (an org or a user) and owner/repo entries that the host works on. The host ignores every other installation of the App. Change it with `autopilot allow` and `autopilot deny`.",
+      "description": "Owners (an org or a user) and owner/repo entries that the host works on. The host ignores every other installation of the App. Change it with `autopilot watch`.",
       "type": "array",
       "uniqueItems": true,
       "items": {
