@@ -7,7 +7,7 @@
 
 <p align="center">Turns issues into features, with coding agents on your own machine.</p>
 
-autopilot aims to stay small: one process, no server, no queue, no database. GitHub is the only interface and the only state. It is also agnostic: the agent harness, the models, the verification mode and the host are each one config field.
+autopilot is small. It is one process, with no server, no queue and no database. GitHub is the only interface, and it holds all the state. The agent harness, the models, the verification mode and the host are each one config field.
 
 > [!WARNING]
 > autopilot is in early development. Try it on a test repo first.
@@ -16,9 +16,9 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
 
 ### What you need
 
-- **On your machine:** git, ssh, [mise](https://mise.jdx.dev/installing-mise.html), [gh](https://cli.github.com/) signed in to GitHub, and the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`) signed in to your account. Setup prints the install command for a missing tool.
+- **On your machine:** git, ssh, [mise](https://mise.jdx.dev/installing-mise.html), [gh](https://cli.github.com/) signed in to GitHub, and the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`) signed in to your account. Setup prints the install command for a missing tool. `autopilot init` also needs Docker with the Compose plugin.
 - **A Claude account** that can run `claude setup-token`. The agents use this token.
-- **A host** that runs the jobs: a Linux machine that you can reach with SSH and sudo, with [Docker Engine](https://docs.docker.com/engine/install/) and its [rootless extras](https://docs.docker.com/engine/security/rootless/), and the [Compose plugin](https://docs.docker.com/compose/install/linux/), or a Mac with OrbStack, Colima or Docker Desktop. The host can also be the machine you work on.
+- **A host** that runs the jobs. It is a Linux machine that you can reach with SSH and sudo, with [Docker Engine](https://docs.docker.com/engine/install/), its [rootless extras](https://docs.docker.com/engine/security/rootless/) and the [Compose plugin](https://docs.docker.com/compose/install/linux/). It can also be a Mac with OrbStack, Colima or Docker Desktop. The host can be the machine you work on.
 
 ### Steps
 
@@ -34,17 +34,17 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
    autopilot setup
    ```
 
-   The wizard does these steps in this order. Each step checks what is in place and only does what is missing, so you can run it again at any time.
+   The wizard does these steps in this order. Each step checks what is in place and does only what is missing, so you can run the wizard again at any time.
    1. **Tools.** It checks git, ssh, mise, op and gh.
    2. **1Password.** It creates the vault `autopilot` and a service account that can only read that vault. The host uses this account to read its secrets.
-   3. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page: click **Create GitHub App**. The private key goes to the vault. To use an App that you already have, give its App ID and the path of its `.pem` file.
-   4. **Claude token.** The wizard runs `claude setup-token`, which signs you in to Claude in the browser and prints a token. Paste the token at the hidden prompt. It goes to the vault.
+   3. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page. Click **Create GitHub App**. The wizard saves the private key in the vault. To use an App that you already have, give its App ID and the path of its `.pem` file.
+   4. **Claude token.** The wizard runs `claude setup-token`, which signs you in to Claude in the browser and prints a token. Paste the token at the hidden prompt. The wizard saves it in the vault.
    5. **Host.** Give an SSH target such as `user@my-host`, or `local` for this machine. The wizard installs the latest release on the host and starts the service.
-   6. **Owner and watched repos.** Your GitHub login is the owner: only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that the host watches. If the App is not installed there, the wizard opens the install page: select the repos, then click **Install**.
+   6. **Owner and watched repos.** Your GitHub login becomes the owner. Only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that the host watches. If the App is not installed there, the wizard opens the install page. Select the repos, then click **Install**.
    7. **First repo.** The wizard runs `autopilot init` on a repo that you select. It opens an onboarding pull request (see [Onboarding](#onboarding)).
    8. **Alias.** It adds `ap` as a short name for `autopilot` to your shell.
 
-3. Review and merge the onboarding pull request. Make sure that the check commands in `.github/autopilot.json` are correct. Until this pull request is merged, autopilot stops each issue in the repo.
+3. Review and merge the onboarding pull request. Make sure that the check commands in `.github/autopilot.json` are correct. Until you merge this pull request, autopilot stops each issue in the repo.
 
 4. Write your first issue. Ask for one small change, name the files, and give acceptance criteria. Then add the `autopilot` label:
 
@@ -65,7 +65,7 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
 
 ### Set up without prompts
 
-To run it without prompts, put the answers in a file ([schema](schema/setup.schema.json)) and pass `--yes`:
+To run setup without prompts, put the answers in a file ([schema](schema/setup.schema.json)) and pass `--yes`:
 
 ```sh
 autopilot setup --config setup.json --yes
@@ -81,7 +81,7 @@ autopilot setup --config setup.json --yes
 }
 ```
 
-GitHub needs a click in the browser to create an App, so run `autopilot app create` first, or pass the `app_id` of an App whose key is in 1Password. Secret values are never in the file: setup reads the Claude token from 1Password, or from `CLAUDE_CODE_OAUTH_TOKEN` the first time.
+GitHub needs a click in the browser to create an App, so run `autopilot app create` first, or pass the `app_id` of an App whose key is in 1Password. The file never holds a secret value. Setup reads the Claude token from 1Password, or from `CLAUDE_CODE_OAUTH_TOKEN` the first time.
 
 ### Set up with a coding agent
 
@@ -94,7 +94,7 @@ Ask me before each step that needs my browser, my 1Password sign-in or a secret 
 Never read, print or write a secret value yourself.
 ```
 
-The [skill](skills/autopilot/SKILL.md) also teaches the agent to use autopilot day to day: write issues that autopilot can build, answer its questions, approve a spec, review its pull requests and debug a blocked issue.
+The [skill](skills/autopilot/SKILL.md) also tells the agent how to use autopilot. It can write issues that autopilot can build, answer its questions, approve a spec, review its pull requests and debug a blocked issue.
 
 ## How it works
 
@@ -116,7 +116,7 @@ Models propose and rules decide. The risk rules are deterministic, and a model c
 
 ## Building blocks
 
-autopilot is a small, agnostic software factory: a minimal core, with each block behind a config field or a small interface. Only the "Today" column is built.
+autopilot has a small core. Each block is behind a config field or a small interface. Only the "Today" column exists in the code.
 
 | Block         | Today                                                                                  | Possible later       |
 | ------------- | -------------------------------------------------------------------------------------- | -------------------- |
@@ -125,15 +125,15 @@ autopilot is a small, agnostic software factory: a minimal core, with each block
 | Environment   | The repo's dev container ([environment](src/core/environment.ts), [guardrails](src/core/devcontainer.ts)) | -                    |
 | Checks        | [Commands and scanners](src/core/checks.ts), on the host or in the repo's own CI       | -                    |
 | Risk          | [Rules](src/core/risk.ts) and [gates](src/core/gate.ts)                                | -                    |
-| Secrets       | [1Password CLI](src/core/secrets.ts)                                                   | Env files on the host |
+| Secrets       | [Env files on the host](src/core/secrets.ts), or the [1Password CLI](src/commands/secrets.ts) | -                    |
 
 ## Out of scope
 
-autopilot does one job: it turns issues into features. Everything else stays outside, on purpose:
+autopilot does one job. It turns issues into features. It does not do these things, on purpose:
 
 - **Network control.** autopilot does not filter what the agents reach on the internet. If you need that, set it up on the host.
-- **Learning by itself.** The factory does not change its own prompts. It gets better when you improve your skills and your `AGENTS.md`.
-- **A database.** GitHub holds the state. A host keeps only its config and its secrets, and your machine only a list of hosts.
+- **Learning by itself.** autopilot does not change its own prompts. To get better results, improve your skills and your `AGENTS.md`.
+- **A database.** GitHub holds the state. A host keeps only its config and its secrets. Your machine keeps nothing.
 - **A UI.** You work in GitHub: issues, labels, comments and pull requests.
 - **Project templates.** Each repo brings its own dev container, so autopilot works with any language or engine.
 - **A hosted service.** It runs on your machines, with your accounts.
@@ -152,7 +152,7 @@ Each repo has a `.github/autopilot.json`, which `init` writes. The [schema](sche
 
 ### Checks in your own CI
 
-The checks belong to the repo: its own commands and the scanners. `verify.mode` says where they run. By default (`host`), the autopilot host runs them. With `"verify": { "mode": "ci", "required": ["sast", "deps-scan", "secrets-scan", "test"] }`, the host runs nothing: it waits for the repo's own CI on the pull request's head. Each name in `required` is the name of a GitHub Actions job. Only a success passes: a skipped job blocks the merge. Results from other Apps or from commit statuses do not count, because anyone with write access can post them. A failed check gives its output and annotations to the builder for a fix round. [marcaureln/actions](https://github.com/marcaureln/actions) has the `sast`, `deps-scan` and `secrets-scan` scanners as composite actions.
+The checks are the repo's own commands and the scanners. `verify.mode` says where they run. By default (`host`), the autopilot host runs them. With `"verify": { "mode": "ci", "required": ["sast", "deps-scan", "secrets-scan", "test"] }`, the host runs nothing. It waits for the repo's own CI on the head commit of the pull request. Each name in `required` is the name of a GitHub Actions job. Only a success passes, so a skipped job blocks the merge. Results from other Apps or from commit statuses do not count, because anyone with write access can post them. When a check fails, the builder gets its output and annotations for a fix round. [marcaureln/actions](https://github.com/marcaureln/actions) has the `sast`, `deps-scan` and `secrets-scan` scanners as composite actions.
 
 ### Onboarding
 
@@ -160,7 +160,7 @@ The checks belong to the repo: its own commands and the scanners. `verify.mode` 
 
 The repo's own `.devcontainer/` is the environment of every job: the install, the checks and the builder run in it, with its compose services, so any language works. `init`:
 
-1. Runs an agent that writes `.devcontainer/` if the repo has none (from [Anthropic's dev container](https://github.com/anthropics/claude-code/tree/main/.devcontainer), without its firewall), sets the check commands and drafts `AGENTS.md`. An existing `.devcontainer/` or config keeps its values.
+1. Runs an agent. The agent writes `.devcontainer/` if the repo has none, from [Anthropic's dev container](https://github.com/anthropics/claude-code/tree/main/.devcontainer) without its firewall. It also sets the check commands and drafts `AGENTS.md`. An existing `.devcontainer/` or config keeps its values.
 2. Starts the dev container, cuts its network and runs each check once. Existing `lint` and `types` errors go to `.github/autopilot-baseline.json`, so only new errors fail.
 3. Creates the `autopilot` labels and opens the pull request from your account.
 
@@ -170,7 +170,7 @@ The host refuses a `.devcontainer/` that reaches outside its container: host com
 
 ### Secrets
 
-A test that needs a key gets it from 1Password. Run these in a checkout of the repo, with your own 1Password sign-in:
+A test that needs a key gets it from the repo's secrets. By default, autopilot keeps them in one env file per repo on the host. Set `AUTOPILOT_HOST` or pass `--host`, then run these in a checkout of the repo:
 
 ```sh
 autopilot secrets set STRIPE_KEY        # hidden prompt, or pipe the value on stdin
@@ -179,13 +179,15 @@ autopilot secrets list
 autopilot secrets rm STRIPE_KEY
 ```
 
-Each value goes to the `autopilot` vault, in one item per repo (`<owner>_<repo>`). The command adds the reference to `.github/autopilot.json`; commit it. A value is never a command argument, so it stays out of the shell history. A value must be on one line.
+The file is `secrets/repos/<owner>_<repo>.env` in `/etc/autopilot` on Linux, or in `~/.autopilot` on macOS. A value is never a command argument, so it stays out of the shell history. A value must be on one line.
 
-The host gives the values only to the checks that run a command from `verify.commands`, never to the scanners, the install step or the agent, and it shows only whether such a check passed. As in CI, whoever can change the code of a repo can read its secrets, for example from a test: give a repo only test-mode or low-value keys.
+With `--backend op`, the values go to 1Password, with your own sign-in. Each repo gets one item (`<owner>_<repo>`) in the `autopilot` vault. The command adds the reference to `.github/autopilot.json`. Commit that change. A reference in the config wins over a value of the same name in the host's file.
+
+The host gives the values only to the checks that run a command from `verify.commands`. The scanners, the install step and the agent never get them. For such a check, the host shows only whether it passed. As in CI, a person who can change the code of a repo can read its secrets, for example from a test. Give a repo only test-mode or low-value keys.
 
 ## Hosts
 
-A host runs autopilot as a service. It holds its `host.json`, the 1Password service account token and a release, and it reads the App key and the Claude token with `op` at start. The client keeps no config: it forwards each command to the host over SSH. The host `local` is the machine you run the command on.
+A host runs autopilot as a service. It holds its `host.json`, the 1Password service account token, the repo secrets and a release. At start, it reads the App key and the Claude token with `op`. The client keeps no config. It forwards each command to the host over SSH. The host `local` is the machine you run the command on.
 
 | Host  | Service                                                                  | Files                              | Logs                       |
 | ----- | ------------------------------------------------------------------------ | ---------------------------------- | -------------------------- |
@@ -211,7 +213,7 @@ autopilot update                 # install the latest release, or --version vX.Y
 
 A host works on one issue at a time by default. To run more at once, set `concurrency` in its `host.json`. Each issue gets its own containers and `limits`, so size it to the host's memory and to the rate limits of your Claude plan.
 
-Several hosts can watch the same repos: the oldest claim comment on an issue wins. To move an issue to another host, delete its claim comment.
+Several hosts can watch the same repos. The oldest claim comment on an issue wins. To move an issue to another host, delete its claim comment.
 
 ## Development
 
