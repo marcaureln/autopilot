@@ -152,7 +152,7 @@ Each repo has a `.github/autopilot.json`, which `init` writes. The [schema](sche
 
 ### Checks in your own CI
 
-By default the host runs the checks (`verify.mode` `local`). With `"verify": { "mode": "remote", "required": ["sast", "deps-scan", "secrets-scan", "test"] }`, the host runs nothing: it waits for the repo's own CI on the pull request's head. Each name in `required` is the name of a GitHub Actions job. Only a success passes: a skipped job blocks the merge. Results from other Apps or from commit statuses do not count, because anyone with write access can post them. A failed check gives its output and annotations to the builder for a fix round. [marcaureln/actions](https://github.com/marcaureln/actions) has the `sast`, `deps-scan` and `secrets-scan` scanners as composite actions.
+The checks belong to the repo: its own commands and the scanners. `verify.mode` says where they run. By default (`host`), the autopilot host runs them. With `"verify": { "mode": "ci", "required": ["sast", "deps-scan", "secrets-scan", "test"] }`, the host runs nothing: it waits for the repo's own CI on the pull request's head. Each name in `required` is the name of a GitHub Actions job. Only a success passes: a skipped job blocks the merge. Results from other Apps or from commit statuses do not count, because anyone with write access can post them. A failed check gives its output and annotations to the builder for a fix round. [marcaureln/actions](https://github.com/marcaureln/actions) has the `sast`, `deps-scan` and `secrets-scan` scanners as composite actions.
 
 ### Onboarding
 

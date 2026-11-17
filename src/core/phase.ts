@@ -57,7 +57,7 @@ export type Status = { state: CheckState; description: string; at: string };
 
 export type Statuses = Record<string, Status>;
 
-// The epoch: in remote mode the CI results on a head count whenever they ran.
+// The epoch: in `ci` mode the CI results on a head count whenever they ran.
 export const ANY_TIME = "1970-01-01T00:00:00Z";
 
 // Only a success passes: a job that a change to the workflow skips must not open the merge gate. A

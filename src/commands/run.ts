@@ -44,7 +44,7 @@ export type Idle = { due: () => boolean; run: () => Promise<void> };
 
 // GitHub statuses do not hold the check output, so it lives in memory. After a restart, a failed
 // check runs again to get its output back.
-// `waitingSince` holds when the host first saw a head wait for the repo's CI (remote mode).
+// `waitingSince` holds when the host first saw a head wait for the repo's CI (`ci` mode).
 type RepoContext = { repoGitHub: RepoGitHub; repo: Repo; bot: string; pulls: BotPull[]; outputs: Map<string, CheckResult[]>; waitingSince: Map<string, number> };
 
 class Blocked extends Error {}
@@ -305,7 +305,7 @@ async function waitForCi(job: Working, config: Config, sha: string): Promise<voi
   if (Date.now() - since > config.verify.timeout_minutes * 60 * 1000) {
     ctx.waitingSince.delete(sha);
     throw new Blocked(
-      `The repo's CI gave no result for ${waiting.map((check) => `\`${check}\``).join(", ")} on ${sha.slice(0, 7)} within ${config.verify.timeout_minutes} minutes (\`verify.timeout_minutes\`). In remote mode, \`verify.required\` lists the names of the CI's check runs or commit statuses.`,
+      `The repo's CI gave no result for ${waiting.map((check) => `\`${check}\``).join(", ")} on ${sha.slice(0, 7)} within ${config.verify.timeout_minutes} minutes (\`verify.timeout_minutes\`). In \`ci\` mode, \`verify.required\` lists the names of the repo's GitHub Actions jobs.`,
     );
   }
   loop.log(key, `${key}: waits for the repo's CI on ${sha.slice(0, 7)}: ${waiting.join(", ")}`);
@@ -314,12 +314,12 @@ async function waitForCi(job: Working, config: Config, sha: string): Promise<voi
 async function checksAndGate2(job: Working, config: Config, pull: BotPull, retryAt: string, currentSpec: () => Promise<TrustedSpec | undefined>): Promise<void> {
   const { loop, ctx, issue, key } = job;
   const { repoGitHub } = ctx;
-  const remote = config.verify.mode === "remote";
+  const ci = config.verify.mode === "ci";
   const required = config.verify.required;
-  // Local mode reads the host's own statuses. Remote mode reads the repo's CI, whose results on a
+  // `host` mode reads the host's own statuses. `ci` mode reads the repo's CI, whose results on a
   // head count whenever they ran: a retry does not run that CI again.
-  const results = (commit: string) => (remote ? repoGitHub.ciStatuses(commit, required) : repoGitHub.statuses(commit, ctx.bot));
-  const missing = remote ? [] : planChecks(required, config.verify.commands).filter((plan) => plan.kind === "missing");
+  const results = (commit: string) => (ci ? repoGitHub.ciStatuses(commit, required) : repoGitHub.statuses(commit, ctx.bot));
+  const missing = ci ? [] : planChecks(required, config.verify.commands).filter((plan) => plan.kind === "missing");
   if (missing.length > 0) throw new Blocked(`\`verify.required\` lists ${missing.map((plan) => `\`${plan.check}\``).join(", ")} with no command in \`verify.commands\`.`);
   const refused = refusedSecrets(ctx.repo, config.secrets);
   if (refused.length > 0) {
@@ -331,7 +331,7 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
   // issue is fixed or merged; its ancestors are then the host's commits too.
   const pushedByAutopilot = (await repoGitHub.pushedFor(sha, ctx.bot)) === issue.number;
 
-  let verdict = headVerdict(await results(sha), required, remote ? ANY_TIME : retryAt);
+  let verdict = headVerdict(await results(sha), required, ci ? ANY_TIME : retryAt);
   // The checks read the config of the default branch, so they run on a branch that has its latest commits.
   // The result is marked as pushed by the host, so the host rebases only its own head onto the default
   // branch, and marks the result only when it brings exactly the same changes.
@@ -349,9 +349,9 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
     loop.audit({ event: "pr.rebased", repo: `${ctx.repo.owner}/${ctx.repo.name}`, pull: pull.number, issue: issue.number, from: sha, to: head });
     return loop.log(key, `${key}: rebased #${pull.number} on ${pull.base} to ${head.slice(0, 7)}, the checks run next`);
   }
-  if (remote && verdict.kind === "run") return waitForCi(job, config, sha);
+  if (ci && verdict.kind === "run") return waitForCi(job, config, sha);
   ctx.waitingSince.delete(sha);
-  if (verdict.kind === "run" || (verdict.kind === "failed" && !remote && !ctx.outputs.has(sha))) {
+  if (verdict.kind === "run" || (verdict.kind === "failed" && !ci && !ctx.outputs.has(sha))) {
     verdict = headVerdict(await runChecks(job, config, pull), required, retryAt);
   }
   if (verdict.kind === "run") throw new Error(`${key}: the checks on ${sha.slice(0, 7)} left no result`);
@@ -365,7 +365,7 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
     const failures: Failure[] = [];
     for (const check of verdict.failing) {
       const result = outputs.find((output) => output.check === check);
-      const output = remote ? await repoGitHub.ciOutput(sha, check) : result ? `${result.description}\n\n${result.output}` : "";
+      const output = ci ? await repoGitHub.ciOutput(sha, check) : result ? `${result.description}\n\n${result.output}` : "";
       failures.push({ check, output });
     }
     if (!pushedByAutopilot) throw new Blocked(`Someone else pushed ${sha.slice(0, 7)} to \`${pull.head.ref}\`, and its checks fail. autopilot does not build on it.`);

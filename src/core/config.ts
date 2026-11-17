@@ -18,7 +18,7 @@ export type Config = {
   steps: Record<"spec" | "build" | "fix", Role>;
   skills: Record<Role, string[]>;
   verify: {
-    mode: "local" | "remote";
+    mode: "host" | "ci";
     required: string[];
     commands: Record<string, string>;
     timeout_minutes: number;

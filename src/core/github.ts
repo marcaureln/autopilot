@@ -37,7 +37,7 @@ export type RepoGitHub = {
   pullFiles(pull: number): Promise<FileChange[]>;
   pullCommits(pull: number): Promise<string[]>;
   statuses(sha: string, botLogin: string): Promise<Statuses>;
-  // The repo's own CI on sha (remote mode): the newest GitHub Actions check run of each name.
+  // The repo's own CI on sha (`ci` mode): the newest GitHub Actions check run of each name.
   ciStatuses(sha: string, names: string[]): Promise<Statuses>;
   // What a failed check run of the repo's CI says: its output, annotations and link.
   ciOutput(sha: string, name: string): Promise<string>;

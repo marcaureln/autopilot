@@ -18,7 +18,7 @@ const FULL_CONFIG = `{
     ]
   },
   "verify": {
-    "mode": "local",
+    "mode": "host",
     "required": ["lint", "types", "test", "sast", "deps-scan", "secrets-scan"],
     "commands": { "lint": "npm run lint", "types": "npx tsc --noEmit", "test": "npm test" },
     "timeout_minutes": 10
@@ -47,7 +47,7 @@ test("fills every default in a minimal config", () => {
     steps: { spec: "planner", build: "builder", fix: "builder" },
     skills: { planner: [], builder: [] },
     verify: {
-      mode: "local",
+      mode: "host",
       required: ["lint", "types", "test", "sast", "deps-scan", "secrets-scan"],
       commands: {},
       timeout_minutes: 10,
