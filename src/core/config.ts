@@ -6,7 +6,7 @@ export const CONFIG_PATH = ".github/autopilot.json";
 export type Role = "planner" | "builder";
 
 export type Agent = {
-  harness: "claude";
+  harness: "claude" | "opencode";
   model: string;
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
 };

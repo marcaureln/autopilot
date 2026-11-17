@@ -74,3 +74,20 @@ test("rejects a config that is not JSON and names the source", () => {
 test("a config from the stack packs asks for a new autopilot init", () => {
   assert.throws(() => parseConfig(`{ "version": 1, "stack": ["node"] }`, ".github/autopilot.json"), /Invalid config \.github\/autopilot\.json: `stack` .*Run `autopilot init` again/);
 });
+
+const agentCases: { name: string; agent: Record<string, string>; valid: boolean }[] = [
+  { name: "a Claude model", agent: { harness: "claude", model: "claude-sonnet-5-5" }, valid: true },
+  { name: "an OpenCode model with its provider", agent: { harness: "opencode", model: "anthropic/claude-sonnet-5-5", effort: "high" }, valid: true },
+  { name: "an OpenCode model with a slash in its name", agent: { harness: "opencode", model: "openrouter/moonshot/kimi-k3" }, valid: true },
+  { name: "an OpenCode model without a provider", agent: { harness: "opencode", model: "claude-sonnet-5-5" }, valid: false },
+  { name: "an OpenCode model with a variant, which is the effort", agent: { harness: "opencode", model: "anthropic/claude-sonnet-5-5#high" }, valid: false },
+  { name: "an unknown harness", agent: { harness: "codex", model: "gpt-6" }, valid: false },
+];
+
+for (const { name, agent, valid } of agentCases) {
+  test(`agent: ${name}`, () => {
+    const text = JSON.stringify({ version: 1, agents: { planner: agent, builder: { harness: "claude", model: "claude-sonnet-5-5" } } });
+    if (valid) assert.deepEqual(parseConfig(text, "test").agents.planner, agent);
+    else assert.throws(() => parseConfig(text, "test"), /agents\/planner/);
+  });
+}

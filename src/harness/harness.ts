@@ -8,6 +8,7 @@ import { ensureImage, runContainer, type Mount } from "../core/docker.ts";
 import { PROMPT_FILE, RUN_DIR, shellEnvFile, type AgentFeature } from "../core/environment.ts";
 import type { Host } from "../core/host.ts";
 import { claude } from "./claude.ts";
+import { opencode } from "./opencode.ts";
 
 // The host secrets that a harness can take. Each harness reads only the ones it needs.
 export type Credentials = { claudeToken: string; apiKeys: Record<string, string> };
@@ -35,7 +36,7 @@ export type Harness = {
   command(model: string, effort: Agent["effort"]): string[];
 };
 
-export const HARNESSES: Record<Agent["harness"], Harness> = { claude };
+export const HARNESSES: Record<Agent["harness"], Harness> = { claude, opencode };
 
 export async function agentImage(harness: Harness): Promise<string> {
   const hash = createHash("sha256");

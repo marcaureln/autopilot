@@ -153,14 +153,22 @@
       "additionalProperties": false,
       "required": ["harness", "model"],
       "properties": {
-        "harness": { "enum": ["claude"] },
+        "harness": {
+          "description": "claude: Claude Code with the host's Claude token. opencode: OpenCode with a provider API key from secrets.api_keys in host.json.",
+          "enum": ["claude", "opencode"]
+        },
         "model": {
-          "description": "Passed to the harness verbatim.",
+          "description": "Passed to the harness. claude: a Claude model, such as claude-sonnet-5-5. opencode: <provider>/<model>, such as anthropic/claude-sonnet-5-5.",
           "type": "string",
           "minLength": 1
         },
-        "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
-      }
+        "effort": {
+          "description": "claude: the --effort level. opencode: the model variant (<model>#<effort>), which the model must have.",
+          "enum": ["low", "medium", "high", "xhigh", "max"]
+        }
+      },
+      "if": { "properties": { "harness": { "const": "opencode" } } },
+      "then": { "properties": { "model": { "pattern": "^[^/#]+/[^#]+$" } } }
     },
     "skillList": {
       "type": "array",
