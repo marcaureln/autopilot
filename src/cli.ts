@@ -39,7 +39,7 @@ or runs them on this machine for the host "local":
 Commands that run on the client:
   setup [--config <file> --yes]
                               Set up everything in one wizard: prerequisites, 1Password, the GitHub App, the
-                              Claude token, a host, the allowlist, a first repo and the alias. Run it again to
+                              Claude token, a host, the watched entries, a first repo and the alias. Run it again to
                               fix what is missing. --config gives the answers (schema/setup.schema.json);
                               with --yes, setup asks nothing
   app create [--key-out <path>]
@@ -55,7 +55,7 @@ Commands that run on the client:
                               runs the install and each check once, creates the labels and opens a PR.
                               --skill adds a skill (github.com/<owner>/<repo>[//<path>][#<ref>] or a host
                               path) for the agent and for skills.planner and skills.builder. --notes adds
-                              your own instructions to the prompt. With a host, also allow the repo there
+                              your own instructions to the prompt. With a host, also watch the repo there
   secrets set <NAME>          Save a secret of the repo on the host (hidden prompt, or stdin). The checks
                               that run a command get it
   secrets set --from-env <file>

@@ -1,6 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
-import type { AllowEntry } from "./allow.ts";
+import type { WatchEntry } from "./allow.ts";
 import type { Audit } from "./audit.ts";
 import { checkRunState, issueOfBranch, type BotPull, type CheckState, type Statuses } from "./phase.ts";
 import type { Repo } from "./repo.ts";
@@ -81,7 +81,7 @@ function fileChange(file: { filename: string; status: string; previous_filename?
 export type GitHub = {
   appSlug(): Promise<string>;
   appLogin(): Promise<string>;
-  findInstallation(entry: AllowEntry): Promise<number | undefined>;
+  findInstallation(entry: WatchEntry): Promise<number | undefined>;
   listRepos(installationId: number, owner: string): Promise<Repo[]>;
   repo(installationId: number, repo: Repo): RepoGitHub;
 };

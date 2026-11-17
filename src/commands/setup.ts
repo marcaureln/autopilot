@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { cancel, confirm, type CANCEL_SYMBOL, intro, isCancel, log, note, outro, password, select, text } from "@clack/prompts";
-import { ALLOW_ENTRY } from "../core/allow.ts";
+import { WATCH_ENTRY } from "../core/allow.ts";
 import type { Audit } from "../core/audit.ts";
 import { CONFIG_PATH } from "../core/config.ts";
 import { createGitHub } from "../core/github.ts";
@@ -241,7 +241,7 @@ async function allowEntries(options: SetupOptions, config: SetupConfig, target: 
               message: "Accounts, orgs or owner/repo entries that autopilot may work on (comma-separated, empty for none)",
               initialValue: host.allow.join(", "),
               placeholder: login,
-              validate: (input) => (parseList(input ?? "").every((entry) => ALLOW_ENTRY.test(entry)) ? undefined : "Use owner or owner/repo entries"),
+              validate: (input) => (parseList(input ?? "").every((entry) => WATCH_ENTRY.test(entry)) ? undefined : "Use owner or owner/repo entries"),
             }),
           ),
         ));

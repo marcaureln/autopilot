@@ -62,7 +62,7 @@ const variants: { name: string; change: Partial<Onboarding>; expected: RegExp }[
     change: { validate: { kind: "refused", problems: ["devcontainer.json: `runArgs` passes raw arguments to docker run"] } },
     expected: /- not run: the guardrails refuse `\.devcontainer\/`\n  - devcontainer\.json: `runArgs`/,
   },
-  { name: "the host allows the repo", change: { host: { kind: "allowed" } }, expected: /Check that the App is installed on the repo/ },
+  { name: "the host watches the repo", change: { host: { kind: "watched" } }, expected: /Check that the App is installed on the repo/ },
   { name: "a manual merge", change: {}, expected: /`merge` is `manual`/ },
   { name: "an existing auto merge", change: { merge: "auto" }, expected: /`merge` is `auto`/ },
 ];

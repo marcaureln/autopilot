@@ -1,5 +1,5 @@
 import { renameSync, writeFileSync } from "node:fs";
-import { addAllowEntry, parseAllowEntry, removeAllowEntry } from "../core/allow.ts";
+import { addWatchEntry, parseWatchEntry, removeWatchEntry } from "../core/allow.ts";
 import type { Audit } from "../core/audit.ts";
 import { createGitHub } from "../core/github.ts";
 import { HOST_FILE, loadHost, type Host } from "../core/host.ts";
@@ -25,7 +25,7 @@ async function installUrl(slug: string, owner: string): Promise<string> {
 }
 
 export async function watch(path: string, value: string, audit: Audit): Promise<void> {
-  const entry = parseAllowEntry(value);
+  const entry = parseWatchEntry(value);
   const host = loadHost(path);
   const github = createGitHub({ appId: host.app_id, privateKey: readSecret(host.secrets.app_key, "watch: check the App installation", audit) }, audit);
   if ((await github.findInstallation(entry)) === undefined) {
@@ -33,7 +33,7 @@ export async function watch(path: string, value: string, audit: Audit): Promise<
     console.log(`open: ${await installUrl(await github.appSlug(), entry.owner)}`);
   }
   if (host.allow.includes(value)) return console.log(`${host.name} already watches ${value}`);
-  writeHost(path, addAllowEntry(host, value));
+  writeHost(path, addWatchEntry(host, value));
   audit({ event: "allowlist.changed", action: "watch", entry: value, by: process.env.SUDO_USER });
   restart(path);
   console.log(`${host.name} watches ${value}`);
@@ -41,7 +41,7 @@ export async function watch(path: string, value: string, audit: Audit): Promise<
 
 export function unwatch(path: string, value: string, audit: Audit): void {
   const host = loadHost(path);
-  writeHost(path, removeAllowEntry(host, value));
+  writeHost(path, removeWatchEntry(host, value));
   audit({ event: "allowlist.changed", action: "unwatch", entry: value, by: process.env.SUDO_USER });
   restart(path);
   console.log(`${host.name} no longer watches ${value}`);

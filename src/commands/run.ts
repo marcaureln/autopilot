@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { parseAllowEntry } from "../core/allow.ts";
+import { parseWatchEntry } from "../core/allow.ts";
 import { serviceLog, type Audit } from "../core/audit.ts";
 import { BASELINE_PATH, parseBaseline, type Baseline } from "../core/baseline.ts";
 import { botIdentity, BuildStopped, neutralize, pullBody, SecretsMissing, type BuildJob, type Built, type Failure } from "../core/builder.ts";
@@ -438,7 +438,7 @@ export function loopState(): LoopState {
 export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
   const { github, log } = loop;
   for (const value of loop.host.allow) {
-    const entry = parseAllowEntry(value);
+    const entry = parseWatchEntry(value);
     const installationId = await github.findInstallation(entry).catch((error: unknown) => {
       log(value, `${value}: error: ${messageOf(error)}`);
       return null;

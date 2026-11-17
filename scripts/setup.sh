@@ -169,7 +169,7 @@ if [ -d "$home/.local/share/mise" ] && ! pgrep -u "$user" -f "$home/.local/share
   sudo -u "$user" rm -rf -- "$home/.local/share/mise" "$home/.local/state/mise" "$home/.cache/mise"
 fi
 # Copies that migrations before v0.1.0 left. A copy for the same App has nothing that host.json needs,
-# but it can name accounts that the allowlist dropped, so setup prints them.
+# but it can name accounts that the host no longer watches, so setup prints them.
 for copy in /etc/autopilot/host.json.before-allow /etc/autopilot/host.json.pre-3c; do
   [ -f "$copy" ] && [ -f /etc/autopilot/host.json ] || continue
   if dropped=$("$node" -e '
@@ -177,7 +177,7 @@ for copy in /etc/autopilot/host.json.before-allow /etc/autopilot/host.json.pre-3
     if (old.app_id !== now.app_id) process.exit(1);
     console.log([...(old.installations ?? []), ...(old.allow ?? [])].filter((entry) => !now.allow.includes(entry)).join(", "));
   ' "$copy" /etc/autopilot/host.json); then
-    [ -z "$dropped" ] || echo "INFO: $copy allowed $dropped; to keep one, run autopilot watch <entry>"
+    [ -z "$dropped" ] || echo "INFO: $copy watched $dropped; to keep one, run autopilot watch <entry>"
     echo "INFO: removing $copy"
     rm -f "$copy"
   fi

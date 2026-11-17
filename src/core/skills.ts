@@ -1,6 +1,6 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
-import { parseAllowEntry } from "./allow.ts";
+import { parseWatchEntry } from "./allow.ts";
 import type { GitHub } from "./github.ts";
 import { parseSource, type Host } from "./host.ts";
 import { LOCAL_LAYOUT } from "./layout.ts";
@@ -19,8 +19,8 @@ function within(path: string, root: string): boolean {
 }
 
 // A repo config could otherwise copy a skill from another account that installed the App.
-function isAllowedRepo(owner: string, repo: string, allow: string[]): boolean {
-  return allow.map(parseAllowEntry).some((entry) => entry.owner === owner && (entry.repo === undefined || entry.repo === repo));
+function isWatchedRepo(owner: string, repo: string, allow: string[]): boolean {
+  return allow.map(parseWatchEntry).some((entry) => entry.owner === owner && (entry.repo === undefined || entry.repo === repo));
 }
 
 export async function prepareAgent(host: Host, roleSkills: string[], github: GitHub, jobDir: string): Promise<AgentSetup> {
@@ -31,7 +31,7 @@ export async function prepareAgent(host: Host, roleSkills: string[], github: Git
 
   for (const [index, entry] of roleSkills.entries()) {
     const source = parseSource(entry, "skills");
-    if (source.kind === "github" && !isAllowedRepo(source.owner, source.repo, host.allow)) throw new Error(`skills: ${source.owner}/${source.repo} is not in the host allowlist`);
+    if (source.kind === "github" && !isWatchedRepo(source.owner, source.repo, host.allow)) throw new Error(`skills: ${source.owner}/${source.repo} is not watched by the host`);
     const dest = join(jobDir, "sources", String(index));
     const dir = await fetchSource(entry, github, dest, "skills");
     // A symlink in the clone or on the host path must not lead out of it.

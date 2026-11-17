@@ -180,7 +180,7 @@ export type Onboarding = {
   notes: string[];
   environment: OnboardingResult["environment"] & { existing: boolean };
   validate: { kind: "ran"; results: ValidateResult[] } | { kind: "refused"; problems: string[] };
-  host: { kind: "allowed" } | { kind: "none" };
+  host: { kind: "watched" } | { kind: "none" };
   readiness: ReadinessItem[];
 };
 
@@ -202,7 +202,7 @@ export function onboardingBody(onboarding: Onboarding): string {
     ...(environment.existing ? [] : ["Read `.devcontainer/`: the onboarding agent wrote it."]),
     ...onboarding.notes.map(neutralize),
     ...(validate.kind === "ran" ? validate.results.filter((result) => result.outcome === "failed").map((result) => failedItem(result.check)) : ["Fix `.devcontainer/`: the guardrails refuse it, see the checks above."]),
-    host.kind === "allowed" ? "Check that the App is installed on the repo: `autopilot watch` printed its install page if it was not." : `Let a host watch the repo: \`autopilot watch ${repo}\` with \`AUTOPILOT_HOST\` set. It also checks that the App is installed.`,
+    host.kind === "watched" ? "Check that the App is installed on the repo: `autopilot watch` printed its install page if it was not." : `Let a host watch the repo: \`autopilot watch ${repo}\` with \`AUTOPILOT_HOST\` set. It also checks that the App is installed.`,
     ...(onboarding.merge === "manual" ? ["`merge` is `manual`: switch it to `auto` when you trust the checks."] : ["`merge` is `auto`: Gate 2 merges low-risk pull requests with no review."]),
   ];
   const failing = readiness.filter((item) => item.ok === "no");

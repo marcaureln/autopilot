@@ -200,9 +200,9 @@ export async function init(options: InitOptions): Promise<void> {
     ensureLabels(repo);
     let host: Onboarding["host"] = { kind: "none" };
     if (options.host) {
-      console.log("==> allow the repo on the host");
+      console.log("==> watch the repo on the host");
       if ((await forward(options.host, ["watch", repo])) !== 0) throw new Error("the host could not watch the repo");
-      host = { kind: "allowed" };
+      host = { kind: "watched" };
     }
 
     const paths = run("git", ["ls-files", "--cached", "--others", "--exclude-standard"], clone).split("\n");
