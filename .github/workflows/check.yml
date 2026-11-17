@@ -39,15 +39,16 @@ jobs:
           release=/opt/autopilot-ci
           sudo install -d -m 755 "$release"
           git archive HEAD | sudo tar -x --no-same-owner -C "$release"
-          # The unit loads this file. The service then stops on the missing host.json, before it reads a secret.
-          sudo install -d -m 755 /etc/autopilot
-          echo placeholder | sudo install -m 600 /dev/stdin /etc/autopilot/op-token
+          # A host with no 1Password: no op token. The service then stops on the missing host.json.
           sudo bash "$release/scripts/setup.sh" "$release" rootless
       - name: The host has its user, rootless Docker, the service and the command
         run: |
           uid=$(id -u autopilot)
           sudo -u autopilot env XDG_RUNTIME_DIR=/run/user/$uid systemctl --user is-active docker
           systemctl is-enabled autopilot
+          ! grep -q LoadCredential /etc/systemd/system/autopilot.service
+          ! command -v op
+          test "$(sudo stat -c '%U:%G %a' /etc/autopilot/secrets)" = "root:autopilot 750"
           test "$(readlink /opt/autopilot)" = /opt/autopilot-ci
           autopilot --help | head -1
       - name: Dev containers under the autopilot user
