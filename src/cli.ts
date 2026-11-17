@@ -4,7 +4,7 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { unwatch, watch, watched } from "./commands/watch.ts";
 import { alias } from "./commands/alias.ts";
 import { appCreate } from "./commands/app.ts";
-import { forward, hostSetup, readAppKey, readClaudeToken, selfUpdate } from "./commands/client.ts";
+import { clientClaudeToken, forward, hostSetup, readAppKey, readClaudeToken, selfUpdate } from "./commands/client.ts";
 import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, startService, stopService, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
@@ -37,11 +37,11 @@ or runs them on this machine for the host "local":
   update [--version <tag>]    Install a release from GitHub (default: the latest) and restart
 
 Commands that run on the client:
-  setup [--config <file> --yes]
-                              Set up everything in one wizard: prerequisites, 1Password, the GitHub App, the
-                              Claude token, a host, the watched entries, a first repo and the alias. Run it
-                              again to fix what is missing. --config gives the answers
-                              (schema/setup.schema.json). With --yes, setup asks nothing
+  setup [--config <file> --yes] [--backend op]
+                              Set up everything in one wizard: prerequisites, the GitHub App, a host and its
+                              secrets, the watched entries, a first repo and the alias. Run it again to fix
+                              what is missing. --config gives the answers (schema/setup.schema.json). With
+                              --yes, setup asks nothing. With --backend op, the secrets go to 1Password
   app create [--key-out <path> | --backend op]
                               Create your GitHub App in the browser (GitHub's App manifest flow). The private
                               key goes to a 0600 file: ~/.config/autopilot/app-key.pem, where host setup finds
@@ -59,7 +59,9 @@ Commands that run on the client:
                               runs the install and each check once, creates the labels and opens a PR.
                               --skill adds a skill (github.com/<owner>/<repo>[//<path>][#<ref>] or a host
                               path) for the agent and for skills.planner and skills.builder. --notes adds
-                              your own instructions to the prompt. With a host, also watch the repo there
+                              your own instructions to the prompt. With a host, also watch the repo there.
+                              The agent uses the Claude token in $CLAUDE_CODE_OAUTH_TOKEN, else asks for it
+                              (with --backend op, it reads it from 1Password)
   secrets set <NAME>          Save a secret of the repo on the host (hidden prompt, or stdin). The checks
                               that run a command get it
   secrets set --from-env <file>
@@ -199,7 +201,7 @@ async function main(): Promise<void> {
       await update(hostFile, values.version);
       break;
     case "init":
-      await init({ repo: targetRepo(), host: target, skills: values.skill, notesFile: values.notes });
+      await init({ repo: targetRepo(), host: target, skills: values.skill, notesFile: values.notes, claudeToken: () => clientClaudeToken(secretsBackend(), process.stdin.isTTY) });
       break;
     case "secrets": {
       const command = parseSecretsCommand(positionals.slice(1), values["from-env"]);
@@ -220,7 +222,7 @@ async function main(): Promise<void> {
       break;
     }
     case "setup":
-      await setup({ configFile: values.config, yes: values.yes, host: target, version: values.version, fromCheckout: values["from-checkout"] });
+      await setup({ configFile: values.config, yes: values.yes, host: target, version: values.version, fromCheckout: values["from-checkout"], backend: values.backend === undefined ? undefined : secretsBackend(), appKey: values["app-key"] });
       break;
     case "app":
       if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path> | --backend op]");

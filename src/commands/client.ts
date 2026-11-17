@@ -8,7 +8,7 @@ import type { Audit } from "../core/audit.ts";
 import { createGitHub } from "../core/github.ts";
 import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
-import type { Backend } from "../core/secrets.ts";
+import { readSecret, type Backend } from "../core/secrets.ts";
 import { connect, installRelease, latestRelease, LOCAL_TARGET, must, parseTag, SERVICE, type Release, type Connection } from "./host.ts";
 
 const CLI_ROOT = new URL("../../", import.meta.url).pathname;
@@ -105,6 +105,10 @@ export async function readClaudeToken(interactive: boolean): Promise<string> {
   const token = await password({ message: "Paste the Claude token (hidden)", validate: (input) => (input?.trim() ? undefined : "The token is empty") });
   if (isCancel(token)) throw new Error("cancelled");
   return token.trim();
+}
+
+export async function clientClaudeToken(backend: Backend, interactive: boolean): Promise<string> {
+  return backend === "op" ? readSecret(HOST_SECRETS.op.claude_token, "init: token for the onboarding agent", noAudit) : readClaudeToken(interactive);
 }
 
 export type SecretSources = Record<Exclude<HostSecret, "op_token">, () => Promise<string>>;

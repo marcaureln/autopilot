@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { checkResources, isRepoEntry, itemStored, repoFileStored, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type HostPlan } from "./setup.ts";
+import { checkResources, isRepoEntry, itemStored, repoFileStored, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, requiredTools, RESOURCES_PROBE, TOOLS, type HostFacts, type HostPlan } from "./setup.ts";
 
 const GIB = 1024 ** 3;
 
 const validConfigs: { name: string; text: string }[] = [
   { name: "an empty file", text: "{}" },
-  { name: "every answer", text: JSON.stringify({ app_id: 42, host: "user@my-host", owner: "octocat", allow: ["octocat", "example-org/app"], init: ["octocat/app"], alias: "ap" }) },
+  { name: "every answer", text: JSON.stringify({ backend: "env", app_id: 42, app_key: "/home/me/keys/app.pem", host: "user@my-host", owner: "octocat", allow: ["octocat", "example-org/app"], init: ["octocat/app"], alias: "ap" }) },
+  { name: "the op backend", text: JSON.stringify({ backend: "op", app_id: 42 }) },
   { name: "the local host and no alias", text: JSON.stringify({ host: "local", alias: false }) },
 ];
 
@@ -25,11 +26,24 @@ const invalidConfigs: { name: string; value: unknown }[] = [
   { name: "an owner instead of a repo in init", value: { init: ["octocat"] } },
   { name: "alias true", value: { alias: true } },
   { name: "a bad alias name", value: { alias: "a b" } },
+  { name: "an unknown backend", value: { backend: "vault" } },
+  { name: "an empty App key path", value: { app_key: "" } },
 ];
 
 for (const { name, value } of invalidConfigs) {
   test(`setup file: refuses ${name}`, () => {
     assert.throws(() => parseSetupConfig(JSON.stringify(value), "setup.json"), /Invalid setup file setup\.json/);
+  });
+}
+
+const toolCases: { backend: "env" | "op"; expected: string[] }[] = [
+  { backend: "env", expected: ["git", "ssh", "mise", "gh"] },
+  { backend: "op", expected: ["git", "ssh", "mise", "gh", "op"] },
+];
+
+for (const { backend, expected } of toolCases) {
+  test(`the ${backend} backend needs ${expected.join(", ")} on the client`, () => {
+    assert.deepEqual(requiredTools(backend), expected);
   });
 }
 
@@ -87,20 +101,21 @@ for (const { value, expected } of lists) {
   });
 }
 
-const running: HostFacts = { hasHost: true, opToken: true, release: "/opt/autopilot-v1.2.0", service: "active" };
+const running: HostFacts = { hasHost: true, missingSecrets: [], release: "/opt/autopilot-v1.2.0", service: "active" };
 
 const hostPlans: { name: string; facts: HostFacts; request?: { version?: string; fromCheckout: boolean }; expected: HostPlan | RegExp }[] = [
   { name: "a running host is left alone", facts: running, expected: { kind: "ready" } },
   { name: "a running macOS host is left alone", facts: { ...running, release: "/Users/me/.autopilot/releases/v1.2.0", service: "running" }, expected: { kind: "ready" } },
   { name: "a running host stays alone even with a version asked", facts: running, request: { version: "v2.0.0", fromCheckout: false }, expected: { kind: "ready" } },
-  { name: "a new host gets the latest release", facts: { hasHost: false, opToken: false, service: "not loaded" }, expected: { kind: "run", fromCheckout: false } },
-  { name: "a new host gets the version asked", facts: { hasHost: false, opToken: false, service: "not loaded" }, request: { version: "v1.0.0", fromCheckout: false }, expected: { kind: "run", version: "v1.0.0", fromCheckout: false } },
-  { name: "a host with a file but no release is installed", facts: { hasHost: true, opToken: true, service: "inactive" }, expected: { kind: "run", fromCheckout: false } },
+  { name: "a new host gets the latest release", facts: { hasHost: false, missingSecrets: [], service: "not loaded" }, expected: { kind: "run", fromCheckout: false } },
+  { name: "a new host gets the version asked", facts: { hasHost: false, missingSecrets: [], service: "not loaded" }, request: { version: "v1.0.0", fromCheckout: false }, expected: { kind: "run", version: "v1.0.0", fromCheckout: false } },
+  { name: "a host with a file but no release is installed", facts: { hasHost: true, missingSecrets: [], service: "inactive" }, expected: { kind: "run", fromCheckout: false } },
   { name: "a stopped host keeps its release", facts: { ...running, service: "inactive" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is inactive" } },
   { name: "a host in RestartSec keeps its release", facts: { ...running, service: "activating" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is activating" } },
   { name: "a macOS host that is not loaded keeps its release", facts: { ...running, release: "/Users/me/.autopilot/releases/v1.2.0", service: "not loaded" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is not loaded" } },
-  { name: "a missing token on a running host keeps its release", facts: { ...running, opToken: false }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "the 1Password token file is missing" } },
-  { name: "two problems are both named", facts: { ...running, opToken: false, service: "failed" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is failed; the 1Password token file is missing" } },
+  { name: "a missing token on a running host keeps its release", facts: { ...running, missingSecrets: ["op_token"] }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "missing on the host: 1Password service account token" } },
+  { name: "missing secret files are all named", facts: { ...running, missingSecrets: ["app_key", "claude_token"] }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "missing on the host: GitHub App key, Claude token" } },
+  { name: "two problems are both named", facts: { ...running, missingSecrets: ["op_token"], service: "failed" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is failed; missing on the host: 1Password service account token" } },
   { name: "a stopped host moves to the version asked", facts: { ...running, service: "inactive" }, request: { version: "v2.0.0", fromCheckout: false }, expected: { kind: "run", version: "v2.0.0", fromCheckout: false, problem: "service is inactive" } },
   { name: "a stopped checkout host is not replaced by a release", facts: { ...running, release: "/opt/autopilot-0123456789ab", service: "inactive" }, expected: /checkout build 0123456789ab.*--from-checkout/ },
   { name: "a stopped checkout host is installed again from the checkout", facts: { ...running, release: "/opt/autopilot-0123456789ab", service: "inactive" }, request: { fromCheckout: true }, expected: { kind: "run", fromCheckout: true, problem: "service is inactive" } },

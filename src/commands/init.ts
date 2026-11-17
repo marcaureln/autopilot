@@ -31,7 +31,7 @@ import { refusedSecrets } from "../core/repo-secrets.ts";
 import { readSecret } from "../core/secrets.ts";
 import { LABELS } from "../core/state.ts";
 import { readAgentFile, writeRepoFile } from "../core/workspace.ts";
-import { forward, HOST_SECRETS } from "./client.ts";
+import { forward } from "./client.ts";
 
 export const BRANCH = "autopilot/onboarding";
 const LIMITS = { memory: "6g", cpus: 2, pids: 1024 };
@@ -41,7 +41,7 @@ const BASELINE_CHECKS = ["lint", "types"];
 
 const noAudit: Audit = () => {};
 
-export type InitOptions = { repo: Repo; host: string | undefined; skills: string[]; notesFile: string | undefined };
+export type InitOptions = { repo: Repo; host: string | undefined; skills: string[]; notesFile: string | undefined; claudeToken: () => Promise<string> };
 
 function run(command: string, args: string[], cwd?: string, input?: string): string {
   return execFileSync(command, args, { cwd, input, encoding: "utf8", stdio: ["pipe", "pipe", "inherit"] }).trim();
@@ -175,7 +175,7 @@ export async function init(options: InitOptions): Promise<void> {
   for (const skill of options.skills) parseSource(skill, "--skill");
   const notes = options.notesFile === undefined ? undefined : readFileSync(options.notesFile, "utf8");
   if (!dockerRunning()) throw new Error("Docker is not running: init runs the onboarding agent and the checks in containers");
-  const claudeToken = readSecret(HOST_SECRETS.op.claude_token, "init: token for the onboarding agent", noAudit);
+  const claudeToken = await options.claudeToken();
   const jobDir = mkdtempSync(join(tmpdir(), "autopilot-init-"));
   try {
     const clone = join(jobDir, "repo");

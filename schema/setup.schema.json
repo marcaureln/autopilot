@@ -9,10 +9,19 @@
     "$schema": {
       "type": "string"
     },
+    "backend": {
+      "description": "Where the secrets go. env: files on the host. op: 1Password (vault autopilot). Default: --backend, else env.",
+      "enum": ["env", "op"]
+    },
     "app_id": {
-      "description": "ID of an existing GitHub App to use. Its private key must be in 1Password (vault autopilot, document github-app-private-key). Without it, setup creates a new App in the browser, which --yes cannot do.",
+      "description": "ID of an existing GitHub App to use. Without it, setup creates a new App in the browser, which --yes cannot do. With the op backend, its private key must be in 1Password (vault autopilot, document github-app-private-key).",
       "type": "integer",
       "minimum": 1
+    },
+    "app_key": {
+      "description": "Absolute path of the private key file (.pem) of the App in app_id, for the env backend. Host setup pushes it to a host that has no key. Default: ~/.config/autopilot/app-key.pem, where autopilot app create saves it.",
+      "type": "string",
+      "minLength": 1
     },
     "host": {
       "description": "SSH target of the host (for example user@my-host), or local for this machine. Default: --host or AUTOPILOT_HOST.",

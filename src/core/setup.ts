@@ -1,10 +1,14 @@
 import { basename } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/setup.schema.json" with { type: "json" };
+import { SECRET_LABELS, type HostSecret } from "./host.ts";
+import type { Backend } from "./secrets.ts";
 
 export type SetupConfig = {
   $schema?: string;
+  backend?: Backend;
   app_id?: number;
+  app_key?: string;
   host?: string;
   owner?: string;
   allow?: string[];
@@ -21,8 +25,12 @@ export function parseSetupConfig(text: string, source: string): SetupConfig {
   return data;
 }
 
-export const TOOLS = ["git", "ssh", "mise", "op", "gh"] as const;
+export const TOOLS = ["git", "ssh", "mise", "gh", "op"] as const;
 export type Tool = (typeof TOOLS)[number];
+
+export function requiredTools(backend: Backend): Tool[] {
+  return TOOLS.filter((tool) => tool !== "op" || backend === "op");
+}
 
 const INSTALL: Record<Tool, { darwin: string; linux: string }> = {
   git: { darwin: "xcode-select --install", linux: "sudo apt-get install -y git" },
@@ -88,7 +96,7 @@ export function parseList(value: string): string[] {
 
 export const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
 
-export type HostFacts = { hasHost: boolean; opToken: boolean; release?: string; service: string };
+export type HostFacts = { hasHost: boolean; missingSecrets: HostSecret[]; release?: string; service: string };
 
 export type HostPlan =
   | { kind: "ready" }
@@ -104,7 +112,7 @@ function releaseId(link: string): string {
 export function planHostSetup(facts: HostFacts, request: { version?: string; fromCheckout: boolean }): HostPlan {
   const problems = [
     ...(["active", "running"].includes(facts.service) ? [] : [`service is ${facts.service}`]),
-    ...(facts.opToken ? [] : ["the 1Password token file is missing"]),
+    ...(facts.missingSecrets.length > 0 ? [`missing on the host: ${facts.missingSecrets.map((secret) => SECRET_LABELS[secret]).join(", ")}`] : []),
   ];
   if (facts.hasHost && facts.release !== undefined && problems.length === 0) return { kind: "ready" };
   if (!facts.hasHost || facts.release === undefined) return { kind: "run", ...request };
