@@ -13,7 +13,7 @@ import { readSecret } from "../core/secrets.ts";
 import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, repoFileStored, RESOURCES_PROBE, TOOLS, type HostFacts, type SetupConfig } from "../core/setup.ts";
 import { alias, AliasError, aliasFile, aliasNameProblem, shellOf, withoutAlias } from "./alias.ts";
 import { appCreate, githubLogin } from "./app.ts";
-import { APP_KEY_FILE, APP_KEY_ITEM, CLAUDE_TOKEN_ITEM, forward, HOST_SECRETS, hostSetup, OP_TOKEN_ITEM } from "./client.ts";
+import { APP_KEY_FILE, APP_KEY_ITEM, CLAUDE_TOKEN_ITEM, forward, found, HOST_SECRETS, hostSetup, OP_TOKEN_ITEM, readAppKey, readClaudeToken } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
 import { BRANCH as ONBOARDING_BRANCH, init } from "./init.ts";
 import { op, opItemExists } from "./secrets.ts";
@@ -50,10 +50,6 @@ function configOrAsk<T>(options: SetupOptions, value: T | undefined, field: stri
   if (value !== undefined) return Promise.resolve(value);
   if (options.yes) throw new Error(`--yes: set "${field}" in the setup file`);
   return answer(prompt());
-}
-
-function found(tool: string): boolean {
-  return spawnSync("sh", ["-c", `command -v ${tool}`], { stdio: "ignore" }).status === 0;
 }
 
 function prerequisites(): void {
@@ -135,7 +131,7 @@ async function githubApp(options: SetupOptions, config: SetupConfig): Promise<nu
     const saved = op(["document", "create", path, "--vault", SECRETS_VAULT, "--title", APP_KEY_ITEM, "--file-name", APP_KEY_FILE]);
     if (!saved.ok) throw new Error(`op could not save the private key: ${saved.stderr}`);
   }
-  const privateKey = readSecret(HOST_SECRETS.app_key, "setup: check the App key", noAudit);
+  const privateKey = readSecret(HOST_SECRETS.op.app_key, "setup: check the App key", noAudit);
   const slug = await createGitHub({ appId, privateKey }, noAudit)
     .appSlug()
     .catch((error: unknown) => {
@@ -217,7 +213,8 @@ async function setUpHost(options: SetupOptions, config: SetupConfig, target: str
       : await configOrAsk(options, config.owner ?? (options.yes ? login : undefined), "owner", () =>
           text({ message: "GitHub login that may start jobs (the owner)", initialValue: login, validate: (input) => (/^[A-Za-z0-9-]+$/.test(input ?? "") ? undefined : "A GitHub login") }),
         );
-    await hostSetup(target, { owner, appId, version: plan.version, fromCheckout: plan.fromCheckout });
+    const sources = { app_key: () => readAppKey(undefined, !options.yes), claude_token: () => readClaudeToken(!options.yes) };
+    await hostSetup(target, { owner, appId, version: plan.version, fromCheckout: plan.fromCheckout, backend: "op", sources });
     state = await hostState(remote);
     const after = planHostSetup(factsOf(state), options);
     if (after.kind !== "ready") throw new Error(`host setup ran, but the host is not ready: service ${state.service}`);

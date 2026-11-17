@@ -1,10 +1,15 @@
 import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
-import { parseHost, type Host } from "../core/host.ts";
+import { confirm, isCancel, log, password, text } from "@clack/prompts";
+import type { Audit } from "../core/audit.ts";
+import { createGitHub } from "../core/github.ts";
+import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
-import { connect, installRelease, latestRelease, LOCAL_TARGET, must, parseTag, type Release, type Connection } from "./host.ts";
+import type { Backend } from "../core/secrets.ts";
+import { connect, installRelease, latestRelease, LOCAL_TARGET, must, parseTag, SERVICE, type Release, type Connection } from "./host.ts";
 
 const CLI_ROOT = new URL("../../", import.meta.url).pathname;
 const HOST_SCHEMA = "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/host.schema.json";
@@ -13,10 +18,11 @@ export const APP_KEY_FILE = "app.pem";
 export const CLAUDE_TOKEN_ITEM = "claude-token";
 export const OP_TOKEN_ITEM = "op-service-account-token";
 const OP_TOKEN_REFERENCE = `op://${SECRETS_VAULT}/${OP_TOKEN_ITEM}/password`;
-export const HOST_SECRETS: Host["secrets"] = {
-  app_key: `op://${SECRETS_VAULT}/${APP_KEY_ITEM}/${APP_KEY_FILE}`,
-  claude_token: `op://${SECRETS_VAULT}/${CLAUDE_TOKEN_ITEM}/credential`,
+export const HOST_SECRETS: Record<Backend, Host["secrets"]> = {
+  env: { app_key: "file:app-key.pem", claude_token: "file:claude-token" },
+  op: { app_key: `op://${SECRETS_VAULT}/${APP_KEY_ITEM}/${APP_KEY_FILE}`, claude_token: `op://${SECRETS_VAULT}/${CLAUDE_TOKEN_ITEM}/credential` },
 };
+export const APP_KEY_PATH = join(homedir(), ".config", "autopilot", "app-key.pem");
 
 export function shellQuote(arg: string): string {
   return `'${arg.replaceAll("'", `'\\''`)}'`;
@@ -63,12 +69,66 @@ function writeHostFile(remote: Connection, path: string, mode: "600" | "644"): s
   return `${remote.sudo}sh -c 'set -e; install -d -m 755 ${dirname(path)}; umask 077; cat > ${path}.tmp; chmod ${mode} ${path}.tmp; mv ${path}.tmp ${path}'`;
 }
 
-function initialHostFile({ name, owner, appId }: { name: string; owner: string; appId: number }): Host {
+export function found(tool: string): boolean {
+  return spawnSync("sh", ["-c", `command -v ${tool}`], { stdio: "ignore" }).status === 0;
+}
+
+const noAudit: Audit = () => {};
+
+export async function checkAppKey(appId: number, privateKey: string, where: string): Promise<string> {
+  return createGitHub({ appId, privateKey }, noAudit)
+    .appSlug()
+    .catch((error: unknown) => {
+      throw new Error(`the key in ${where} does not open App ${appId}: ${error instanceof Error ? error.message : String(error)}`);
+    });
+}
+
+export async function readAppKey(path: string | undefined, interactive: boolean): Promise<string> {
+  let file = path ?? (existsSync(APP_KEY_PATH) ? APP_KEY_PATH : undefined);
+  if (!file) {
+    if (!interactive) throw new Error(`no GitHub App key: pass --app-key <pem file> with the private key of the App, or create the App with autopilot app create`);
+    const answer = await text({ message: "Path of the App's private key file (.pem)", validate: (input) => (existsSync(input ?? "") ? undefined : "No file at this path") });
+    if (isCancel(answer)) throw new Error("cancelled");
+    file = answer;
+  }
+  return readFileSync(file, "utf8");
+}
+
+export async function readClaudeToken(interactive: boolean): Promise<string> {
+  const fromEnv = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  if (fromEnv) return fromEnv;
+  if (!interactive) throw new Error("no Claude token: run claude setup-token on any machine with Claude Code, and pass its token in CLAUDE_CODE_OAUTH_TOKEN");
+  const run = found("claude") && (await confirm({ message: "Run claude setup-token now? It signs in to Claude in the browser and prints a token." }));
+  if (isCancel(run)) throw new Error("cancelled");
+  if (run) spawnSync("claude", ["setup-token"], { stdio: "inherit" });
+  else log.info("Run claude setup-token on any machine with Claude Code. It signs in to Claude in the browser and prints a token.");
+  const token = await password({ message: "Paste the Claude token (hidden)", validate: (input) => (input?.trim() ? undefined : "The token is empty") });
+  if (isCancel(token)) throw new Error("cancelled");
+  return token.trim();
+}
+
+export type SecretSources = Record<Exclude<HostSecret, "op_token">, () => Promise<string>>;
+
+// The service user reads the host secrets through the group of the secrets folder, as it reads the repo files.
+export function writeSecretFile(remote: Pick<Connection, "layout" | "sudo">, path: string): string {
+  const access = remote.layout.os === "linux" ? `chgrp autopilot ${path}.tmp; chmod 640` : "chmod 600";
+  return `${remote.sudo}sh -c 'set -e; umask 077; cat > ${path}.tmp; ${access} ${path}.tmp; mv ${path}.tmp ${path}'`;
+}
+
+export async function missingSecrets(remote: Connection, files: HostSecretFile[]): Promise<HostSecretFile[]> {
+  const missing: HostSecretFile[] = [];
+  for (const file of files) {
+    if ((await remote.shell.capture(`${remote.sudo}test -s ${file.path}`)).code !== 0) missing.push(file);
+  }
+  return missing;
+}
+
+function initialHostFile({ name, owner, appId, backend }: { name: string; owner: string; appId: number; backend: Backend }): Host {
   return {
     $schema: HOST_SCHEMA,
     name,
     app_id: appId,
-    secrets: HOST_SECRETS,
+    secrets: HOST_SECRETS[backend],
     owners: [owner],
     allow: [],
     docker: "rootless",
@@ -89,34 +149,57 @@ function checkoutRelease(): Release {
   };
 }
 
-async function hostFile(remote: Connection, options: { owner?: string; appId?: number }): Promise<Host> {
+async function hostFile(remote: Connection, options: { owner?: string; appId?: number; backend: Backend }): Promise<Host> {
   const path = remote.layout.hostFile;
   const { code, stdout } = await remote.shell.capture(`${remote.sudo}cat ${path} 2>/dev/null`);
   if (code === 0) return parseHost(stdout, path);
   if (!options.owner || !options.appId) throw new Error("the host has no host.json yet: pass --owner <login> --app-id <id>");
-  const text = JSON.stringify(initialHostFile({ name: remote.name, owner: options.owner, appId: options.appId }), null, 2) + "\n";
+  const text = JSON.stringify(initialHostFile({ name: remote.name, owner: options.owner, appId: options.appId, backend: options.backend }), null, 2) + "\n";
   const host = parseHost(text, "the new host.json");
   console.log(`==> host.json (new, host name ${host.name})`);
   await must(remote.shell, "host.json", writeHostFile(remote, path, "644"), Buffer.from(text));
   return host;
 }
 
-export async function hostSetup(target: string, options: { owner?: string; appId?: number; version?: string; fromCheckout: boolean }): Promise<void> {
+export type HostSetupOptions = { owner?: string; appId?: number; version?: string; fromCheckout: boolean; backend: Backend; sources: SecretSources };
+
+export async function hostSetup(target: string, options: HostSetupOptions): Promise<HostSecret[]> {
   const release: Release = options.fromCheckout ? checkoutRelease() : { kind: "github", tag: options.version ? parseTag(options.version) : await latestRelease() };
   const remote = await connect(target);
+  const host = await hostFile(remote, options);
+  const files = hostSecretFiles(host.secrets, remote.layout);
+  const missing = await missingSecrets(remote, files);
+  for (const file of files) if (!missing.includes(file)) console.log(`==> ${SECRET_LABELS[file.secret]}: already on the host`);
 
-  // Each read asks to unlock 1Password on the laptop, so an update keeps the token the host has.
-  // To change it, remove the file on the host and run setup again.
-  const present = await remote.shell.capture(`${remote.sudo}test -s ${remote.layout.opToken}`);
-  if (present.code === 0) console.log("==> 1Password service account token: already on the host");
-  else {
-    console.log("==> 1Password service account token");
+  // The values come before the install, so the questions do not wait for it.
+  const values: { file: HostSecretFile; value: string }[] = [];
+  for (const file of missing) {
+    if (file.secret === "op_token") continue;
+    const value = await options.sources[file.secret]();
+    if (file.secret === "app_key") await checkAppKey(host.app_id, value, "the App key file");
+    values.push({ file, value });
+  }
+
+  // setup.sh installs op and loads this token into the service only when the file exists.
+  if (missing.some((file) => file.secret === "op_token")) {
+    console.log(`==> ${SECRET_LABELS.op_token}`);
     const token = execFileSync("op", ["read", "--no-newline", OP_TOKEN_REFERENCE], { stdio: ["ignore", "pipe", "inherit"] });
     await must(remote.shell, "op token", writeHostFile(remote, remote.layout.opToken, "600"), token);
   }
 
-  const host = await hostFile(remote, options);
   await installRelease(remote, release, host.docker);
+
+  // setup.sh makes the secrets folder and its group, so the files come after it.
+  for (const { file, value } of values) {
+    console.log(`==> ${SECRET_LABELS[file.secret]}`);
+    await must(remote.shell, SECRET_LABELS[file.secret], writeSecretFile(remote, file.path), Buffer.from(value));
+  }
+  if (values.length > 0) {
+    // The service read its secrets when setup.sh started it, before these files existed.
+    const restart = remote.layout.os === "linux" ? `${remote.sudo}systemctl restart ${SERVICE}` : `launchctl kickstart -k gui/$(id -u)/${SERVICE}`;
+    await must(remote.shell, "restart", restart);
+  }
+  return missing.map((file) => file.secret);
 }
 
 export async function selfUpdate(version: string | undefined): Promise<void> {

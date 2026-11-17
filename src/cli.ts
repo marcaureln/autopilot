@@ -4,7 +4,7 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { unwatch, watch, watched } from "./commands/watch.ts";
 import { alias } from "./commands/alias.ts";
 import { appCreate } from "./commands/app.ts";
-import { forward, hostSetup, selfUpdate } from "./commands/client.ts";
+import { forward, hostSetup, readAppKey, readClaudeToken, selfUpdate } from "./commands/client.ts";
 import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, startService, stopService, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
@@ -18,7 +18,7 @@ import { createGitHub } from "./core/github.ts";
 import { HOST_FILE, loadHost } from "./core/host.ts";
 import { runPlanner } from "./core/planner.ts";
 import { detectRepo, type Repo } from "./core/repo.ts";
-import { readSecret } from "./core/secrets.ts";
+import { readSecret, type Backend } from "./core/secrets.ts";
 
 const USAGE = `Usage: autopilot <command> [options]
 
@@ -45,10 +45,13 @@ Commands that run on the client:
   app create [--key-out <path>]
                               Create your GitHub App in the browser (GitHub's App manifest flow). The private
                               key goes to 1Password (vault autopilot), or to a 0600 file with --key-out
-  host setup --host <ssh-target | local> [--owner <login> --app-id <id>] [--version <tag> | --from-checkout]
-                              Push the 1Password service account token, write host.json if it is
-                              missing, and install a release (or the current commit). A Linux host
-                              runs a systemd service. A macOS host runs a launchd agent of the user
+  host setup --host <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]
+             [--version <tag> | --from-checkout]
+                              Write host.json if it is missing, install a release (or the current commit),
+                              and push each host secret that the host does not have: the App key (--app-key,
+                              else the key that app create saved) and the Claude token ($CLAUDE_CODE_OAUTH_TOKEN,
+                              else a hidden prompt). A Linux host runs a systemd service. A macOS host runs a
+                              launchd agent of the user
   init [--skill <source>]... [--notes <file>]
                               Onboard the repo: an agent writes .devcontainer/ (if the repo has none),
                               the check commands and a draft AGENTS.md. Then init checks the dev container,
@@ -70,8 +73,8 @@ Options:
   --host <ssh-target>  Host to act on, or "local" for this machine (default: $AUTOPILOT_HOST)
   --config <path>      Host file, on the host (default: ${HOST_FILE}). For setup, the setup file
   --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
-  --backend env|op     Where secrets go. env (default): an env file per repo on the host.
-                       op: 1Password, with a reference in .github/autopilot.json`;
+  --backend env|op     Where secrets go. env (default): files on the host. op: 1Password, with op://
+                       references in host.json and .github/autopilot.json`;
 
 const HOST_COMMANDS = ["watch", "start", "stop", "status", "logs", "update"];
 
@@ -100,12 +103,13 @@ const { values, positionals } = parseCommandLine({
     "app-id": { type: "string" },
     "from-checkout": { type: "boolean", default: false },
     repo: { type: "string" },
-    backend: { type: "string", default: "env" },
+    backend: { type: "string" },
     "from-env": { type: "string" },
     skill: { type: "string", multiple: true, default: [] },
     notes: { type: "string" },
     remove: { type: "boolean", default: false },
     "key-out": { type: "string" },
+    "app-key": { type: "string" },
     yes: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
@@ -115,6 +119,12 @@ function hostTarget(): string | undefined {
   const target = values.host ?? process.env.AUTOPILOT_HOST;
   if (target?.startsWith("-")) throw new Error(`"${target}" is not an SSH target`);
   return target;
+}
+
+function secretsBackend(): Backend {
+  const backend = values.backend ?? "env";
+  if (backend !== "env" && backend !== "op") throw new Error(`--backend ${backend} is not a backend: env (the default) or op`);
+  return backend;
 }
 
 function targetRepo(): Repo {
@@ -192,8 +202,7 @@ async function main(): Promise<void> {
       break;
     case "secrets": {
       const command = parseSecretsCommand(positionals.slice(1), values["from-env"]);
-      if (values.backend === "op") await secrets(command, targetRepo());
-      else if (values.backend !== "env") throw new Error(`--backend ${values.backend} is not a backend: env (the default) or op`);
+      if (secretsBackend() === "op") await secrets(command, targetRepo());
       // `import` is what the client sends: it always runs here, on the host.
       else if (target && command.action !== "import") process.exitCode = await sendSecrets(target, command, targetRepo());
       else if (!existsSync(hostFile)) throw new Error("the env backend keeps the secrets on a host: pass --host or set AUTOPILOT_HOST");
@@ -201,10 +210,12 @@ async function main(): Promise<void> {
       break;
     }
     case "host": {
-      if (positionals[1] !== "setup" || !target) throw new Error("usage: autopilot host setup --host <ssh-target | local> [--owner <login> --app-id <id>]");
+      if (positionals[1] !== "setup" || !target) throw new Error("usage: autopilot host setup --host <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]");
       const appId = values["app-id"] === undefined ? undefined : Number(values["app-id"]);
       if (appId !== undefined && !Number.isInteger(appId)) throw new Error(`--app-id "${values["app-id"]}" is not a number`);
-      await hostSetup(target, { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"] });
+      const interactive = process.stdin.isTTY;
+      const sources = { app_key: () => readAppKey(values["app-key"], interactive), claude_token: () => readClaudeToken(interactive) };
+      await hostSetup(target, { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"], backend: secretsBackend(), sources });
       break;
     }
     case "setup":

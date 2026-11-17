@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/host.schema.json" with { type: "json" };
-import { LOCAL_LAYOUT } from "./layout.ts";
+import { LOCAL_LAYOUT, type Layout } from "./layout.ts";
 
 export type Host = {
   $schema?: string;
@@ -21,6 +21,25 @@ export type Host = {
 export type Source = { kind: "path"; path: string } | { kind: "github"; owner: string; repo: string; subdir?: string; ref?: string };
 
 export const HOST_FILE = LOCAL_LAYOUT.hostFile;
+
+export type HostSecret = "app_key" | "claude_token" | "op_token";
+
+export type HostSecretFile = { secret: HostSecret; path: string };
+
+export const SECRET_LABELS: Record<HostSecret, string> = {
+  app_key: "GitHub App key",
+  claude_token: "Claude token",
+  op_token: "1Password service account token",
+};
+
+export function hostSecretFiles(secrets: Host["secrets"], layout: Pick<Layout, "secretsDir" | "opToken">): HostSecretFile[] {
+  const files = (["app_key", "claude_token"] as const).flatMap((secret) => {
+    const reference = secrets[secret];
+    return reference.startsWith("file:") ? [{ secret, path: `${layout.secretsDir}/${reference.slice("file:".length)}` }] : [];
+  });
+  const usesOp = Object.values(secrets).some((reference) => reference.startsWith("op://"));
+  return usesOp ? [{ secret: "op_token", path: layout.opToken }, ...files] : files;
+}
 
 const ajv = new Ajv2020({ allErrors: true, useDefaults: true });
 const validate = ajv.compile<Omit<Host, "name"> & { name?: string }>(schema);

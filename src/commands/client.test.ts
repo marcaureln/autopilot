@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hostCommand, shellQuote, urlToOpen } from "./client.ts";
+import { hostLayout } from "../core/layout.ts";
+import { hostCommand, shellQuote, urlToOpen, writeSecretFile } from "./client.ts";
 
 for (const arg of ["audit", "--since", "1 day ago", "it's", "$(id)", "a'b'c", ""]) {
   test(`the remote shell reads ${JSON.stringify(arg)} back unchanged`, () => {
@@ -59,3 +60,13 @@ for (const { uname, expected } of hostCases) {
     assert.equal(execFileSync("sh", ["-c", hostCommand(["logs", "--since", "1 day ago"])], { encoding: "utf8", ...fakeHost(uname) }), expected);
   });
 }
+
+test("a macOS host saves a secret from stdin in a file only its user reads", () => {
+  const layout = hostLayout("darwin", mkdtempSync(join(tmpdir(), "autopilot-host-")));
+  mkdirSync(layout.secretsDir, { recursive: true, mode: 0o700 });
+  const path = `${layout.secretsDir}/claude-token`;
+  execFileSync("sh", ["-c", writeSecretFile({ layout, sudo: "" }, path)], { input: "sk-ant-value" });
+  assert.equal(readFileSync(path, "utf8"), "sk-ant-value");
+  assert.equal(statSync(path).mode & 0o777, 0o600);
+  assert.equal(statSync(layout.secretsDir).mode & 0o777, 0o700);
+});

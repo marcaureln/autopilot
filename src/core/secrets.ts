@@ -6,6 +6,8 @@ import { LOCAL_LAYOUT } from "./layout.ts";
 import type { Repo } from "./repo.ts";
 import { envFile, itemTitle, parseSecretsFile } from "./repo-secrets.ts";
 
+export type Backend = "env" | "op";
+
 const OP_TOKEN_FILE = LOCAL_LAYOUT.opToken;
 
 // systemd LoadCredential= sets CREDENTIALS_DIRECTORY for the service. Without a token file (a dev

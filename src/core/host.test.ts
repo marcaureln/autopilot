@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultHostName, loadHost, parseSource, type Source } from "./host.ts";
+import { defaultHostName, hostSecretFiles, loadHost, parseSource, type Host, type HostSecretFile, type Source } from "./host.ts";
+import { hostLayout, type Layout } from "./layout.ts";
 
 const SECRETS = `"secrets": { "app_key": "op://v/key/app.pem", "claude_token": "op://v/claude/credential" }`;
 
@@ -58,5 +59,47 @@ for (const { value, expected } of sources) {
 for (const value of ["claude", "https://github.com/me/dotfiles", "github.com/me", "github.com/me/dotfiles//../etc"]) {
   test(`rejects claude config source ${value}`, () => {
     assert.throws(() => parseSource(value), /claude.config/);
+  });
+}
+
+const LINUX = hostLayout("linux", "/home/me");
+const MAC = hostLayout("darwin", "/Users/me");
+const OP_APP_KEY = "op://autopilot/github-app-private-key/app.pem";
+const OP_CLAUDE = "op://autopilot/claude-token/credential";
+
+const secretFileCases: { name: string; secrets: Host["secrets"]; layout: Layout; expected: HostSecretFile[] }[] = [
+  {
+    name: "files on Linux",
+    secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token" },
+    layout: LINUX,
+    expected: [
+      { secret: "app_key", path: "/etc/autopilot/secrets/app-key.pem" },
+      { secret: "claude_token", path: "/etc/autopilot/secrets/claude-token" },
+    ],
+  },
+  {
+    name: "files on macOS",
+    secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token" },
+    layout: MAC,
+    expected: [
+      { secret: "app_key", path: "/Users/me/.autopilot/secrets/app-key.pem" },
+      { secret: "claude_token", path: "/Users/me/.autopilot/secrets/claude-token" },
+    ],
+  },
+  { name: "1Password only", secrets: { app_key: OP_APP_KEY, claude_token: OP_CLAUDE }, layout: LINUX, expected: [{ secret: "op_token", path: "/etc/autopilot/op-token" }] },
+  {
+    name: "a file and a 1Password reference",
+    secrets: { app_key: OP_APP_KEY, claude_token: "file:claude-token" },
+    layout: MAC,
+    expected: [
+      { secret: "op_token", path: "/Users/me/.autopilot/op-token" },
+      { secret: "claude_token", path: "/Users/me/.autopilot/secrets/claude-token" },
+    ],
+  },
+];
+
+for (const { name, secrets, layout, expected } of secretFileCases) {
+  test(`host secret files: ${name}`, () => {
+    assert.deepEqual(hostSecretFiles(secrets, layout), expected);
   });
 }

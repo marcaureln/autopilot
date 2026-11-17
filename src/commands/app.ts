@@ -66,7 +66,7 @@ function storeKey(destination: KeyDestination, pem: string): string {
   }
   const result = op(["document", "create", "-", "--vault", SECRETS_VAULT, "--title", APP_KEY_ITEM, "--file-name", APP_KEY_FILE], pem);
   if (!result.ok) throw new Error(`op could not save the private key: ${result.stderr}`);
-  return HOST_SECRETS.app_key;
+  return HOST_SECRETS.op.app_key;
 }
 
 function keepKeyAfterFailure(app: CreatedApp, reason: string): string {

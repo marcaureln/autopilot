@@ -175,7 +175,7 @@ export async function init(options: InitOptions): Promise<void> {
   for (const skill of options.skills) parseSource(skill, "--skill");
   const notes = options.notesFile === undefined ? undefined : readFileSync(options.notesFile, "utf8");
   if (!dockerRunning()) throw new Error("Docker is not running: init runs the onboarding agent and the checks in containers");
-  const claudeToken = readSecret(HOST_SECRETS.claude_token, "init: token for the onboarding agent", noAudit);
+  const claudeToken = readSecret(HOST_SECRETS.op.claude_token, "init: token for the onboarding agent", noAudit);
   const jobDir = mkdtempSync(join(tmpdir(), "autopilot-init-"));
   try {
     const clone = join(jobDir, "repo");
