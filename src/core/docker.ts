@@ -21,7 +21,12 @@ export type ContainerRun = {
   network: "none" | "bridge";
   // Never a secret: the docker run arguments are in the process list.
   env?: Record<string, string>;
+  // Secret values for the docker client's own environment. Docker copies each one into the container
+  // by name, so the value stays out of the process list.
+  passthroughEnv?: Record<string, string>;
   secrets?: Record<string, string>;
+  // Written to the container's stdin.
+  input?: Buffer;
   limits: Host["limits"];
   timeoutMs: number;
   audit: Audit;
@@ -47,6 +52,7 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
   const args = [
     "run",
     "--rm",
+    ...(job.input === undefined ? [] : ["--interactive"]),
     "--name",
     job.name,
     "--network",
@@ -63,6 +69,7 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
     "ALL",
     "--security-opt",
     "no-new-privileges",
+    ...Object.keys(job.passthroughEnv ?? {}).flatMap((name) => ["--env", name]),
     ...Object.entries(job.env ?? {}).flatMap(([name, value]) => ["--env", `${name}=${value}`]),
     ...(secretsFile ? ["--env-file", secretsFile] : []),
     ...job.mounts.flatMap(({ source, target, readonly }) => ["--volume", `${source}:${target}${readonly ? ":ro" : ""}`]),
@@ -76,12 +83,13 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
     name: job.name,
     image: job.image,
     mounts: job.mounts.map((mount) => `${mount.target}${mount.readonly ? ":ro" : ""}`),
-    env: [...Object.keys(job.env ?? {}), ...secretNames],
+    env: [...Object.keys(job.passthroughEnv ?? {}), ...Object.keys(job.env ?? {}), ...secretNames],
     caps: { memory: job.limits.memory, cpus: job.limits.cpus, pids: job.limits.pids, timeout_seconds: Math.round(job.timeoutMs / 1000), cap_drop: "ALL", network: job.network },
   });
   const started = Date.now();
-  const child = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"], env: clientEnv(process.env) });
-  const { stdout, stderr } = child;
+  const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"], env: { ...clientEnv(process.env), ...job.passthroughEnv } });
+  const { stdin, stdout, stderr } = child;
+  stdin.end(job.input);
   let output = "";
   let truncated = false;
   const append = (chunk: Buffer) => {
@@ -110,12 +118,15 @@ export async function runContainer(job: ContainerRun): Promise<ContainerResult> 
   return { exit, timedOut, output: output.trim(), truncated };
 }
 
-export async function ensurePulled(image: string): Promise<void> {
+// An image with a build context is built from it. Any other image is pulled.
+export async function ensureImage(image: string, buildContext?: string): Promise<void> {
   const present = await run("docker", ["image", "inspect", image]).then(
     () => true,
     () => false,
   );
-  if (!present) await run("docker", ["pull", "--quiet", image], { maxBuffer: 16 * 1024 * 1024 });
+  if (present) return;
+  const args = buildContext === undefined ? ["pull", "--quiet", image] : ["build", "--quiet", "--tag", image, buildContext];
+  await run("docker", args, { maxBuffer: 16 * 1024 * 1024 });
 }
 
 // Container names allow only these characters.

@@ -6,6 +6,7 @@ import schema from "../../schema/planner-result.schema.json" with { type: "json"
 import { runClaude } from "../harness/claude.ts";
 import type { Audit } from "./audit.ts";
 import type { Config } from "./config.ts";
+import { containerName } from "./docker.ts";
 import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
@@ -117,7 +118,7 @@ export async function runPlanner({ github, repoGitHub, repo, host, config, issue
 
     const agent = config.agents[role];
     await runClaude({
-      name: `autopilot-${repo.owner}-${repo.name}-${issue.number}`.toLowerCase().replace(/[^a-z0-9_.-]/g, "-"),
+      name: containerName(repo.owner, repo.name, issue.number),
       model: agent.model,
       effort: agent.effort,
       promptFile,

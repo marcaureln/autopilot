@@ -7,7 +7,7 @@ import type { Audit } from "./audit.ts";
 import { newFailures, type Baseline } from "./baseline.ts";
 import type { Config } from "./config.ts";
 import type { Devcontainer } from "./devcontainer-cli.ts";
-import { containerName, ensurePulled, runContainer, type ContainerResult, type Mount } from "./docker.ts";
+import { containerName, ensureImage, runContainer, type ContainerResult, type Mount } from "./docker.ts";
 import { checkCommand, RUN_DIR, SECRETS_NAME, shellEnvFile, startEnvironment, stopEnvironment } from "./environment.ts";
 import type { Host } from "./host.ts";
 import type { BotPull } from "./phase.ts";
@@ -96,7 +96,7 @@ export function grypeDbUpdater(limits: Host["limits"], audit: Audit): { due: () 
     due: () => Date.now() - last >= GRYPE_DB_UPDATE_INTERVAL_MS,
     async run() {
       last = Date.now();
-      const failure = await ensurePulled(IMAGES["deps-scan"])
+      const failure = await ensureImage(IMAGES["deps-scan"])
         .then(() =>
           runContainer({
             name: containerName("grype-db"),
@@ -224,7 +224,7 @@ export async function runChecks(job: ChecksJob): Promise<CheckResult[]> {
         results.push(withSecrets ? hideOutput(result) : result);
         continue;
       }
-      await ensurePulled(IMAGES[plan.scanner]);
+      await ensureImage(IMAGES[plan.scanner]);
       results.push(await SCAN[plan.scanner]({ dir: copy(plan.check), baseline: baseline.trim(), jobDir, container }));
     }
     const values = Object.values(secrets);
