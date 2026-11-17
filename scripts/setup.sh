@@ -17,6 +17,11 @@ case "$(uname -s)" in
     ;;
 esac
 
+# Host setup writes the op token only for a host.json with op:// references.
+op_token=/etc/autopilot/op-token
+install_op=false
+if [ -f "$op_token" ] && ! command -v op >/dev/null; then install_op=true; fi
+
 # shellcheck source=/dev/null
 step "prerequisites ($(. /etc/os-release && echo "$PRETTY_NAME"))"
 missing=()
@@ -29,7 +34,7 @@ fi
 if ! command -v mise >/dev/null && ! command -v apt-get >/dev/null; then
   missing+=("mise: https://mise.jdx.dev/installing-mise.html")
 fi
-if ! command -v op >/dev/null && ! command -v apt-get >/dev/null; then
+if $install_op && ! command -v apt-get >/dev/null; then
   missing+=("1Password CLI: https://developer.1password.com/docs/cli/get-started/")
 fi
 if ! git lfs version >/dev/null 2>&1 && ! command -v apt-get >/dev/null; then
@@ -46,7 +51,7 @@ if [ "${#missing[@]}" -gt 0 ]; then
 fi
 
 # The apt keys of mise and op come armored: gpg turns them into keyrings. Minimal images have no gpg.
-if { ! command -v mise || ! command -v op; } >/dev/null && ! command -v gpg >/dev/null; then
+if { ! command -v mise >/dev/null || $install_op; } && ! command -v gpg >/dev/null; then
   step "gnupg"
   echo "INFO: gpg is missing, installing the gnupg package to add the apt keys of mise and op"
   apt-get update -q
@@ -63,7 +68,7 @@ if ! command -v mise >/dev/null; then
   apt-get install -y -q mise
 fi
 
-if ! command -v op >/dev/null; then
+if $install_op; then
   step "1password cli"
   echo "INFO: op is missing, installing it from 1Password's signed apt repository (https://developer.1password.com/docs/cli/get-started/)"
   arch=$(dpkg --print-architecture)
@@ -129,6 +134,9 @@ node=$(tool_mise "$release" "$tools" which node)
 ln -sfn "$release" /opt/autopilot
 
 step "service"
+# systemd does not start a service whose LoadCredential= file is missing.
+credential=
+if [ -f "$op_token" ]; then credential="LoadCredential=op-token:$op_token"; fi
 unit=$(cat <<EOF
 [Unit]
 Description=autopilot
@@ -140,7 +148,7 @@ User=$user
 WorkingDirectory=/opt/autopilot
 Environment=DOCKER_HOST=$docker_host
 ExecStart=$node /opt/autopilot/src/cli.ts start --foreground
-LoadCredential=op-token:/etc/autopilot/op-token
+$credential
 SyslogIdentifier=autopilot
 Restart=always
 RestartSec=10
