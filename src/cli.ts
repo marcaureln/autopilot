@@ -196,6 +196,7 @@ async function main(): Promise<void> {
       else if (values.backend !== "env") throw new Error(`--backend ${values.backend} is not a backend: env (the default) or op`);
       // `import` is what the client sends: it always runs here, on the host.
       else if (target && command.action !== "import") process.exitCode = await sendSecrets(target, command, targetRepo());
+      else if (!existsSync(hostFile)) throw new Error("the env backend keeps the secrets on a host: pass --host or set AUTOPILOT_HOST");
       else await hostSecrets(command, targetRepo(), auditLog);
       break;
     }
