@@ -85,7 +85,10 @@ if [ "$(loginctl show-user "$user" -p Linger --value 2>/dev/null)" != "yes" ]; t
 fi
 for _ in $(seq 20); do [ -d "/run/user/$uid" ] && break; sleep 0.5; done
 
-as_user() { sudo -u "$user" -H env XDG_RUNTIME_DIR="/run/user/$uid" "$@"; }
+home=$(getent passwd "$user" | cut -d: -f6)
+# A clean environment: sudoers can keep the caller's HOME and XDG_* folders, and the rootless Docker
+# setup would then write into the caller's home.
+as_user() { sudo -u "$user" env -i HOME="$home" USER="$user" LOGNAME="$user" PATH="$PATH" XDG_RUNTIME_DIR="/run/user/$uid" "$@"; }
 
 if [ "$docker_mode" = rootless ]; then
   step "rootless docker"
@@ -155,7 +158,6 @@ printf '{"at":"%s","event":"host.updated","release":"%s","by":"%s"}\n' "$(date -
 
 step "cleanup"
 prune_releases "$release" "$tools" "$user" /opt/autopilot-*
-home=$(getent passwd "$user" | cut -d: -f6)
 # Setup before v0.1.0 gave $user its own mise. $user can put links in its home, so $user removes it,
 # never root. Safe to remove once every host has run this setup.
 if [ -d "$home/.local/share/mise" ] && ! pgrep -u "$user" -f "$home/.local/share/mise" >/dev/null; then
