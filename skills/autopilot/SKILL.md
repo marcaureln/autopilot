@@ -5,11 +5,11 @@ description: This skill should be used to set up and use autopilot, a tool that 
 
 # autopilot
 
-autopilot runs on a host as a service. Each minute, it reads the GitHub issues that have the `autopilot` label in the allowed repos. For each issue, a planner agent writes a spec, a builder agent writes the code in a container, checks run, and a gate merges the pull request or asks for a review. GitHub holds all the state: labels, comments, commit statuses and pull requests.
+autopilot runs on a host as a service. Each minute, it reads the GitHub issues that have the `autopilot` label in the watched repos. For each issue, a planner agent writes a spec, a builder agent writes the code in a container, checks run, and a gate merges the pull request or asks for a review. GitHub holds all the state: labels, comments, commit statuses and pull requests.
 
 The `autopilot` command on the user's machine is only a client. It keeps no config. It reaches a host through `AUTOPILOT_HOST=<ssh-target>` or `--host <ssh-target>`. The host `local` is the machine that runs the command.
 
-Before any command, run `autopilot --help` and use only the commands that it lists. The CLI is the reference: when this skill and `--help` do not agree, `--help` is correct.
+Before any command, run `autopilot --help` and use only the commands that it lists. The CLI is the reference. When this skill and `--help` do not agree, `--help` is correct.
 
 ## Rules for the agent
 
@@ -23,14 +23,14 @@ Before any command, run `autopilot --help` and use only the commands that it lis
 To set up from nothing, read `references/setup.md` and follow it. In short:
 
 1. Install the client: `curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh`. It needs `mise`, `curl` and `tar`.
-2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the 1Password items, the host, the allowlist and the first onboarding PR.
+2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the 1Password items, the host, the watched entries and the first onboarding PR.
 3. If `setup` is not available, or it stops, do the steps one by one: GitHub App, 1Password vault and items, `autopilot host setup`, `autopilot watch`, `autopilot init`. `references/setup.md` gives each step.
 4. Check the host with `autopilot status`. The service must be `active` (Linux) or `running` (macOS), and the watched entries must show the repo.
 5. Merge the onboarding pull request that `autopilot init` opened. Before the merge, autopilot stops each issue with "There is no `.github/autopilot.json` on the default branch".
 
 ## Write an issue that autopilot can build
 
-The planner reads the issue title, the body, and the comments of owners. It asks questions (`autopilot:needs-info`) when it must guess. It asks for approval (`autopilot:awaiting-approval`) when the scope is too broad or the risk is high. To go straight to the build:
+The planner reads the issue title, the body, and the comments of owners. It asks questions (`autopilot:needs-info`) when it must guess. It asks for approval (`autopilot:awaiting-approval`) when the scope is too broad or the risk is high. To go directly to the build, follow these rules:
 
 - Ask for one small change. One focused pull request, below `risk.max_diff_lines` changed lines (default 500). Do not mix unrelated changes.
 - Say the goal in one or two sentences.
@@ -39,7 +39,7 @@ The planner reads the issue title, the body, and the comments of owners. It asks
 - Write acceptance criteria that a check or a reader can verify.
 - Say what is out of scope ("Change no other file").
 - Do not ask for a change in a high-risk path unless it is necessary (see "Risk rules"). Such a change always waits for approval at Gate 1 and for a review at Gate 2.
-- Do not ask the planner what it can find in the code. Do not write instructions for the agents about how they work: the planner ignores them.
+- Do not ask the planner what it can find in the code. Do not write instructions for the agents about how they work. The planner ignores them.
 - Never put a secret, a token, a password or a private URL in an issue or a comment. Issues can be public, and the text goes to the agents.
 
 Template:
@@ -81,8 +81,8 @@ autopilot uses five labels. An issue has `autopilot` and at most one `autopilot:
 
 | Label | Who acts | Meaning and action |
 | --- | --- | --- |
-| `autopilot` | The user | Starts the job. It stays during the whole job. Remove it to stop the job. |
-| `autopilot:working` | The host | Spec, build, checks or fix loop in progress. Wait. |
+| `autopilot` | The user | Starts the job. It stays on the issue for the whole job. Remove it to stop the job. |
+| `autopilot:working` | The host | The host writes the spec, builds, runs the checks or runs a fix round. Wait. |
 | `autopilot:needs-info` | The user | The planner asks questions. Answer them in one comment. |
 | `autopilot:awaiting-approval` | The user | Gate 1 found high risk or a broad scope. Read the spec, then tick `- [ ] Approve and build`. |
 | `autopilot:blocked` | The user | autopilot stopped. Read the last comment, fix the cause, then remove the label to retry. |
@@ -95,9 +95,9 @@ A pull request that waits for a review has no label. The issue keeps `autopilot:
 
 1. Read the spec comment. Its `## Questions` section lists the questions.
 2. Answer each question in one new comment, from an owner account: `gh issue comment <n> --repo example-org/app --body-file answers.md`.
-3. The host hides the old spec as Outdated and writes a new spec. Do not edit the issue body to answer: only a new owner comment starts a new spec.
+3. The host hides the old spec as Outdated and writes a new spec. Do not edit the issue body to answer. Only a new owner comment starts a new spec.
 
-When the builder needs a secret that the checks do not get, the host also uses `autopilot:needs-info`. Its comment names the secrets. Add each one with `autopilot secrets set <NAME>` (see "Secrets"), merge the change to `.github/autopilot.json`, then reply in a comment.
+When the builder needs a secret that the checks do not get, the host also uses `autopilot:needs-info`. Its comment names the secrets. Add each one with `autopilot secrets set <NAME>` (see "Secrets"), then reply in a comment. With `--backend op`, also merge the change to `.github/autopilot.json` before you reply.
 
 ### The issue has `autopilot:awaiting-approval`
 
@@ -118,10 +118,10 @@ The host accepts the tick only when every edit of the spec comment is by an owne
 
 Gate 2 asks for a review when one of these is true: `merge` is `manual` in `.github/autopilot.json`, the risk rules rate the diff high, the planner rated the risk high, the spec records no planner risk, someone other than autopilot pushed the head commit, or the pull request does not target the default branch.
 
-1. Find the pull request: the comment names it. Its branch is `autopilot/<n>-<title>`.
+1. Find the pull request. The comment names it. Its branch is `autopilot/<n>-<title>`.
 2. Check the statuses: `gh pr checks <pr> --repo example-org/app`. Each check is a commit status named `autopilot/<check>`.
 3. Read the diff: `gh pr diff <pr> --repo example-org/app`. Compare it with the spec and the acceptance criteria.
-4. If it is correct and the user agrees, approve and merge it. autopilot itself merges with squash:
+4. If it is correct and the user agrees, approve and merge it. autopilot itself merges with squash, so do the same:
 
 ```sh
 gh pr review <pr> --repo example-org/app --approve
@@ -130,7 +130,7 @@ gh pr merge <pr> --repo example-org/app --squash --delete-branch
 
 The pull request body has `Fixes #<n>`, so the merge closes the issue. At its next loop, the host removes the autopilot labels from a closed issue.
 
-To ask for changes, do not comment on the pull request: autopilot does not read pull request comments. Close the pull request, then write the correction as a comment on the issue. The host labels the issue `autopilot:blocked` because the pull request closed without a merge. Remove `autopilot:blocked`, and the planner writes a new spec that uses the comment.
+To ask for changes, do not comment on the pull request. autopilot does not read pull request comments. Close the pull request, then write the correction as a comment on the issue. The host labels the issue `autopilot:blocked` because the pull request closed without a merge. Remove `autopilot:blocked`, and the planner writes a new spec that uses the comment.
 
 ### The issue has `autopilot:blocked`
 
@@ -138,19 +138,19 @@ To ask for changes, do not comment on the pull request: autopilot does not read 
 2. Fix the cause. Common reasons:
    - "There is no `.github/autopilot.json` on the default branch", or an invalid config: run `autopilot init` and merge its pull request, or fix the file.
    - An invalid config that names `stack`: the config is from an older autopilot. Run `autopilot init` again and merge its pull request.
-   - "autopilot does not start the repo's dev container": the comment lists what the guardrails refuse in `.devcontainer/`. Fix it on the default branch, then retry.
+   - "autopilot does not start the repo's dev container": the comment lists what the guardrails refuse in `.devcontainer/`. Fix the file on the default branch, then retry.
    - "the dev container did not start", or the `install` check fails: fix the image or `postCreateCommand` in `.devcontainer/`.
    - "The planner failed" or "the builder failed": read `autopilot logs`, then retry.
    - "the builder made no commit": the spec asked for nothing to change, or the builder failed. Make the issue more precise in a comment, then retry.
    - A check "failed twice in a row", or the checks still fail after `limits.fix_rounds` rounds: the comment shows the output. Fix the code or the check command, or make the issue smaller.
    - "Someone who is not an owner changed the issue title or description": an owner edits the text, or removes the `autopilot` label and adds it again. Then retry.
    - "Pull request #N was closed without a merge": comment on the issue to change the plan, then retry.
-   - The `secrets` "do not point to this repo's own 1Password item": run `autopilot secrets set <NAME>` again for each one.
+   - The `secrets` "do not point to this repo's own 1Password item": run `autopilot secrets set --backend op <NAME>` again for each one.
 3. Retry: an owner removes the label. `gh issue edit <n> --repo example-org/app --remove-label autopilot:blocked`. Checks and pull requests from before the retry do not count.
 
 ### Debug the dev container
 
-Every job runs in the repo's `.devcontainer/`: the install (`postCreateCommand` and the other lifecycle commands), the checks and the builder. When a check fails only in autopilot, or the onboarding pull request shows a check that fails on the default branch, do these steps:
+Every job runs in the repo's `.devcontainer/`: the install (`postCreateCommand` and the other lifecycle commands), the checks and the builder. Do these steps when a check fails only in autopilot, or when the onboarding pull request shows a check that fails on the default branch:
 
 1. Read the "Environment" and "Checks on the default branch" sections of the onboarding pull request, or the last bot comment of the issue. Then search `autopilot logs` for `owner/repo#n`.
 2. Look at `.devcontainer/` on the default branch. `autopilot init` keeps an existing `.devcontainer/` and does not change it. A repo onboarded by an older autopilot has the file of a stack pack, for example `{"name": "node", "image": "node:26.13.1", "workspaceFolder": "/work"}`. It can be out of date: an old image, no `postCreateCommand`, no services. To let the init agent write a new one, delete `.devcontainer/` on the default branch, then run `autopilot init` again. Or fix the file yourself.
@@ -163,11 +163,11 @@ Every job runs in the repo's `.devcontainer/`: the install (`postCreateCommand` 
 
 4. Remember what autopilot adds, because a local run does not have it: the user is `root`, the repo is mounted at `workspaceFolder`, memory, CPU and process caps apply, and the network is cut after the install. Only the compose services stay reachable, by their service name. Common causes:
    - A command is not found: install the tool in the image, with a feature, or in `postCreateCommand`.
-   - A check downloads something: it fails with no network. Move the download into `postCreateCommand`.
-   - A file is not found: the check runs in `workspaceFolder`. Check that the path is relative to the repo root.
+   - A check downloads something. It fails with no network. Move the download into `postCreateCommand`.
+   - A file is not found. The check runs in `workspaceFolder`. Make sure that the path is relative to the repo root.
    - A test cannot reach its database: add the service to the compose file of `.devcontainer/`, with an exact image tag, and use the service name as the host name.
-   - A test needs a secret: add it with `autopilot secrets set <NAME>`. The check commands get the values of `secrets` in `.github/autopilot.json`; the install does not.
-5. Fix `.devcontainer/` or the check commands in a pull request and merge it. Then run `autopilot init` again: it runs the checks again, writes a new baseline, and updates the same onboarding pull request. For a blocked issue, retry it.
+   - A test needs a secret. Add it with `autopilot secrets set <NAME>`. The check commands get the repo's secrets. The install does not.
+5. Fix `.devcontainer/` or the check commands in a pull request and merge it. Then run `autopilot init` again. It runs the checks again, writes a new baseline, and updates the same onboarding pull request. For a blocked issue, retry it.
 
 ### Stop a job
 
@@ -186,7 +186,7 @@ The other host must watch the repo.
 
 ## Host commands
 
-Set `AUTOPILOT_HOST` (or pass `--host`) for these commands. The client runs them on the host over SSH.
+Set `AUTOPILOT_HOST` or pass `--host` for these commands. The client runs them on the host over SSH.
 
 ```sh
 export AUTOPILOT_HOST=user@my-host
@@ -196,15 +196,15 @@ autopilot logs --audit [--since 1d]   # JSON audit events: secret reads, gates, 
 autopilot watch example-org/app   # or a whole account: autopilot watch example-org
 autopilot watch example-org/app --remove
 autopilot watch                   # list what the host watches
-autopilot stop                    # pause the host; autopilot start resumes it
+autopilot stop                    # stop the service; autopilot start starts it again
 autopilot update [--version vX.Y.Z]
 ```
 
-`autopilot watch` prints the GitHub App install page and opens it when the App is not installed on that account. The host starts to poll a new entry at the next loop. Each log line names the issue as `owner/repo#n`: search for it in `autopilot logs` to see what the host did. A line "ignored, the autopilot label was added by X, not an owner" means the wrong account added the label.
+`autopilot watch` prints the GitHub App install page and opens it when the App is not installed on that account. The host starts to poll a new entry at the next loop. Each log line names the issue as `owner/repo#n`. Search for it in `autopilot logs` to see what the host did. A line "ignored, the autopilot label was added by X, not an owner" means the wrong account added the label.
 
 ## Secrets
 
-A test that needs a key gets it from 1Password. In a checkout of the repo, as the user (their own 1Password sign-in):
+A test that needs a key gets it from the repo's secrets. By default, the host keeps them in one env file per repo. In a checkout of the repo, with `AUTOPILOT_HOST` set:
 
 ```sh
 autopilot secrets set STRIPE_KEY        # hidden prompt, or the value on stdin
@@ -213,7 +213,9 @@ autopilot secrets list
 autopilot secrets rm STRIPE_KEY
 ```
 
-Pass `--repo <owner>/<repo>` when the checkout is not the repo. Each value goes to the `autopilot` vault, in the item `<owner>_<repo>`. The command adds the `op://` reference to `.github/autopilot.json`: commit it and merge it. A value is never an argument, so ask the user to type it at the prompt. Do not read the `.env` file.
+Pass `--repo <owner>/<repo>` when the checkout is not the repo. A value is never an argument, so ask the user to type it at the prompt. Do not read the `.env` file.
+
+With `--backend op`, the values go to 1Password, with the user's own sign-in. Each value goes to the `autopilot` vault, in the item `<owner>_<repo>`. The command adds the `op://` reference to `.github/autopilot.json`. Commit it and merge it. A reference in the config wins over a value of the same name in the host's file.
 
 Trust boundary: the host gives the values only to the checks that run a command from `verify.commands` (such as `lint`, `types`, `test`). The agents, the scanners and the install step never get them. But a person who can change the code of the repo can read its secrets, for example from a test. Give a repo only test-mode or low-value keys.
 
