@@ -75,7 +75,8 @@ function within(path: string, root: string): boolean {
   return path === root || path.startsWith(`${root}/`);
 }
 
-const SERVICE_REFUSED = ["cap_add", "security_opt", "devices", "device_cgroup_rules", "ports", "volumes_from", "cgroup_parent", "runtime"];
+// use_api_socket mounts the Docker API; a lifecycle hook can run with its own privileged flag.
+const SERVICE_REFUSED = ["cap_add", "security_opt", "devices", "device_cgroup_rules", "ports", "volumes_from", "cgroup_parent", "runtime", "use_api_socket", "post_start", "pre_stop"];
 const NAMESPACES = ["network_mode", "pid", "ipc", "userns_mode", "uts", "cgroup"];
 // Other build fields reach the host: caches with a host path, entitlements, privileges, the ssh agent, tags.
 const BUILD_ALLOWED = new Set(["context", "dockerfile", "dockerfile_inline", "args", "target", "labels"]);

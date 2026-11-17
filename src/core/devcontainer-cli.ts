@@ -101,7 +101,8 @@ export const cliDevcontainer: Devcontainer = {
 
   // --no-env-resolution keeps the env_file paths, so the guardrails can check them.
   async composeConfig(files, projectName) {
-    return JSON.parse(await docker(["compose", "--project-name", projectName, ...files.flatMap((file) => ["--file", file]), "config", "--no-env-resolution", "--format", "json"]));
+    // Every profile: the config leaves out a service whose profile is off, but `up` still starts it when runServices names it.
+    return JSON.parse(await docker(["compose", "--project-name", projectName, ...files.flatMap((file) => ["--file", file]), "--profile", "*", "config", "--no-env-resolution", "--format", "json"]));
   },
 
   // COMPOSE_PROJECT_NAME wins over the `name` of the compose file, so the repo cannot choose the project.

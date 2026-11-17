@@ -31,6 +31,14 @@ console.log("==> the guardrails refuse a privileged config");
   await assert.rejects(startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel: "autopilot.job=smoke-bad", limits, mounts: [], claudeCodeVersion: undefined, timeoutMs: 600_000, audit }), EnvironmentRefused);
 }
 
+console.log("==> the guardrails see a privileged service behind a profile");
+{
+  const workspace = copyRepo({ dockerComposeFile: "compose.yaml", service: "app", runServices: ["app", "hidden"], workspaceFolder: "/workspace" });
+  writeFileSync(join(workspace, ".devcontainer/compose.yaml"), "services:\n  app:\n    image: node:26.13.1\n    command: sleep infinity\n  hidden:\n    image: node:26.13.1\n    privileged: true\n    profiles: [off]\n");
+  await assert.rejects(startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel: "autopilot.job=smoke-profile", limits, mounts: [], claudeCodeVersion: undefined, timeoutMs: 600_000, audit }), /hidden: `privileged`/);
+  assert.equal(leftOver("autopilot.job=smoke-profile"), "", "nothing starts");
+}
+
 console.log("==> a compose config: install, Claude Code, network cut, checks with a secret");
 {
   const workspace = copyRepo({ name: "smoke", dockerComposeFile: "compose.yaml", service: "app", workspaceFolder: "/workspace", postCreateCommand: "npm ci && touch /tmp/installed" });
