@@ -102,16 +102,17 @@ async function onePassword(options: SetupOptions): Promise<void> {
   record("1Password service account", "done", `created, token in ${SECRETS_VAULT}/${OP_TOKEN_ITEM}`);
 }
 
-async function githubApp(options: SetupOptions, config: SetupConfig, backend: Backend): Promise<GitHubApp> {
+async function githubApp(options: SetupOptions, config: SetupConfig, backend: Backend, hostAppId: number | undefined): Promise<GitHubApp> {
   const localKey = config.app_key ?? options.appKey ?? (existsSync(APP_KEY_PATH) ? APP_KEY_PATH : undefined);
   const keyStored = backend === "op" ? opItemExists(APP_KEY_ITEM) : localKey !== undefined;
+  const appExists = keyStored || hostAppId !== undefined;
   const choice =
     config.app_id !== undefined
       ? "reuse"
       : await configOrAsk(options, undefined, "app_id", () =>
           select({
             message: "GitHub App",
-            initialValue: keyStored ? "reuse" : "create",
+            initialValue: appExists ? "reuse" : "create",
             options: [
               { value: "create", label: "Create a new App", hint: "in the browser, one click" },
               { value: "reuse", label: "Use an App I already have", hint: `its private key goes to ${backend === "op" ? "1Password" : "the host"}` },
@@ -125,7 +126,7 @@ async function githubApp(options: SetupOptions, config: SetupConfig, backend: Ba
   }
 
   const appId = await configOrAsk(options, config.app_id, "app_id", async () => {
-    const value = await text({ message: "App ID (on the App's settings page)", validate: (input) => (/^[1-9]\d*$/.test(input ?? "") ? undefined : "A number") });
+    const value = await text({ message: "App ID (on the App's settings page)", initialValue: hostAppId?.toString(), validate: (input) => (/^[1-9]\d*$/.test(input ?? "") ? undefined : "A number") });
     return isCancel(value) ? value : Number(value);
   });
   if (backend === "env") {
@@ -184,10 +185,14 @@ async function chooseHost(options: SetupOptions, config: SetupConfig): Promise<{
   return { target, remote };
 }
 
+async function readHost({ layout, shell }: Connection): Promise<Host | undefined> {
+  const hostFile = await shell.capture(`cat ${layout.hostFile} 2>/dev/null`);
+  return hostFile.code === 0 ? parseHost(hostFile.stdout, layout.hostFile) : undefined;
+}
+
 async function hostState(remote: Connection): Promise<HostState> {
   const { layout, shell } = remote;
-  const hostFile = await shell.capture(`cat ${layout.hostFile} 2>/dev/null`);
-  const host = hostFile.code === 0 ? parseHost(hostFile.stdout, layout.hostFile) : undefined;
+  const host = await readHost(remote);
   const missing = host ? await missingSecrets(remote, hostSecretFiles(host.secrets, layout)) : [];
   const release = await shell.capture(`readlink ${layout.current}`);
   const service = await shell.capture(
@@ -341,11 +346,11 @@ export async function setup(options: SetupOptions): Promise<void> {
   prerequisites(backend);
   const login = githubSignIn(options);
   if (backend === "op") await onePassword(options);
-  const app = await githubApp(options, config, backend);
+  const { target, remote } = await chooseHost(options, config);
+  const app = await githubApp(options, config, backend, (await readHost(remote))?.app_id);
   if (backend === "op") await claudeToken(options);
   let token: string | undefined;
   const claudeTokenOnce = async () => (token ??= await clientClaudeToken(backend, !options.yes));
-  const { target, remote } = await chooseHost(options, config);
   const host = await setUpHost(options, config, { target, remote, app, login, backend, claudeToken: claudeTokenOnce });
   await allowEntries(options, config, target, host, login);
   await onboard(options, config, target, login, claudeTokenOnce);
