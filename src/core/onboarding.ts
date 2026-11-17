@@ -202,7 +202,7 @@ export function onboardingBody(onboarding: Onboarding): string {
     ...(environment.existing ? [] : ["Read `.devcontainer/`: the onboarding agent wrote it."]),
     ...onboarding.notes.map(neutralize),
     ...(validate.kind === "ran" ? validate.results.filter((result) => result.outcome === "failed").map((result) => failedItem(result.check)) : ["Fix `.devcontainer/`: the guardrails refuse it, see the checks above."]),
-    host.kind === "allowed" ? "Check that the App is installed on the repo: `autopilot allow` printed its install page if it was not." : `Allow the repo on a host: \`autopilot allow ${repo}\` with \`AUTOPILOT_HOST\` set. It also checks that the App is installed.`,
+    host.kind === "allowed" ? "Check that the App is installed on the repo: `autopilot watch` printed its install page if it was not." : `Let a host watch the repo: \`autopilot watch ${repo}\` with \`AUTOPILOT_HOST\` set. It also checks that the App is installed.`,
     ...(onboarding.merge === "manual" ? ["`merge` is `manual`: switch it to `auto` when you trust the checks."] : ["`merge` is `auto`: Gate 2 merges low-risk pull requests with no review."]),
   ];
   const failing = readiness.filter((item) => item.ok === "no");

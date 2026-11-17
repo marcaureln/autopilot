@@ -22,9 +22,9 @@ export function shellQuote(arg: string): string {
   return `'${arg.replaceAll("'", `'\\''`)}'`;
 }
 
-// Forwarded output can carry text from GitHub or from agents, so the client opens only the page that `allow` prints.
+// Forwarded output can carry text from GitHub or from agents, so the client opens only the page that `watch` prints.
 export function urlToOpen(command: string, line: string): string | undefined {
-  if (command !== "allow") return undefined;
+  if (command !== "watch") return undefined;
   return /^open: (https:\/\/github\.com\/apps\/[a-z0-9-]+\/installations\/new\/permissions\?target_id=\d+)$/.exec(line)?.[1];
 }
 

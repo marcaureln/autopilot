@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: This skill should be used to set up and use autopilot, a tool that runs coding agents on your own machine to work on GitHub issues. Use it when the user asks to "set up autopilot", "install autopilot", "add a host", "onboard this repo to autopilot", "have autopilot build this", "write an issue for autopilot", "approve the autopilot spec", "answer autopilot's questions", "review the autopilot PR", "why is my autopilot issue blocked", "retry the autopilot issue", "stop autopilot on this issue", "move the issue to another host", "add a secret for autopilot", "allow a repo", "read the autopilot logs", "a check fails only in autopilot", or "debug the dev container".
+description: This skill should be used to set up and use autopilot, a tool that runs coding agents on your own machine to work on GitHub issues. Use it when the user asks to "set up autopilot", "install autopilot", "add a host", "onboard this repo to autopilot", "have autopilot build this", "write an issue for autopilot", "approve the autopilot spec", "answer autopilot's questions", "review the autopilot PR", "why is my autopilot issue blocked", "retry the autopilot issue", "stop autopilot on this issue", "move the issue to another host", "add a secret for autopilot", "watch a repo", "read the autopilot logs", "a check fails only in autopilot", or "debug the dev container".
 ---
 
 # autopilot
@@ -24,8 +24,8 @@ To set up from nothing, read `references/setup.md` and follow it. In short:
 
 1. Install the client: `curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh`. It needs `mise`, `curl` and `tar`.
 2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the 1Password items, the host, the allowlist and the first onboarding PR.
-3. If `setup` is not available, or it stops, do the steps one by one: GitHub App, 1Password vault and items, `autopilot host setup`, `autopilot allow`, `autopilot init`. `references/setup.md` gives each step.
-4. Check the host with `autopilot status`. The service must be `active` (Linux) or `running` (macOS), and the allowlist must show the repo.
+3. If `setup` is not available, or it stops, do the steps one by one: GitHub App, 1Password vault and items, `autopilot host setup`, `autopilot watch`, `autopilot init`. `references/setup.md` gives each step.
+4. Check the host with `autopilot status`. The service must be `active` (Linux) or `running` (macOS), and the watched entries must show the repo.
 5. Merge the onboarding pull request that `autopilot init` opened. Before the merge, autopilot stops each issue with "There is no `.github/autopilot.json` on the default branch".
 
 ## Write an issue that autopilot can build
@@ -182,7 +182,7 @@ id=$(gh api "repos/$repo/issues/$n/comments" --paginate --jq '.[] | select(.body
 gh api -X DELETE "repos/$repo/issues/comments/$id"
 ```
 
-The repo must be in the allowlist of the other host.
+The other host must watch the repo.
 
 ## Host commands
 
@@ -190,16 +190,17 @@ Set `AUTOPILOT_HOST` (or pass `--host`) for these commands. The client runs them
 
 ```sh
 export AUTOPILOT_HOST=user@my-host
-autopilot status                  # service, release, allowlist, last 20 log lines
+autopilot status                  # service, release, watched entries, last 20 log lines
 autopilot logs [--since 1h]       # service log, default: last 100 lines
-autopilot audit [--since 1d]      # JSON audit events: secret reads, gates, merges
-autopilot allow example-org/app   # or a whole account: autopilot allow example-org
-autopilot deny example-org/app
-autopilot allowed
+autopilot logs --audit [--since 1d]   # JSON audit events: secret reads, gates, merges
+autopilot watch example-org/app   # or a whole account: autopilot watch example-org
+autopilot watch example-org/app --remove
+autopilot watch                   # list what the host watches
+autopilot stop                    # pause the host; autopilot start resumes it
 autopilot update [--version vX.Y.Z]
 ```
 
-`autopilot allow` prints the GitHub App install page and opens it when the App is not installed on that account. The host starts to poll a new entry at the next loop. Each log line names the issue as `owner/repo#n`: search for it in `autopilot logs` to see what the host did. A line "ignored, the autopilot label was added by X, not an owner" means the wrong account added the label.
+`autopilot watch` prints the GitHub App install page and opens it when the App is not installed on that account. The host starts to poll a new entry at the next loop. Each log line names the issue as `owner/repo#n`: search for it in `autopilot logs` to see what the host did. A line "ignored, the autopilot label was added by X, not an owner" means the wrong account added the label.
 
 ## Secrets
 

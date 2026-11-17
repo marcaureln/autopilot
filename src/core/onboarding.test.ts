@@ -36,7 +36,7 @@ test("the body lists what was generated, the environment, what to curate, and th
   assert.match(body, /- `lint`: fails on the default branch; 3 known error lines are in `\.github\/autopilot-baseline\.json`/);
   assert.match(body, /- `test`: passed/);
   assert.match(body, /- \[ \] Read `\.devcontainer\/`: the onboarding agent wrote it\./);
-  assert.match(body, /- \[ \] Allow the repo on a host: `autopilot allow acme\/app`/);
+  assert.match(body, /- \[ \] Let a host watch the repo: `autopilot watch acme\/app`/);
   assert.match(body, /### Failing\n\n- \[ \] Documentation: `AGENTS\.md` or `CLAUDE\.md` exists\./);
   assert.match(body, /### To check by hand\n\n- \[ \] Delivery: Rollback steps are written in the repo\./);
   assert.doesNotMatch(body, /A lockfile is committed/);

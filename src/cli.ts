@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
 import { parseArgs, type ParseArgsConfig } from "node:util";
-import { allow, allowed, deny } from "./commands/allow.ts";
+import { unwatch, watch, watched } from "./commands/watch.ts";
 import { alias } from "./commands/alias.ts";
 import { appCreate } from "./commands/app.ts";
 import { forward, hostSetup, selfUpdate } from "./commands/client.ts";
 import { init } from "./commands/init.ts";
-import { showAudit, showLogs, showStatus, update } from "./commands/host.ts";
+import { showAudit, showLogs, showStatus, startService, stopService, update } from "./commands/host.ts";
 import { run } from "./commands/run.ts";
 import { parseSecretsCommand, secrets } from "./commands/secrets.ts";
 import { setup } from "./commands/setup.ts";
@@ -24,14 +24,17 @@ const USAGE = `Usage: autopilot <command> [options]
 
 Commands that run on a host. With --host or AUTOPILOT_HOST, the client forwards them over SSH,
 or runs them on this machine for the host "local":
-  allow <owner>[/<repo>]      Allow it; prints the App install page if the App is not installed there
-  deny <owner>[/<repo>]       Remove it from the allowlist
-  allowed                     Show the allowlist
-  status                      Show the service, release, allowlist and last logs
-  logs [--since <time>]       Show the service log (default: last 100 lines)
-  audit [--since <time>]      Show the audit trail (default: --since 1d)
+  watch [<owner>[/<repo>]] [--remove]
+                              Watch an account, org or repo for autopilot-labeled issues; prints the App
+                              install page if the App is not installed there. --remove stops watching it.
+                              With no argument, shows what the host watches
+  start                       Start the service and show its status
+  stop                        Stop the service until the next start or restart of the host
+  status                      Show the service, release, watched entries and last logs
+  logs [--audit] [--since <time>]
+                              Show the service log (default: last 100 lines), or with --audit the audit
+                              trail (default: --since 1d)
   update [--version <tag>]    Install a release from GitHub (default: the latest) and restart
-  run [--once]                Plan, build, check and merge autopilot-labeled issues, one job at a time (never forwarded)
 
 Commands that run on the client:
   setup [--config <file> --yes]
@@ -69,7 +72,7 @@ Options:
   --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
   --backend op         Where secrets are saved (default and only one: op, the 1Password CLI)`;
 
-const HOST_COMMANDS = ["allow", "deny", "allowed", "status", "logs", "audit", "update"];
+const HOST_COMMANDS = ["watch", "start", "stop", "status", "logs", "update"];
 
 // A typo in an option gets one line and the help hint, not a stack trace.
 function parseCommandLine<T extends ParseArgsConfig>(config: T): ReturnType<typeof parseArgs<T>> {
@@ -88,6 +91,8 @@ const { values, positionals } = parseCommandLine({
     host: { type: "string" },
     config: { type: "string" },
     once: { type: "boolean", default: false },
+    foreground: { type: "boolean", default: false },
+    audit: { type: "boolean", default: false },
     since: { type: "string" },
     version: { type: "string" },
     owner: { type: "string" },
@@ -111,12 +116,6 @@ function hostTarget(): string | undefined {
   return target;
 }
 
-function argument(command: string): string {
-  const value = positionals[1];
-  if (!value) throw new Error(`usage: autopilot ${command} <owner>[/<repo>]`);
-  return value;
-}
-
 function targetRepo(): Repo {
   if (values.repo === undefined) return detectRepo();
   const [owner, name, ...rest] = values.repo.split("/");
@@ -128,16 +127,27 @@ async function main(): Promise<void> {
   const [command = ""] = positionals;
   const target = hostTarget();
   const hostFile = values.config ?? HOST_FILE;
-  if (HOST_COMMANDS.includes(command)) {
+  // The service runs `start --foreground` on the host itself: never forwarded.
+  if (HOST_COMMANDS.includes(command) && !values.foreground) {
     if (target) {
-      const options = [...(values.since ? ["--since", values.since] : []), ...(values.version ? ["--version", values.version] : [])];
+      const options = [
+        ...(values.since ? ["--since", values.since] : []),
+        ...(values.version ? ["--version", values.version] : []),
+        ...(values.remove ? ["--remove"] : []),
+        ...(values.audit ? ["--audit"] : []),
+      ];
       process.exitCode = await forward(target, [...positionals, ...options]);
       return;
     }
     if (!existsSync(hostFile)) throw new Error(`no host file at ${hostFile}: to manage a host, set AUTOPILOT_HOST=<ssh-target | local> or pass --host`);
   }
   switch (command) {
-    case "run": {
+    case "start": {
+      if (!values.foreground) {
+        startService();
+        showStatus(hostFile);
+        break;
+      }
       const host = loadHost(hostFile);
       const privateKey = readSecret(host.secrets.app_key, "run: GitHub App key", auditLog);
       const claudeToken = readSecret(host.secrets.claude_token, "run: token for the agent containers", auditLog);
@@ -156,23 +166,22 @@ async function main(): Promise<void> {
       );
       break;
     }
-    case "allow":
-      await allow(hostFile, argument(command), auditLog);
+    case "stop":
+      stopService();
       break;
-    case "deny":
-      deny(hostFile, argument(command), auditLog);
+    case "watch": {
+      const entry = positionals[1];
+      if (entry === undefined) watched(hostFile);
+      else if (values.remove) unwatch(hostFile, entry, auditLog);
+      else await watch(hostFile, entry, auditLog);
       break;
-    case "allowed":
-      allowed(hostFile);
-      break;
+    }
     case "status":
       showStatus(hostFile);
       break;
     case "logs":
-      showLogs(values.since);
-      break;
-    case "audit":
-      showAudit(values.since);
+      if (values.audit) showAudit(values.since);
+      else showLogs(values.since);
       break;
     case "update":
       await update(hostFile, values.version);

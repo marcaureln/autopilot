@@ -94,11 +94,11 @@ export AUTOPILOT_HOST=user@my-host
 ## 7. Allow the repo
 
 ```sh
-autopilot allow example-org/app      # one repo
-autopilot allow example-org          # every repo of an account
+autopilot watch example-org/app      # one repo
+autopilot watch example-org          # every repo of an account
 ```
 
-If the App is not installed on that account, the command prints the install page and opens it. The user installs the App on the repo there. To allow again is harmless: `autopilot init` in step 8 also allows the repo.
+If the App is not installed on that account, the command prints the install page and opens it. The user installs the App on the repo there. To watch again is harmless: `autopilot init` in step 8 also watches the repo.
 
 ## 8. Onboard the repo
 
@@ -124,8 +124,8 @@ Read the pull request with the user, then merge it. Its "Environment" section na
 autopilot status
 ```
 
-The service is `active` (Linux) or `running` (macOS), and `allow` lists the repo. The log lines must show no `op read ... failed`: that means a 1Password item or the service account is wrong. Then create a small first issue with the `autopilot` label (see SKILL.md), and follow it with `autopilot logs`.
+The service is `active` (Linux) or `running` (macOS), and `watch` lists the repo. The log lines must show no `op read ... failed`: that means a 1Password item or the service account is wrong. Then create a small first issue with the `autopilot` label (see SKILL.md), and follow it with `autopilot logs`.
 
 ## Several hosts
 
-Run step 6 for each host. Hosts can share an allowlist: the oldest claim comment on an issue decides which host works on it.
+Run step 6 for each host. Hosts can watch the same repos: the oldest claim comment on an issue decides which host works on it.

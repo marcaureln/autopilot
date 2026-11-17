@@ -125,7 +125,7 @@ Wants=network-online.target
 User=$user
 WorkingDirectory=/opt/autopilot
 Environment=DOCKER_HOST=$docker_host
-ExecStart=$node /opt/autopilot/src/cli.ts run
+ExecStart=$node /opt/autopilot/src/cli.ts start --foreground
 LoadCredential=op-token:/etc/autopilot/op-token
 SyslogIdentifier=autopilot
 Restart=always
@@ -173,7 +173,7 @@ for copy in /etc/autopilot/host.json.before-allow /etc/autopilot/host.json.pre-3
     if (old.app_id !== now.app_id) process.exit(1);
     console.log([...(old.installations ?? []), ...(old.allow ?? [])].filter((entry) => !now.allow.includes(entry)).join(", "));
   ' "$copy" /etc/autopilot/host.json); then
-    [ -z "$dropped" ] || echo "INFO: $copy allowed $dropped; to keep one, run autopilot allow <entry>"
+    [ -z "$dropped" ] || echo "INFO: $copy allowed $dropped; to keep one, run autopilot watch <entry>"
     echo "INFO: removing $copy"
     rm -f "$copy"
   fi

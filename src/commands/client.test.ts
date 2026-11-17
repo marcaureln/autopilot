@@ -15,17 +15,17 @@ for (const arg of ["audit", "--since", "1 day ago", "it's", "$(id)", "a'b'c", ""
 const INSTALL = "https://github.com/apps/me-autopilot/installations/new/permissions?target_id=42";
 
 const openCases: { command: string; line: string; expected: string | undefined }[] = [
-  { command: "allow", line: `open: ${INSTALL}`, expected: INSTALL },
+  { command: "watch", line: `open: ${INSTALL}`, expected: INSTALL },
   { command: "logs", line: `open: ${INSTALL}`, expected: undefined },
   { command: "audit", line: `open: ${INSTALL}`, expected: undefined },
-  { command: "allow", line: "open: https://github.com/apps/me-autopilot", expected: undefined },
-  { command: "allow", line: "open: https://github.com/login/oauth/authorize?client_id=x", expected: undefined },
-  { command: "allow", line: `open: ${INSTALL}&redirect=https://evil.example`, expected: undefined },
-  { command: "allow", line: "open: https://github.com/apps/Me_App/installations/new/permissions?target_id=42", expected: undefined },
-  { command: "allow", line: "open: https://evil.example/apps/x/installations/new/permissions?target_id=1", expected: undefined },
-  { command: "allow", line: "open: http://github.com/apps/x/installations/new/permissions?target_id=1", expected: undefined },
-  { command: "allow", line: `  open: ${INSTALL}`, expected: undefined },
-  { command: "allow", line: "allowed me/app on pi", expected: undefined },
+  { command: "watch", line: "open: https://github.com/apps/me-autopilot", expected: undefined },
+  { command: "watch", line: "open: https://github.com/login/oauth/authorize?client_id=x", expected: undefined },
+  { command: "watch", line: `open: ${INSTALL}&redirect=https://evil.example`, expected: undefined },
+  { command: "watch", line: "open: https://github.com/apps/Me_App/installations/new/permissions?target_id=42", expected: undefined },
+  { command: "watch", line: "open: https://evil.example/apps/x/installations/new/permissions?target_id=1", expected: undefined },
+  { command: "watch", line: "open: http://github.com/apps/x/installations/new/permissions?target_id=1", expected: undefined },
+  { command: "watch", line: `  open: ${INSTALL}`, expected: undefined },
+  { command: "watch", line: "pi watches me/app", expected: undefined },
 ];
 
 for (const { command, line, expected } of openCases) {

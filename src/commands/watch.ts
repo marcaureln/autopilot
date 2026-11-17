@@ -12,7 +12,7 @@ function writeHost(path: string, host: Host): void {
 }
 
 function restart(path: string): void {
-  if (path !== HOST_FILE) return console.log("restart `autopilot run` to apply the change");
+  if (path !== HOST_FILE) return console.log("restart `autopilot start --foreground` to apply the change");
   restartService();
 }
 
@@ -24,30 +24,30 @@ async function installUrl(slug: string, owner: string): Promise<string> {
   return `https://github.com/apps/${slug}/installations/new/permissions?target_id=${String(account.id)}`;
 }
 
-export async function allow(path: string, value: string, audit: Audit): Promise<void> {
+export async function watch(path: string, value: string, audit: Audit): Promise<void> {
   const entry = parseAllowEntry(value);
   const host = loadHost(path);
-  const github = createGitHub({ appId: host.app_id, privateKey: readSecret(host.secrets.app_key, "allow: check the App installation", audit) }, audit);
+  const github = createGitHub({ appId: host.app_id, privateKey: readSecret(host.secrets.app_key, "watch: check the App installation", audit) }, audit);
   if ((await github.findInstallation(entry)) === undefined) {
     console.log(`The App is not installed for ${value}. Install it; the host starts polling it at the next loop.`);
     console.log(`open: ${await installUrl(await github.appSlug(), entry.owner)}`);
   }
-  if (host.allow.includes(value)) return console.log(`${value} is already allowed on ${host.name}`);
+  if (host.allow.includes(value)) return console.log(`${host.name} already watches ${value}`);
   writeHost(path, addAllowEntry(host, value));
-  audit({ event: "allowlist.changed", action: "allow", entry: value, by: process.env.SUDO_USER });
+  audit({ event: "allowlist.changed", action: "watch", entry: value, by: process.env.SUDO_USER });
   restart(path);
-  console.log(`allowed ${value} on ${host.name}`);
+  console.log(`${host.name} watches ${value}`);
 }
 
-export function deny(path: string, value: string, audit: Audit): void {
+export function unwatch(path: string, value: string, audit: Audit): void {
   const host = loadHost(path);
   writeHost(path, removeAllowEntry(host, value));
-  audit({ event: "allowlist.changed", action: "deny", entry: value, by: process.env.SUDO_USER });
+  audit({ event: "allowlist.changed", action: "unwatch", entry: value, by: process.env.SUDO_USER });
   restart(path);
-  console.log(`denied ${value} on ${host.name}`);
+  console.log(`${host.name} no longer watches ${value}`);
 }
 
-export function allowed(path: string): void {
+export function watched(path: string): void {
   const host = loadHost(path);
   console.log(`${host.name}: ${host.allow.join(", ") || "(empty)"}`);
 }

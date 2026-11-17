@@ -1,5 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readlinkSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { AUDIT_TAG } from "../core/audit.ts";
 import { loadHost, type Host } from "../core/host.ts";
 import { hostLayout, LOCAL_LAYOUT, parseOS, type Layout } from "../core/layout.ts";
@@ -102,6 +104,20 @@ export function restartService(): void {
   if (result.status !== 0) throw new Error(`${program} restart of ${SERVICE} failed (exit ${result.status})`);
 }
 
+// On Linux the unit stays enabled: a stopped service starts again when the host restarts.
+export function startService(): void {
+  const [program, args]: [string, string[]] = LOCAL_LAYOUT.os === "linux" ? ["systemctl", ["start", SERVICE]] : serviceState() === "not loaded" ? ["launchctl", ["bootstrap", `gui/${process.getuid?.()}`, join(homedir(), "Library/LaunchAgents", `${SERVICE}.plist`)]] : ["launchctl", ["kickstart", launchdJob()]];
+  const result = spawnSync(program, args, { stdio: "inherit" });
+  if (result.status !== 0) throw new Error(`${program} could not start ${SERVICE} (exit ${result.status})`);
+}
+
+export function stopService(): void {
+  const [program, args]: [string, string[]] = LOCAL_LAYOUT.os === "linux" ? ["systemctl", ["stop", SERVICE]] : ["launchctl", ["bootout", launchdJob()]];
+  const result = spawnSync(program, args, { stdio: "inherit" });
+  if (result.status !== 0) throw new Error(`${program} could not stop ${SERVICE} (exit ${result.status})`);
+  console.log(`${SERVICE} stopped. Start it again with autopilot start.`);
+}
+
 function serviceState(): string {
   if (LOCAL_LAYOUT.os === "linux") return spawnSync("systemctl", ["is-active", SERVICE], { encoding: "utf8" }).stdout.trim();
   const job = spawnSync("launchctl", ["print", launchdJob()], { encoding: "utf8" });
@@ -156,7 +172,7 @@ export function showStatus(path: string): void {
   console.log(`host:    ${host.name}`);
   console.log(`service: ${serviceState()}`);
   console.log(`release: ${readlinkSync(LOCAL_LAYOUT.current)}`);
-  console.log(`allow:   ${host.allow.join(", ") || "(empty)"}`);
+  console.log(`watch:   ${host.allow.join(", ") || "(nothing)"}`);
   const { logs } = LOCAL_LAYOUT;
   if (logs.kind === "journal") journal(["--identifier", SERVICE, "--lines", "20", "--output", "cat"]);
   else logFile(logs.service, undefined, 20);

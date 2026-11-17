@@ -24,7 +24,7 @@ export type AuditEvent =
   | { event: "container.started"; name: string; image: string; mounts: string[]; env: string[]; caps: Record<string, string | number> }
   | { event: "container.ended"; name: string; exit: number; timed_out: boolean; duration_seconds: number }
   | { event: "container.removed"; name: string }
-  | { event: "allowlist.changed"; action: "allow" | "deny"; entry: string; by: string | undefined };
+  | { event: "allowlist.changed"; action: "watch" | "unwatch"; entry: string; by: string | undefined };
 
 export type Audit = (event: AuditEvent) => void;
 

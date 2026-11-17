@@ -40,7 +40,7 @@ autopilot aims to stay small: one process, no server, no queue, no database. Git
    3. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page: click **Create GitHub App**. The private key goes to the vault. To use an App that you already have, give its App ID and the path of its `.pem` file.
    4. **Claude token.** The wizard runs `claude setup-token`, which signs you in to Claude in the browser and prints a token. Paste the token at the hidden prompt. It goes to the vault.
    5. **Host.** Give an SSH target such as `user@my-host`, or `local` for this machine. The wizard installs the latest release on the host and starts the service.
-   6. **Owner and allowlist.** Your GitHub login is the owner: only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that autopilot may work on. If the App is not installed there, the wizard opens the install page: select the repos, then click **Install**.
+   6. **Owner and watched repos.** Your GitHub login is the owner: only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that the host watches. If the App is not installed there, the wizard opens the install page: select the repos, then click **Install**.
    7. **First repo.** The wizard runs `autopilot init` on a repo that you select. It opens an onboarding pull request (see [Onboarding](#onboarding)).
    8. **Alias.** It adds `ap` as a short name for `autopilot` to your shell.
 
@@ -185,7 +185,7 @@ The host gives the values only to the checks that run a command from `verify.com
 
 ## Hosts
 
-A host runs `autopilot run` as a service. It holds its `host.json`, the 1Password service account token and a release, and it reads the App key and the Claude token with `op` at start. The client keeps no config: it forwards each command to the host over SSH. The host `local` is the machine you run the command on.
+A host runs autopilot as a service. It holds its `host.json`, the 1Password service account token and a release, and it reads the App key and the Claude token with `op` at start. The client keeps no config: it forwards each command to the host over SSH. The host `local` is the machine you run the command on.
 
 | Host  | Service                                                                  | Files                              | Logs                       |
 | ----- | ------------------------------------------------------------------------ | ---------------------------------- | -------------------------- |
@@ -201,23 +201,24 @@ autopilot host setup --host user@my-host --owner <login> --app-id <id>
 autopilot host setup --host local --owner <login> --app-id <id>     # this machine
 
 export AUTOPILOT_HOST=user@my-host
-autopilot allow <owner>/<repo>   # opens the App install page if the App is not installed there
+autopilot watch <owner>/<repo>   # opens the App install page if the App is not installed there
+autopilot watch                  # what the host watches; --remove <entry> stops watching it
 autopilot status
-autopilot logs
-autopilot audit --since 1d       # JSON audit events
+autopilot logs                   # --audit for the JSON audit events
+autopilot start                  # or stop
 autopilot update                 # install the latest release, or --version vX.Y.Z
 ```
 
 A host works on one issue at a time by default. To run more at once, set `concurrency` in its `host.json`. Each issue gets its own containers and `limits`, so size it to the host's memory and to the rate limits of your Claude plan.
 
-Several hosts can share an allowlist: the oldest claim comment on an issue wins. To move an issue to another host, delete its claim comment.
+Several hosts can watch the same repos: the oldest claim comment on an issue wins. To move an issue to another host, delete its claim comment.
 
 ## Development
 
 ```sh
 mise install && pnpm install
 pnpm check               # types + lint + tests
-node src/cli.ts run --once --config host.json   # a dev host; op reads secrets with your sign-in
+node src/cli.ts start --foreground --once --config host.json   # one loop on a dev host; op reads secrets with your sign-in
 ```
 
 Node runs the TypeScript files directly. There is no build step.

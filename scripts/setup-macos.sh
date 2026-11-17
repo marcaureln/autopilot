@@ -79,7 +79,8 @@ agent=$(cat <<EOF
   <array>
     <string>$node</string>
     <string>$base/current/src/cli.ts</string>
-    <string>run</string>
+    <string>start</string>
+    <string>--foreground</string>
   </array>
   <key>WorkingDirectory</key>
   <string>$base/current</string>

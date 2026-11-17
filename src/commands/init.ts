@@ -201,7 +201,7 @@ export async function init(options: InitOptions): Promise<void> {
     let host: Onboarding["host"] = { kind: "none" };
     if (options.host) {
       console.log("==> allow the repo on the host");
-      if ((await forward(options.host, ["allow", repo])) !== 0) throw new Error("the host could not allow the repo");
+      if ((await forward(options.host, ["watch", repo])) !== 0) throw new Error("the host could not watch the repo");
       host = { kind: "allowed" };
     }
 

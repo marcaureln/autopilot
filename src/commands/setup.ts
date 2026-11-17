@@ -251,7 +251,7 @@ async function allowEntries(options: SetupOptions, config: SetupConfig, target: 
       record(`Allow ${entry}`, "already done", `on ${host.name}`);
       continue;
     }
-    if ((await forward(target, ["allow", entry])) !== 0) throw new Error(`the host could not allow ${entry}`);
+    if ((await forward(target, ["watch", entry])) !== 0) throw new Error(`the host could not watch ${entry}`);
     record(`Allow ${entry}`, "done", `on ${host.name}`);
   }
 }
