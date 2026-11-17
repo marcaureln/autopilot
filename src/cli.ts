@@ -25,9 +25,9 @@ const USAGE = `Usage: autopilot <command> [options]
 Commands that run on a host. With --host or AUTOPILOT_HOST, the client forwards them over SSH,
 or runs them on this machine for the host "local":
   watch [<owner>[/<repo>]] [--remove]
-                              Watch an account, org or repo for autopilot-labeled issues; prints the App
-                              install page if the App is not installed there. --remove stops watching it.
-                              With no argument, shows what the host watches
+                              Watch an account, org or repo for issues with the autopilot label. If the App
+                              is not installed there, print its install page. --remove stops watching it.
+                              With no argument, show what the host watches
   start                       Start the service and show its status
   stop                        Stop the service until the next start or restart of the host
   status                      Show the service, release, watched entries and last logs
@@ -39,19 +39,19 @@ or runs them on this machine for the host "local":
 Commands that run on the client:
   setup [--config <file> --yes]
                               Set up everything in one wizard: prerequisites, 1Password, the GitHub App, the
-                              Claude token, a host, the watched entries, a first repo and the alias. Run it again to
-                              fix what is missing. --config gives the answers (schema/setup.schema.json);
-                              with --yes, setup asks nothing
+                              Claude token, a host, the watched entries, a first repo and the alias. Run it
+                              again to fix what is missing. --config gives the answers
+                              (schema/setup.schema.json). With --yes, setup asks nothing
   app create [--key-out <path>]
                               Create your GitHub App in the browser (GitHub's App manifest flow). The private
                               key goes to 1Password (vault autopilot), or to a 0600 file with --key-out
   host setup --host <ssh-target | local> [--owner <login> --app-id <id>] [--version <tag> | --from-checkout]
                               Push the 1Password service account token, write host.json if it is
-                              missing, and install a release (or the current commit). Linux hosts
-                              run a systemd service, macOS hosts a launchd agent of the user
+                              missing, and install a release (or the current commit). A Linux host
+                              runs a systemd service. A macOS host runs a launchd agent of the user
   init [--skill <source>]... [--notes <file>]
                               Onboard the repo: an agent writes .devcontainer/ (if the repo has none),
-                              the check commands and a draft AGENTS.md; then init checks the dev container,
+                              the check commands and a draft AGENTS.md. Then init checks the dev container,
                               runs the install and each check once, creates the labels and opens a PR.
                               --skill adds a skill (github.com/<owner>/<repo>[//<path>][#<ref>] or a host
                               path) for the agent and for skills.planner and skills.builder. --notes adds
@@ -68,10 +68,10 @@ Commands that run on the client:
 
 Options:
   --host <ssh-target>  Host to act on, or "local" for this machine (default: $AUTOPILOT_HOST)
-  --config <path>      Host file, on the host (default: ${HOST_FILE}); for setup, the setup file
+  --config <path>      Host file, on the host (default: ${HOST_FILE}). For setup, the setup file
   --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
-  --backend env|op     Where secrets are saved: env (default), an env file per repo on the host;
-                       op, 1Password, with a reference in .github/autopilot.json`;
+  --backend env|op     Where secrets go. env (default): an env file per repo on the host.
+                       op: 1Password, with a reference in .github/autopilot.json`;
 
 const HOST_COMMANDS = ["watch", "start", "stop", "status", "logs", "update"];
 
