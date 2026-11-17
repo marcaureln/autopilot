@@ -10,7 +10,7 @@ import { EnvironmentRefused } from "../core/environment.ts";
 import { gate1, gate2 } from "../core/gate.ts";
 import type { GitHub, Issue, RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
-import { ANY_TIME, branchName, fixVerdict, headVerdict, issuePhase, latestPull, type BotPull, type Statuses } from "../core/phase.ts";
+import { ANY_TIME, branchName, fixVerdict, headVerdict, issuePhase, latestPull, type BotPull, type HeadVerdict, type Statuses } from "../core/phase.ts";
 import type { PlannerJob, PlannerResult } from "../core/planner.ts";
 import type { Repo } from "../core/repo.ts";
 import { refusedSecrets } from "../core/repo-secrets.ts";
@@ -311,16 +311,87 @@ async function waitForCi(job: Working, config: Config, sha: string): Promise<voi
   loop.log(key, `${key}: waits for the repo's CI on ${sha.slice(0, 7)}: ${waiting.join(", ")}`);
 }
 
+// Where the checks of a head come from. In `host` mode the host runs them and reads its own statuses.
+// In `ci` mode the repo's CI runs them, and its results on a head count whenever they ran: a retry does
+// not run that CI again.
+type VerifySource = {
+  // Passed to `headVerdict`: results older than this do not count.
+  since: string;
+  results: (commit: string) => Promise<Statuses>;
+  // Turns the verdict on the head's results into one to act on, or returns undefined when the results are not there yet.
+  settle: (verdict: HeadVerdict) => Promise<Exclude<HeadVerdict, { kind: "run" }> | undefined>;
+  failureOutput: (check: string) => Promise<string>;
+};
+
+function verifySource(job: Working, config: Config, pull: BotPull, retryAt: string): VerifySource {
+  const { ctx } = job;
+  const { repoGitHub } = ctx;
+  const { required } = config.verify;
+  const sha = pull.head.sha;
+
+  if (config.verify.mode === "ci") {
+    return {
+      since: ANY_TIME,
+      results: (commit) => repoGitHub.ciStatuses(commit, required),
+      settle: async (verdict) => {
+        if (verdict.kind === "run") {
+          await waitForCi(job, config, sha);
+          return undefined;
+        }
+        ctx.waitingSince.delete(sha);
+        return verdict;
+      },
+      failureOutput: (check) => repoGitHub.ciOutput(sha, check),
+    };
+  }
+
+  const missing = planChecks(required, config.verify.commands).filter((plan) => plan.kind === "missing");
+  if (missing.length > 0) throw new Blocked(`\`verify.required\` lists ${missing.map((plan) => `\`${plan.check}\``).join(", ")} with no command in \`verify.commands\`.`);
+  return {
+    since: retryAt,
+    results: (commit) => repoGitHub.statuses(commit, ctx.bot),
+    settle: async (verdict) => {
+      // A failed head whose output is gone (after a restart) runs again to get it back.
+      const reran = verdict.kind === "run" || (verdict.kind === "failed" && !ctx.outputs.has(sha));
+      const settled = reran ? headVerdict(await runChecks(job, config, pull), required, retryAt) : verdict;
+      if (settled.kind === "run") throw new Error(`${job.key}: the checks on ${sha.slice(0, 7)} left no result`);
+      return settled;
+    },
+    failureOutput: async (check) => {
+      const result = ctx.outputs.get(sha)?.find((output) => output.check === check);
+      return result ? `${result.description}\n\n${result.output}` : "";
+    },
+  };
+}
+
+// The checks read the config of the default branch, so they run on a branch that has its latest commits.
+// The result is marked as pushed by the host, so the host rebases only its own head onto the default
+// branch, and marks the result only when it brings exactly the same changes. Returns whether it rebased.
+async function rebaseWhenBehind(job: Working, pull: BotPull, defaultBranch: string, pushedByAutopilot: boolean): Promise<boolean> {
+  const { loop, ctx, issue, key } = job;
+  const { repoGitHub } = ctx;
+  const sha = pull.head.sha;
+  if (!pushedByAutopilot || pull.base !== defaultBranch) return false;
+  const before = await repoGitHub.compare(defaultBranch, sha);
+  if (before.behind === 0) return false;
+  const head = await repoGitHub.rebasePull(pull.number, sha).catch((error: unknown) => {
+    throw new Blocked(`autopilot could not rebase pull request #${pull.number} on \`${pull.base}\`: ${messageOf(error)}. Close the pull request, then remove the label to build again.`);
+  });
+  const after = await repoGitHub.compare(defaultBranch, head);
+  if (head === sha || after.behind > 0 || after.ahead !== before.ahead || after.changes.join("\n") !== before.changes.join("\n")) {
+    throw new Blocked(`The rebase of pull request #${pull.number} on \`${pull.base}\` gave ${head.slice(0, 7)}, which does not bring the same changes as ${sha.slice(0, 7)}. Close the pull request, then remove the label to build again.`);
+  }
+  await repoGitHub.markPushed(head, issue.number);
+  loop.audit({ event: "pr.rebased", repo: `${ctx.repo.owner}/${ctx.repo.name}`, pull: pull.number, issue: issue.number, from: sha, to: head });
+  loop.log(key, `${key}: rebased #${pull.number} on ${pull.base} to ${head.slice(0, 7)}, the checks run next`);
+  return true;
+}
+
 async function checksAndGate2(job: Working, config: Config, pull: BotPull, retryAt: string, currentSpec: () => Promise<TrustedSpec | undefined>): Promise<void> {
   const { loop, ctx, issue, key } = job;
   const { repoGitHub } = ctx;
-  const ci = config.verify.mode === "ci";
   const required = config.verify.required;
-  // `host` mode reads the host's own statuses. `ci` mode reads the repo's CI, whose results on a
-  // head count whenever they ran: a retry does not run that CI again.
-  const results = (commit: string) => (ci ? repoGitHub.ciStatuses(commit, required) : repoGitHub.statuses(commit, ctx.bot));
-  const missing = ci ? [] : planChecks(required, config.verify.commands).filter((plan) => plan.kind === "missing");
-  if (missing.length > 0) throw new Blocked(`\`verify.required\` lists ${missing.map((plan) => `\`${plan.check}\``).join(", ")} with no command in \`verify.commands\`.`);
+  const verify = verifySource(job, config, pull, retryAt);
   const refused = refusedSecrets(ctx.repo, config.secrets);
   if (refused.length > 0) {
     const names = refused.map((name) => `\`${name}\``).join(", ");
@@ -331,43 +402,19 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
   // issue is fixed or merged; its ancestors are then the host's commits too.
   const pushedByAutopilot = (await repoGitHub.pushedFor(sha, ctx.bot)) === issue.number;
 
-  let verdict = headVerdict(await results(sha), required, ci ? ANY_TIME : retryAt);
-  // The checks read the config of the default branch, so they run on a branch that has its latest commits.
-  // The result is marked as pushed by the host, so the host rebases only its own head onto the default
-  // branch, and marks the result only when it brings exactly the same changes.
+  const head = headVerdict(await verify.results(sha), required, verify.since);
   const defaultBranch = await repoGitHub.defaultBranch();
-  const before = verdict.kind === "run" && pushedByAutopilot && pull.base === defaultBranch ? await repoGitHub.compare(defaultBranch, sha) : undefined;
-  if (before && before.behind > 0) {
-    const head = await repoGitHub.rebasePull(pull.number, sha).catch((error: unknown) => {
-      throw new Blocked(`autopilot could not rebase pull request #${pull.number} on \`${pull.base}\`: ${messageOf(error)}. Close the pull request, then remove the label to build again.`);
-    });
-    const after = await repoGitHub.compare(defaultBranch, head);
-    if (head === sha || after.behind > 0 || after.ahead !== before.ahead || after.changes.join("\n") !== before.changes.join("\n")) {
-      throw new Blocked(`The rebase of pull request #${pull.number} on \`${pull.base}\` gave ${head.slice(0, 7)}, which does not bring the same changes as ${sha.slice(0, 7)}. Close the pull request, then remove the label to build again.`);
-    }
-    await repoGitHub.markPushed(head, issue.number);
-    loop.audit({ event: "pr.rebased", repo: `${ctx.repo.owner}/${ctx.repo.name}`, pull: pull.number, issue: issue.number, from: sha, to: head });
-    return loop.log(key, `${key}: rebased #${pull.number} on ${pull.base} to ${head.slice(0, 7)}, the checks run next`);
-  }
-  if (ci && verdict.kind === "run") return waitForCi(job, config, sha);
-  ctx.waitingSince.delete(sha);
-  if (verdict.kind === "run" || (verdict.kind === "failed" && !ci && !ctx.outputs.has(sha))) {
-    verdict = headVerdict(await runChecks(job, config, pull), required, retryAt);
-  }
-  if (verdict.kind === "run") throw new Error(`${key}: the checks on ${sha.slice(0, 7)} left no result`);
+  if (head.kind === "run" && (await rebaseWhenBehind(job, pull, defaultBranch, pushedByAutopilot))) return;
+  const verdict = await verify.settle(head);
+  if (verdict === undefined) return;
 
   if (verdict.kind === "failed") {
     const commits = await repoGitHub.pullCommits(pull.number);
     const earlier: Statuses[] = [];
-    for (const commit of commits.slice(0, -1).reverse()) earlier.push(await results(commit));
+    for (const commit of commits.slice(0, -1).reverse()) earlier.push(await verify.results(commit));
     const fix = fixVerdict(verdict.failing, earlier, required, config.limits.fix_rounds, retryAt);
-    const outputs = ctx.outputs.get(sha) ?? [];
     const failures: Failure[] = [];
-    for (const check of verdict.failing) {
-      const result = outputs.find((output) => output.check === check);
-      const output = ci ? await repoGitHub.ciOutput(sha, check) : result ? `${result.description}\n\n${result.output}` : "";
-      failures.push({ check, output });
-    }
+    for (const check of verdict.failing) failures.push({ check, output: await verify.failureOutput(check) });
     if (!pushedByAutopilot) throw new Blocked(`Someone else pushed ${sha.slice(0, 7)} to \`${pull.head.ref}\`, and its checks fail. autopilot does not build on it.`);
     if (fix.kind === "blocked") {
       const why =
