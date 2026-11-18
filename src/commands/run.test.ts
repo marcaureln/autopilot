@@ -73,12 +73,12 @@ async function linesFor(allow: string[]): Promise<string[]> {
 }
 
 test("an owner entry visits labeled issues in every repo of that owner", async () => {
-  assert.deepEqual(await linesFor(["owner"]), ["owner/app-a#7: blocked"]);
+  assert.deepEqual(await linesFor(["owner"]), ["owner/app-a#7: blocked", "owner/app-a: polled", "owner/app-b: polled"]);
 });
 
 test("a repo entry visits only that repo", async () => {
-  assert.deepEqual(await linesFor(["org/app-b"]), []);
-  assert.deepEqual(await linesFor(["org/app-a"]), ["org/app-a#7: blocked"]);
+  assert.deepEqual(await linesFor(["org/app-b"]), ["org/app-b: polled"]);
+  assert.deepEqual(await linesFor(["org/app-a"]), ["org/app-a#7: blocked", "org/app-a: polled"]);
 });
 
 test("an entry where the App is not installed is reported, not polled", async () => {
@@ -139,5 +139,5 @@ test("an error on one repo is logged and the other repos are still polled", asyn
   const state = loopState();
   await runOnce(loop, state);
   await drain(state);
-  assert.deepEqual(lines, ["owner/app-a: error: HTTP 410: issues are off", "owner/app-b#9: blocked"]);
+  assert.deepEqual(lines, ["owner/app-a: error: HTTP 410: issues are off", "owner/app-b#9: blocked", "owner/app-b: polled"]);
 });
