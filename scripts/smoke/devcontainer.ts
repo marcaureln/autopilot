@@ -7,8 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Audit } from "../../src/core/audit.ts";
 import { cliDevcontainer } from "../../src/core/devcontainer-cli.ts";
-import { checkCommand, EnvironmentRefused, RUN_DIR, SECRETS_NAME, shellEnvFile, startEnvironment, stopEnvironment } from "../../src/core/environment.ts";
-import { claudeCodeVersion, MANAGED_SETTINGS } from "../../src/harness/claude.ts";
+import { checkCommand, EnvironmentRefused, SECRETS_NAME, shellEnvFile, startEnvironment, stopEnvironment } from "../../src/core/environment.ts";
+import { claudeCodeVersion } from "../../src/harness/claude.ts";
+import { devcontainerSetup, HARNESSES } from "../../src/harness/harness.ts";
 
 const audit: Audit = () => undefined;
 const limits = { memory: "2g", cpus: 2, pids: 512 };
@@ -28,14 +29,14 @@ function leftOver(idLabel: string): string {
 console.log("==> the guardrails refuse a privileged config");
 {
   const workspace = copyRepo({ dockerComposeFile: "compose.yaml", service: "app", workspaceFolder: "/workspace", runArgs: ["--privileged"] });
-  await assert.rejects(startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel: "autopilot.job=smoke-bad", limits, mounts: [], claudeCodeVersion: undefined, timeoutMs: 600_000, audit }), EnvironmentRefused);
+  await assert.rejects(startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel: "autopilot.job=smoke-bad", limits, mounts: [], agentFeature: undefined, timeoutMs: 600_000, audit }), EnvironmentRefused);
 }
 
 console.log("==> the guardrails see a privileged service behind a profile");
 {
   const workspace = copyRepo({ dockerComposeFile: "compose.yaml", service: "app", runServices: ["app", "hidden"], workspaceFolder: "/workspace" });
   writeFileSync(join(workspace, ".devcontainer/compose.yaml"), "services:\n  app:\n    image: node:26.13.1\n    command: sleep infinity\n  hidden:\n    image: node:26.13.1\n    privileged: true\n    profiles: [off]\n");
-  await assert.rejects(startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel: "autopilot.job=smoke-profile", limits, mounts: [], claudeCodeVersion: undefined, timeoutMs: 600_000, audit }), /hidden: `privileged`/);
+  await assert.rejects(startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel: "autopilot.job=smoke-profile", limits, mounts: [], agentFeature: undefined, timeoutMs: 600_000, audit }), /hidden: `privileged`/);
   assert.equal(leftOver("autopilot.job=smoke-profile"), "", "nothing starts");
 }
 
@@ -47,7 +48,8 @@ console.log("==> a compose config: install, Claude Code, network cut, checks wit
   const idLabel = "autopilot.job=smoke-compose";
   const version = claudeCodeVersion();
   try {
-    const up = await startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel, limits, mounts: [{ source: runDir, target: RUN_DIR, readonly: true }, MANAGED_SETTINGS], claudeCodeVersion: version, timeoutMs: 900_000, audit });
+    const agent = devcontainerSetup(HARNESSES.claude, join(workspace, ".."), runDir, mkdtempSync(join(tmpdir(), "autopilot-skills-")), undefined);
+    const up = await startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel, limits, mounts: agent.mounts, agentFeature: agent.feature, timeoutMs: 900_000, audit });
     if (up.kind === "failed") console.error(up.result.output);
     assert(up.kind === "up", "the dev container did not start");
     const exec = (command: string, withSecrets = false) => cliDevcontainer.exec(up.containerId, checkCommand(command, up.workspaceFolder, withSecrets), { timeoutMs: 120_000 });
@@ -78,7 +80,7 @@ console.log("==> an image config with a workspace folder: no network after the c
   const workspace = copyRepo({ name: "image", image: "node:26.13.1", workspaceFolder: "/work", postCreateCommand: "npm ci" });
   const idLabel = "autopilot.job=smoke-image";
   try {
-    const up = await startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel, limits, mounts: [], claudeCodeVersion: undefined, timeoutMs: 600_000, audit });
+    const up = await startEnvironment({ devcontainer: cliDevcontainer, workspace, idLabel, limits, mounts: [], agentFeature: undefined, timeoutMs: 600_000, audit });
     if (up.kind === "failed") console.error(up.result.output);
     assert(up.kind === "up", "the dev container did not start");
     await cliDevcontainer.cutNetwork(up.containerId);
