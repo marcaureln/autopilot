@@ -45,6 +45,22 @@ If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in th
 
 If `setup` is not listed, or it stops on a step, do steps 4 to 8.
 
+### Without prompts
+
+Put the answers in a file ([schema](../../../schema/setup.schema.json)), then run `autopilot setup --config setup.json --yes`:
+
+```json
+{
+	"$schema": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/setup.schema.json",
+	"app_id": 123456,
+	"host": "user@my-host",
+	"allow": ["octocat/app"],
+	"alias": "ap"
+}
+```
+
+GitHub needs a click in the browser to create an App, so run `autopilot app create` first. For an App that you already have, set `app_key` to the path of its `.pem` file. Give the Claude token in `CLAUDE_CODE_OAUTH_TOKEN`. The file never holds a secret value.
+
 ## 4. GitHub App
 
 If `autopilot --help` lists `app create`, ask the user to run `autopilot app create` (user). It creates the App through GitHub's manifest flow and saves its key in `~/.config/autopilot/app-key.pem` (mode 600). `autopilot hosts add` pushes the key from there. With `--backend op`, it saves the key in 1Password.
