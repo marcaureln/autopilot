@@ -14,22 +14,15 @@ autopilot is small. It is one process, with no server, no queue and no database.
 
 ## Set up
 
-You need:
+### Prerequisites
 
 - **On your machine:** git, ssh, [mise](https://mise.jdx.dev/installing-mise.html) and [gh](https://cli.github.com/) signed in to GitHub.
 - **A Claude account.** Run `claude setup-token` on any machine with Claude Code. The agents use the token that it prints.
 - **A host** that runs the jobs: a Linux machine with SSH, sudo, [Docker Engine](https://docs.docker.com/engine/install/), its [rootless extras](https://docs.docker.com/engine/security/rootless/) and the [Compose plugin](https://docs.docker.com/compose/install/linux/), or a Mac with OrbStack, Colima or Docker Desktop. It can be the machine you work on.
 
-Then:
+### With a coding agent
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
-autopilot setup
-```
-
-The wizard creates a GitHub App, installs a host, pushes the App key and the Claude token to it, watches your account and onboards a first repo. It does only what is missing, so you can run it again at any time. For each step, and for a setup without prompts, see the [setup reference](skills/autopilot/references/setup.md).
-
-**With a coding agent.** Paste this prompt into Claude Code, Codex or another agent:
+Paste this prompt into Claude Code, Codex or another agent:
 
 ```text
 Set up autopilot for me (https://github.com/marcaureln/autopilot).
@@ -39,6 +32,15 @@ Never read, print or write a secret value yourself.
 ```
 
 The [skill](skills/autopilot/SKILL.md) also tells the agent how to write issues, answer questions, approve specs, review pull requests and debug a blocked issue.
+
+### By hand
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
+autopilot setup
+```
+
+The wizard creates a GitHub App, installs a host, pushes the App key and the Claude token to it, watches your account and onboards a first repo. It does only what is missing, so you can run it again at any time. For each step, and for a setup without prompts, see the [setup reference](skills/autopilot/references/setup.md).
 
 ## Use it
 
