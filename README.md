@@ -97,6 +97,7 @@ autopilot does one job. It does not do these things, on purpose:
 - **Learning by itself.** It does not change its own prompts. Improve your skills and your `AGENTS.md`.
 - **A database.** GitHub holds the state.
 - **A UI.** You work in GitHub: issues, labels, comments and pull requests.
+- **Project management.** No boards, priorities or roadmaps. autopilot works on each labeled issue. Plan in GitHub Projects or in the tool you like.
 - **Project templates.** Each repo brings its own dev container.
 - **A hosted service.** It runs on your machines, with your accounts.
 
