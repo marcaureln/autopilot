@@ -117,6 +117,12 @@ for (const { name, result: override, expected } of plannedCases) {
   });
 }
 
+test("planned paths: the paths of a rendered comment come back exactly", () => {
+  const paths = ["a.ts", "docs/my file, (v2).md", "dir/it's here.md", ".github/workflows/ci.yml", "ünï/日本.txt", "a b/c#d%e.md", "x/- Planned files: y.ts"];
+  const planned_files = paths.map((path) => ({ path, status: "added" as const }));
+  assert.deepEqual(plannedPaths(renderSpecComment({ ...result, planned_files }, { event: "go", risk: "low", rulesRisk: "low" })), paths);
+});
+
 test("planned paths: a comment with no assessment lists none", () => {
   assert.deepEqual(plannedPaths("Looks good"), []);
 });

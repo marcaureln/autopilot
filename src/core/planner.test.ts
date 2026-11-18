@@ -33,6 +33,31 @@ for (const { name, text, error } of invalid) {
   });
 }
 
+const pathCases: { name: string; path: string; clean: boolean }[] = [
+  { name: "a plain path", path: "src/a.ts", clean: true },
+  { name: "a workflow path", path: ".github/workflows/ci.yml", clean: true },
+  { name: "a backtick", path: "a` `.github/workflows/x.yml", clean: false },
+  { name: "a newline", path: "a\n.github/workflows/x.yml", clean: false },
+  { name: "a control character", path: "a\u0000b", clean: false },
+  { name: "an absolute path", path: "/etc/passwd", clean: false },
+  { name: "a parent segment", path: "src/../.github/workflows/x.yml", clean: false },
+  { name: "a dots name", path: "src/..a/b", clean: true },
+];
+
+for (const { name, path, clean } of pathCases) {
+  test(`planned path: ${name}`, () => {
+    const files = [{ path, status: "added" }];
+    const parse = () => parsePlannerResult(JSON.stringify({ ...valid, planned_files: files }));
+    if (clean) assert.doesNotThrow(parse);
+    else assert.throws(parse, /not a clean relative path/);
+  });
+}
+
+test("rejects an unclean previous path", () => {
+  const files = [{ path: "b.md", status: "renamed", previous_path: "a`.md" }];
+  assert.throws(() => parsePlannerResult(JSON.stringify({ ...valid, planned_files: files })), /not a clean relative path/);
+});
+
 const promptCases: { workflows: boolean; forAPerson: boolean }[] = [
   { workflows: false, forAPerson: true },
   { workflows: true, forAPerson: false },

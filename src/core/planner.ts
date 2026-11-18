@@ -21,6 +21,12 @@ const RESULT_PATH = ".autopilot/result.json";
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile<PlannerResult>(schema);
 
+// A planned path ends up in a backtick span of the spec comment, where plannedPaths reads it back. A
+// backtick or a line break in a path would let it show a different path there than the gate judged.
+export function isCleanPath(path: string): boolean {
+  return !/[`\p{Cc}]/u.test(path) && !path.startsWith("/") && !path.split("/").includes("..");
+}
+
 export function parsePlannerResult(text: string): PlannerResult {
   let data: unknown;
   try {
@@ -29,6 +35,8 @@ export function parsePlannerResult(text: string): PlannerResult {
     throw new Error(`${RESULT_PATH} is not valid JSON`);
   }
   if (!validate(data)) throw new Error(`invalid ${RESULT_PATH}: ${ajv.errorsText(validate.errors, { dataVar: "result" })}`);
+  const unclean = data.planned_files.flatMap((file) => (file.status === "renamed" ? [file.path, file.previous_path] : [file.path])).find((path) => !isCleanPath(path));
+  if (unclean !== undefined) throw new Error(`invalid ${RESULT_PATH}: planned path ${JSON.stringify(unclean)} is not a clean relative path`);
   return data;
 }
 
