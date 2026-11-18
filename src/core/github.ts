@@ -1,6 +1,7 @@
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import type { WatchEntry } from "./allow.ts";
+import { appSettingsUrl } from "./app.ts";
 import type { Audit } from "./audit.ts";
 import { checkRunState, issueOfBranch, type BotPull, type CheckState, type Statuses } from "./phase.ts";
 import { ONBOARDING_BRANCH, type Repo } from "./repo.ts";
@@ -34,6 +35,7 @@ export type RepoGitHub = {
   provenance(issue: number): Promise<Provenance>;
   // refresh: a new token, for a push that comes long after the clone.
   token(refresh?: boolean): Promise<string>;
+  canChangeWorkflows(): Promise<boolean>;
   defaultBranch(): Promise<string>;
   isEmpty(): Promise<boolean>;
   lastUnlabeled(issue: number, label: string, actors: string[]): Promise<string | undefined>;
@@ -85,7 +87,10 @@ function fileChange(file: { filename: string; status: string; previous_filename?
   return { status, path: file.filename, ...lines };
 }
 
+export type AppInfo = { slug: string; settingsUrl: string; workflows: boolean };
+
 export type GitHub = {
+  app(): Promise<AppInfo>;
   appSlug(): Promise<string>;
   appLogin(): Promise<string>;
   findInstallation(entry: WatchEntry): Promise<number | undefined>;
@@ -164,6 +169,10 @@ function hasToken(value: unknown): value is { token: string; expiresAt: string }
   return typeof value === "object" && value !== null && "token" in value && typeof value.token === "string" && "expiresAt" in value && typeof value.expiresAt === "string";
 }
 
+function writesWorkflows(auth: object): boolean {
+  return "permissions" in auth && typeof auth.permissions === "object" && auth.permissions !== null && "workflows" in auth.permissions && auth.permissions.workflows === "write";
+}
+
 
 // A 304 answer to a conditional request does not count against the rate limit, so an unchanged poll is free.
 function cacheGetsByEtag(octokit: Octokit): Octokit {
@@ -202,6 +211,13 @@ type IssueProvenance = {
 };
 
 function repoGitHub(octokit: Octokit, installationId: number, { owner, name: repo }: Repo, audit: Audit): RepoGitHub {
+  async function installationToken(refresh: boolean): Promise<{ token: string; expiresAt: string }> {
+    const auth: unknown = await octokit.auth({ type: "installation", refresh });
+    if (!hasToken(auth)) throw new Error("GitHub App auth returned no installation token");
+    audit({ event: "token.minted", installation: installationId, repo: `${owner}/${repo}`, expires: auth.expiresAt });
+    return auth;
+  }
+
   const issueParams = (issue: number) => ({ owner, repo, issue_number: issue });
   // Any App with the checks permission, or anyone with write access through a commit status, can post
   // a result with any name. Only GitHub Actions runs count, so the repo's workflows decide.
@@ -300,10 +316,12 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
       };
     },
     async token(refresh = false) {
-      const auth: unknown = await octokit.auth({ type: "installation", refresh });
-      if (!hasToken(auth)) throw new Error("GitHub App auth returned no installation token");
-      audit({ event: "token.minted", installation: installationId, repo: `${owner}/${repo}`, expires: auth.expiresAt });
-      return auth.token;
+      return (await installationToken(refresh)).token;
+    },
+    // A token keeps the permissions of the moment GitHub made it. A cached token can be older than a
+    // Workflows permission that the owner accepted later, so a "no" asks again with a new token.
+    async canChangeWorkflows() {
+      return writesWorkflows(await installationToken(false)) || writesWorkflows(await installationToken(true));
     },
     async defaultBranch() {
       const { data } = await octokit.repos.get({ owner, repo });
@@ -442,7 +460,7 @@ export function createGitHub(auth: { appId: number; privateKey: string }, audit:
   const app = mapRequestErrors(new Octokit({ authStrategy: createAppAuth, auth, log: quiet }), auth.appId);
   const clients = new Map<number, Octokit>();
   const installationIds = new Map<string, number>();
-  let slug: string | undefined;
+  let info: AppInfo | undefined;
 
   function asInstallation(installationId: number): Octokit {
     let octokit = clients.get(installationId);
@@ -453,18 +471,20 @@ export function createGitHub(auth: { appId: number; privateKey: string }, audit:
     return octokit;
   }
 
-  async function appSlug(): Promise<string> {
-    if (!slug) {
+  async function appInfo(): Promise<AppInfo> {
+    if (!info) {
       const { data } = await app.apps.getAuthenticated();
       if (!data?.slug) throw new Error("GitHub App has no slug");
-      slug = data.slug;
+      const owner = data.owner && "login" in data.owner ? { login: data.owner.login, type: data.owner.type } : undefined;
+      info = { slug: data.slug, settingsUrl: appSettingsUrl(data.slug, owner), workflows: data.permissions.workflows === "write" };
     }
-    return slug;
+    return info;
   }
 
   return {
-    appSlug,
-    appLogin: async () => `${await appSlug()}[bot]`,
+    app: appInfo,
+    appSlug: async () => (await appInfo()).slug,
+    appLogin: async () => `${(await appInfo()).slug}[bot]`,
     async findInstallation(entry) {
       const key = entry.repo ? `${entry.owner}/${entry.repo}` : entry.owner;
       const known = installationIds.get(key);

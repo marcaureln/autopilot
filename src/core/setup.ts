@@ -15,6 +15,7 @@ export type SetupConfig = {
   allow?: string[];
   init?: string[];
   alias?: string | false;
+  workflows?: boolean;
 };
 
 const ajv = new Ajv2020({ allErrors: true });

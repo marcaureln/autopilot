@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { botIdentity, builderPrompt, commitProblems, neutralize, parseBuilderResult, pullBody, workflowFiles, type Commit } from "./builder.ts";
+import { botIdentity, builderPrompt, commitProblems, neutralize, parseBuilderResult, pullBody, workflowFiles, workflowStop, type Commit } from "./builder.ts";
 
 const bot = botIdentity("autopilot[bot]", 123456);
 
@@ -59,6 +59,33 @@ for (const { name, paths, expected } of workflowCases) {
   });
 }
 
+const stopCases: { name: string; paths: string[]; workflows: boolean; expected: RegExp | undefined }[] = [
+  { name: "a workflow change without the permission", paths: [".github/workflows/ci.yml"], workflows: false, expected: /`\.github\/workflows\/ci\.yml`.*make this change yourself, or give the App the Workflows permission \(Read and write\)/ },
+  { name: "a workflow change with the permission", paths: [".github/workflows/ci.yml"], workflows: true, expected: undefined },
+  { name: "no workflow change without the permission", paths: ["src/a.ts"], workflows: false, expected: undefined },
+];
+
+for (const { name, paths, workflows, expected } of stopCases) {
+  test(`workflow stop: ${name}`, () => {
+    const stop = workflowStop(paths, workflows);
+    if (expected) assert.match(stop ?? "", expected);
+    else assert.equal(stop, undefined);
+  });
+}
+
+const builderRuleCases: { workflows: boolean; forbids: boolean }[] = [
+  { workflows: false, forbids: true },
+  { workflows: true, forbids: false },
+];
+
+for (const { workflows, forbids } of builderRuleCases) {
+  test(`the builder prompt ${forbids ? "forbids" : "allows"} workflow changes when the permission is ${workflows ? "there" : "missing"}`, () => {
+    const prompt = builderPrompt({ repo: "o/r", workdir: "/workspaces/r", issue: { number: 7, title: "t", body: "" }, thread: [], secrets: [], canChangeWorkflows: workflows });
+    assert.equal(prompt.includes("Do not add, change, delete or rename files under `.github/workflows/`"), forbids);
+    assert.match(prompt, /- Keep the change to what the spec asks\.\n(- .*\n)?\n# Environment/);
+  });
+}
+
 test("the pull request body links the issue first and drops attribution lines from the summary", () => {
   assert.equal(pullBody(7, "Adds CONTRIBUTING.md.\n🤖 Generated with Claude Code\nFixes #8"), "Fixes #7\n\nAdds CONTRIBUTING.md.\nFi\u200bxes #8\n");
 });
@@ -70,6 +97,7 @@ test("a fix prompt carries the failed check output, cut to its end", () => {
     issue: { number: 7, title: "Add CONTRIBUTING.md", body: "" },
     thread: [],
     secrets: [],
+    canChangeWorkflows: true,
     failures: [{ check: "lint", output: `${"x".repeat(7000)}END` }],
   });
   assert.match(prompt, /## lint/);
@@ -78,7 +106,7 @@ test("a fix prompt carries the failed check output, cut to its end", () => {
 });
 
 test("the prompt names the workspace folder of the dev container, not a fixed path", () => {
-  const prompt = builderPrompt({ repo: "o/r", workdir: "/workspaces/r", issue: { number: 7, title: "t", body: "" }, thread: [], secrets: [] });
+  const prompt = builderPrompt({ repo: "o/r", workdir: "/workspaces/r", issue: { number: 7, title: "t", body: "" }, thread: [], secrets: [], canChangeWorkflows: true });
   assert.match(prompt, /checked out at \/workspaces\/r\./);
   assert.match(prompt, /one JSON file at \/workspaces\/r\/\.autopilot\/result\.json/);
   assert.doesNotMatch(prompt, /\/work\b/);
@@ -91,7 +119,7 @@ const secretsPromptCases: { secrets: string[]; expected: RegExp }[] = [
 
 for (const { secrets, expected } of secretsPromptCases) {
   test(`the prompt names the secrets the checks get: [${secrets.join(", ")}]`, () => {
-    assert.match(builderPrompt({ repo: "o/r", workdir: "/workspaces/r", issue: { number: 7, title: "t", body: "" }, thread: [], secrets }), expected);
+    assert.match(builderPrompt({ repo: "o/r", workdir: "/workspaces/r", issue: { number: 7, title: "t", body: "" }, thread: [], secrets, canChangeWorkflows: true }), expected);
   });
 }
 

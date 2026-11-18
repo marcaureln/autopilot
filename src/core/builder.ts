@@ -80,10 +80,15 @@ export function commitProblems(commits: Commit[], identity: Identity): string[] 
   });
 }
 
-// The App has no Workflows permission, so GitHub refuses a push that adds, changes or deletes a workflow file.
-// Do not add that permission: with it, an agent could change CI to read the Actions secrets or to pass its own work.
 export function workflowFiles(paths: string[]): string[] {
   return [...new Set(paths.filter((path) => path.startsWith(".github/workflows/")))];
+}
+
+// Without the Workflows permission, GitHub refuses a push that adds, changes or deletes a workflow file.
+export function workflowStop(paths: string[], canChangeWorkflows: boolean): string | undefined {
+  const workflows = workflowFiles(paths);
+  if (canChangeWorkflows || workflows.length === 0) return undefined;
+  return `the change touches ${workflows.map((path) => `\`${path}\``).join(", ")}. The App has no Workflows permission, so autopilot cannot change files in \`.github/workflows/\`: make this change yourself, or give the App the Workflows permission (Read and write) and accept it on the installation page.`;
 }
 
 // The summary is agent text. In a pull request body, a closing keyword closes that issue on merge
@@ -112,6 +117,7 @@ export type BuilderInput = {
   issue: { number: number; title: string; body: string };
   thread: Comment[];
   secrets: string[];
+  canChangeWorkflows: boolean;
   failures?: Failure[];
 };
 
@@ -120,7 +126,7 @@ function failureBlock({ check, output }: Failure): string {
   return `## ${check}\n\n\`\`\`\n${text.replaceAll("```", "'''") || "(no output)"}\n\`\`\``;
 }
 
-export function builderPrompt({ workdir, issue, thread, secrets, failures }: BuilderInput): string {
+export function builderPrompt({ workdir, issue, thread, secrets, canChangeWorkflows, failures }: BuilderInput): string {
   const comments = thread.map((comment) => `**@${comment.author}** (${comment.createdAt}):\n\n${comment.body}`).join("\n\n---\n\n");
   const task = failures
     ? `The checks failed on the current commit of the pull request branch, which is checked out at ${workdir}. Fix the cause of each failure below. Do not weaken, skip or delete a check or a test to make it pass.
@@ -148,8 +154,7 @@ ${comments || "(no comments)"}
 - Do not change the git identity or the git config. Do not add trailers such as Co-Authored-By or Signed-off-by, and no "Generated with" line.
 - Do not push and do not open a pull request. There are no GitHub credentials here; autopilot pushes for you.
 - Keep the change to what the spec asks.
-- Do not add, change, delete or rename files under \`.github/workflows/\`. autopilot cannot push them. If the spec asks for such a change, leave it out and say so in your summary.
-
+${canChangeWorkflows ? "" : "- Do not add, change, delete or rename files under `.github/workflows/`. autopilot cannot push them. If the spec asks for such a change, leave it out and say so in your summary.\n"}
 # Environment
 
 You run inside the repo's dev container (\`.devcontainer/\`), with its services. Run the repo's own lint, type check and tests before you stop. If the work needs a new tool or service, add it to \`.devcontainer/\` in the same change: it applies from the next run, not in this one.
@@ -261,6 +266,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     const missing = harness.missingCredential(job.credentials);
     if (missing) throw new BuildStopped(missing);
     const token = await repoGitHub.token();
+    const canChangeWorkflows = await repoGitHub.canChangeWorkflows();
     const origin = join(jobDir, "origin");
     await shallowClone(repo, token, origin, mode.kind === "build" ? mode.base : mode.branch);
     const start = await git(origin, ["rev-parse", "HEAD"]);
@@ -292,7 +298,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     if (up.kind === "failed") throw new BuildStopped(`the dev container did not start:\n\n${up.result.output.slice(-MAX_FAILURE_CHARS)}`);
 
     const failures = mode.kind === "fix" ? mode.failures : undefined;
-    const prompt = builderPrompt({ repo: `${repo.owner}/${repo.name}`, workdir: up.workspaceFolder, issue, thread, secrets: [...new Set([...repoSecretNames(repo), ...Object.keys(config.secrets)])], failures });
+    const prompt = builderPrompt({ repo: `${repo.owner}/${repo.name}`, workdir: up.workspaceFolder, issue, thread, secrets: [...new Set([...repoSecretNames(repo), ...Object.keys(config.secrets)])], canChangeWorkflows, failures });
     await runAgentInDevcontainer({
       harness,
       credentials: job.credentials,
@@ -325,11 +331,9 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     const commits = await readCommits(origin, `${start}..${head}`);
     const problems = commitProblems(commits, identity);
     if (problems.length > 0) throw new BuildStopped(`autopilot does not push these commits: ${problems.join("; ")}`);
-    // Each pushed commit is checked, not only the net diff: a commit that adds a workflow and a later one that removes it can still be refused.
-    const workflows = workflowFiles((await git(origin, ["log", "--no-renames", "--name-only", "--format=", "-z", `${start}..${head}`])).split("\0"));
-    if (workflows.length > 0) {
-      throw new BuildStopped(`the change touches ${workflows.map((path) => `\`${path}\``).join(", ")}. autopilot cannot change files in \`.github/workflows/\`: make this change yourself.`);
-    }
+    // GitHub checks each pushed commit, not only the net diff: it refuses a push where one commit adds a workflow and a later commit removes it.
+    const workflowProblem = workflowStop((await git(origin, ["log", "--no-renames", "--name-only", "--format=", "-z", `${start}..${head}`])).split("\0"), canChangeWorkflows);
+    if (workflowProblem) throw new BuildStopped(workflowProblem);
 
     // A first build replaces what an earlier attempt left on the branch. A fix round only adds on top of the commit it checked out.
     const lease = mode.kind === "build" ? "--force" : `--force-with-lease=refs/heads/${mode.branch}:${start}`;
