@@ -14,8 +14,9 @@ case "$(uname -m)" in
     exit 1
     ;;
 esac
-# Alpine and other musl images need the musl build, which links the C++ runtime.
-if ls /lib/ld-musl-* >/dev/null 2>&1; then
+# Alpine and other musl images need the musl build, which links the C++ runtime. ldd names the C
+# library in use: a glibc image can have the musl package installed too.
+if ldd --version 2>&1 | grep -qi musl; then
   arch="$arch-musl"
   if command -v apk >/dev/null; then apk add --no-cache libstdc++ libgcc; fi
 fi
