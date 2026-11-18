@@ -258,6 +258,14 @@ async function writeSpec(job: Working): Promise<void> {
   if (gate.event !== "go") await move(gate.event);
 }
 
+// A plain build error becomes a block. Otherwise the job would run the agent again on each poll.
+function buildOrBlock(loop: Loop, job: Parameters<Loop["build"]>[0]): Promise<Built> {
+  return loop.build(job).catch((error: unknown) => {
+    if (error instanceof SecretsMissing || error instanceof BuildStopped || error instanceof EnvironmentRefused) throw error;
+    throw new Blocked(`The build failed: ${messageOf(error)}.`);
+  });
+}
+
 async function identityOf(ctx: RepoContext) {
   return botIdentity(ctx.bot, await ctx.repoGitHub.userId(ctx.bot));
 }
@@ -271,7 +279,7 @@ async function build(job: Working): Promise<void> {
   const base = await repoGitHub.defaultBranch();
   const branch = branchName(issue.number, issue.title);
   log(key, `${key}: build on ${branch} with ${config.agents[config.steps.build].model}`);
-  const built = await loop.build({ github, repoGitHub, repo, host, config, issue, thread, identity: await identityOf(ctx), mode: { kind: "build", base, branch } });
+  const built = await buildOrBlock(loop, { github, repoGitHub, repo, host, config, issue, thread, identity: await identityOf(ctx), mode: { kind: "build", base, branch } });
   await repoGitHub.markPushed(built.head, issue.number);
   const pull = await repoGitHub.openPull({ head: branch, base, title: issue.title, body: pullBody(issue.number, built.summary) }).catch((error: unknown) => {
     throw new Blocked(`autopilot pushed ${branch} but could not open the pull request: ${messageOf(error)}`);
@@ -430,7 +438,7 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
     }
     loop.log(key, `${key}: fix round ${fix.round} for ${verdict.failing.join(", ")} on #${pull.number}`);
     const thread = await vouchedThread(job);
-    const built = await loop.build({
+    const built = await buildOrBlock(loop, {
       github: loop.github,
       repoGitHub,
       repo: ctx.repo,

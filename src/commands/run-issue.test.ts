@@ -352,6 +352,18 @@ describe("verify.mode ci", () => {
   });
 });
 
+describe("a builder that fails", () => {
+  test("a plain error blocks the issue and the agent does not run again", async () => {
+    const world = new FakeWorld();
+    world.script.buildError = new Error("the container did not start");
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll(3);
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
+    assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^autopilot stopped: The build failed: the container did not start\./);
+    assert.equal(world.builds.length, 1);
+  });
+});
+
 describe("a builder that needs secrets", () => {
   test("the issue moves to needs-info with a comment that names them, and a new spec follows the owner's reply", async () => {
     const world = new FakeWorld();
