@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PROMPT_FILE } from "../core/environment.ts";
-import type { Harness } from "./harness.ts";
+import type { Harness } from "./types.ts";
 
 const DIR = new URL("../../docker/opencode/", import.meta.url).pathname;
 

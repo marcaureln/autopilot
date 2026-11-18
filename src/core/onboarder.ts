@@ -3,8 +3,8 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { claudeCodeVersion } from "../harness/claude.ts";
-import { HARNESSES, runAgent, type Credentials } from "../harness/harness.ts";
+import { HARNESSES, runAgent } from "../harness/harness.ts";
+import type { Credentials } from "../harness/types.ts";
 import type { Audit } from "./audit.ts";
 import { BASELINE_PATH, knownFailureLines, renderBaseline, type Baseline } from "./baseline.ts";
 import type { Identity } from "./builder.ts";
@@ -76,7 +76,7 @@ async function onboardingAgent(setup: OnboardingSetup, hasDevcontainer: boolean)
   mkdirSync(join(work, ".autopilot"));
   appendFileSync(join(work, ".git", "info", "exclude"), "/.autopilot/\n");
   const promptFile = join(jobDir, "prompt.md");
-  writeFileSync(promptFile, onboardingPrompt({ repo: `${repo.owner}/${repo.name}`, hasDevcontainer, claudeCodeVersion: claudeCodeVersion(), notes: setup.notes, request: setup.request }));
+  writeFileSync(promptFile, onboardingPrompt({ repo: `${repo.owner}/${repo.name}`, hasDevcontainer, claudeCodeVersion: HARNESSES.claude.version(), notes: setup.notes, request: setup.request }));
   setup.say(`==> onboarding agent (${DEFAULT_PLANNER.model}), up to ${AGENT_TIMEOUT_MINUTES} minutes`);
   await runAgent({
     harness: HARNESSES[DEFAULT_PLANNER.harness],
