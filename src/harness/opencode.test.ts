@@ -18,10 +18,20 @@ for (const { name, effort, model } of commandCases) {
   });
 }
 
-test("opencode takes every API key of the host and refuses to start without one", () => {
-  assert.deepEqual(opencode.secretEnv({ claudeToken: "t", apiKeys: { ANTHROPIC_API_KEY: "k" } }), { ANTHROPIC_API_KEY: "k" });
-  assert.throws(() => opencode.secretEnv({ claudeToken: "t", apiKeys: {} }), /secrets\.api_keys/);
-});
+const credentialCases: { name: string; apiKeys: Record<string, string>; missing: RegExp | undefined }[] = [
+  { name: "an API key", apiKeys: { ANTHROPIC_API_KEY: "k" }, missing: undefined },
+  { name: "no API key", apiKeys: {}, missing: /secrets\.api_keys/ },
+];
+
+for (const { name, apiKeys, missing } of credentialCases) {
+  test(`opencode credentials: ${name}`, () => {
+    const credentials = { claudeToken: "t", apiKeys };
+    const problem = opencode.missingCredential(credentials);
+    if (missing) assert.match(problem ?? "", missing);
+    else assert.equal(problem, undefined);
+    assert.deepEqual(opencode.secretEnv(credentials), apiKeys);
+  });
+}
 
 test("opencode reads no project config, but reads the AGENTS.md of the checkout", () => {
   const env = opencode.env("/workspaces/app");

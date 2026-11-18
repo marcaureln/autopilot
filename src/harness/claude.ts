@@ -30,6 +30,8 @@ export const claude: Harness = {
       : [];
     return [{ source: skillsDir, target: "/root/.claude/skills", readonly: true }, ...personal];
   },
+  // The service does not start without the token.
+  missingCredential: () => undefined,
   secretEnv: ({ claudeToken }) => ({ CLAUDE_CODE_OAUTH_TOKEN: claudeToken }),
   // Claude Code refuses to bypass permissions as root unless it is told it runs in a sandbox.
   env: () => ({ IS_SANDBOX: "1" }),

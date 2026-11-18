@@ -23,10 +23,8 @@ export const opencode: Harness = {
       ...(instructions && existsSync(instructions) ? [{ source: instructions, target: "/root/.config/opencode/AGENTS.md", readonly: true }] : []),
     ];
   },
-  secretEnv({ apiKeys }) {
-    if (Object.keys(apiKeys).length === 0) throw new Error("OpenCode needs a provider API key: add it to secrets.api_keys in host.json");
-    return apiKeys;
-  },
+  missingCredential: ({ apiKeys }) => (Object.keys(apiKeys).length === 0 ? "OpenCode needs a provider API key: add it to secrets.api_keys in host.json" : undefined),
+  secretEnv: ({ apiKeys }) => apiKeys,
   // A repo's opencode.json or .opencode/ could send the API key to another server or load a plugin.
   // Without project config OpenCode also skips the repo's AGENTS.md, so it is added back.
   // HOME and the XDG_ variables decide where OpenCode finds its global config.

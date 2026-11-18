@@ -103,6 +103,11 @@ export type PlannerJob = {
 export type AgentAccess = { credentials: Credentials; audit: Audit };
 
 export async function runPlanner({ github, repoGitHub, repo, host, config, issue, thread }: PlannerJob, access: AgentAccess): Promise<PlannerResult> {
+  const role = config.steps.spec;
+  const agent = config.agents[role];
+  const harness = HARNESSES[agent.harness];
+  const missing = harness.missingCredential(access.credentials);
+  if (missing) throw new Error(missing);
   const job = mkdtempSync(join(tmpdir(), "autopilot-job-"));
   try {
     const work = join(job, "work");
@@ -110,15 +115,13 @@ export async function runPlanner({ github, repoGitHub, repo, host, config, issue
     mkdirSync(join(work, ".autopilot"));
     appendFileSync(join(work, ".git", "info", "exclude"), "/.autopilot/\n");
 
-    const role = config.steps.spec;
     const { skillsDir, claudeConfigDir } = await prepareAgent(host, config.skills[role], github, job);
 
     const promptFile = join(job, "prompt.md");
     writeFileSync(promptFile, plannerPrompt({ repo: `${repo.owner}/${repo.name}`, issue, thread, risk: config.risk }));
 
-    const agent = config.agents[role];
     await runAgent({
-      harness: HARNESSES[agent.harness],
+      harness,
       name: containerName(repo.owner, repo.name, issue.number),
       model: agent.model,
       effort: agent.effort,

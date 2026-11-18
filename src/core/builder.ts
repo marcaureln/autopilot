@@ -247,6 +247,11 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
   const idLabel = `autopilot.job=${containerName(repo.owner, repo.name, issue.number, mode.kind)}`;
   let started = false;
   try {
+    const role = mode.kind === "build" ? config.steps.build : config.steps.fix;
+    const agent = config.agents[role];
+    const harness = HARNESSES[agent.harness];
+    const missing = harness.missingCredential(job.credentials);
+    if (missing) throw new BuildStopped(missing);
     const token = await repoGitHub.token();
     const origin = join(jobDir, "origin");
     await shallowClone(repo, token, origin, mode.kind === "build" ? mode.base : mode.branch);
@@ -258,9 +263,6 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     cpSync(origin, work, { recursive: true, verbatimSymlinks: true });
     await git(work, ["config", "user.name", identity.name]);
     await git(work, ["config", "user.email", identity.email]);
-    const role = mode.kind === "build" ? config.steps.build : config.steps.fix;
-    const agent = config.agents[role];
-    const harness = HARNESSES[agent.harness];
     const { skillsDir, claudeConfigDir } = await prepareAgent(host, config.skills[role], github, jobDir);
     const runDir = join(jobDir, "run");
     mkdirSync(runDir, { mode: 0o700 });
