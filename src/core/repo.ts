@@ -13,5 +13,11 @@ export function parseRemote(url: string): Repo {
 }
 
 export function detectRepo(cwd = process.cwd()): Repo {
-  return parseRemote(execFileSync("git", ["remote", "get-url", "origin"], { cwd, encoding: "utf8" }).trim());
+  let url: string;
+  try {
+    url = execFileSync("git", ["remote", "get-url", "origin"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch (error) {
+    throw new Error("This folder is not a git checkout with a GitHub origin remote. Run the command in a checkout of the repo, or pass --repo <owner>/<repo>.", { cause: error });
+  }
+  return parseRemote(url);
 }
