@@ -157,10 +157,14 @@ function checkoutRelease(): Release {
   };
 }
 
+// An exit code the shell script uses for "no such file", so that other failures stay visible.
+const NOT_FOUND = 3;
+
 async function hostFile(remote: Connection, options: { owner?: string; appId?: number; backend: Backend }): Promise<Host> {
   const path = remote.layout.hostFile;
-  const { code, stdout } = await remote.shell.capture(`${remote.sudo}cat ${path} 2>/dev/null`);
+  const { code, stdout } = await remote.shell.capture(`${remote.sudo}sh -c 'test -e ${path} || exit ${NOT_FOUND}; cat ${path}'`);
   if (code === 0) return parseHost(stdout, path);
+  if (code !== NOT_FOUND) throw new Error(`autopilot could not read ${path} on the host (exit ${code}). See the message above.`);
   if (!options.owner || !options.appId) throw new Error("the host has no host.json yet: pass --owner <login> --app-id <id>");
   const text = JSON.stringify(initialHostFile({ name: remote.name, owner: options.owner, appId: options.appId, backend: options.backend }), null, 2) + "\n";
   const host = parseHost(text, "the new host.json");

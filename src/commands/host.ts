@@ -44,7 +44,11 @@ export async function connect(target: string): Promise<Connection> {
   if (probe.code !== 0) throw new Error(`cannot reach ${target} (exit ${probe.code})`);
   const [os = "", home = "", uid = "", name = ""] = probe.stdout.split("\n");
   const layout = hostLayout(parseOS(os), home);
-  return { shell, layout, sudo: layout.sudo(Number(uid)), name: name.toLowerCase() };
+  const sudo = layout.sudo(Number(uid));
+  if (sudo && (await shell.capture(`${sudo}-n true`)).code !== 0) {
+    throw new Error(`sudo on ${target} asks for a password. autopilot runs sudo over SSH with no terminal. Let this user run sudo without a password, then run the command again.`);
+  }
+  return { shell, layout, sudo, name: name.toLowerCase() };
 }
 
 export async function must(shell: Shell, step: string, command: string, input?: Buffer): Promise<void> {
