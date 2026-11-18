@@ -22,20 +22,22 @@ function nameProblem(name: string): string | undefined {
   return HOST_NAME.test(name) && name !== LOCAL_TARGET ? undefined : `"${name}" is not a host name: use letters, digits, ".", "_" and "-", and not "local"`;
 }
 
-export function parseHosts(text: string, source: string): HostsFile {
+// With `repair`, a default that is not a host is dropped, so hosts add, rm and default can fix a file that a hand edit broke.
+export function parseHosts(text: string, source: string, repair = false): HostsFile {
   let data: unknown;
   try {
     data = JSON.parse(text);
   } catch (error) {
-    throw new Error(`Invalid hosts file ${source}: ${error instanceof Error ? error.message : error}`);
+    throw new Error(`Invalid hosts file ${source}: ${error instanceof Error ? error.message : error}. Fix the file, or move it away`);
   }
   if (!validate(data)) {
-    throw new Error(`Invalid hosts file ${source}: ${ajv.errorsText(validate.errors, { dataVar: "file" })}`);
+    throw new Error(`Invalid hosts file ${source}: ${ajv.errorsText(validate.errors, { dataVar: "file" })}. Fix the file, or move it away`);
   }
   const badName = Object.keys(data.hosts).find((name) => nameProblem(name));
-  if (badName !== undefined) throw new Error(`Invalid hosts file ${source}: ${nameProblem(badName)}`);
+  if (badName !== undefined) throw new Error(`Invalid hosts file ${source}: ${nameProblem(badName)}. Rename or remove it in the file`);
   if (data.default !== undefined && !Object.hasOwn(data.hosts, data.default)) {
-    throw new Error(`Invalid hosts file ${source}: the default "${data.default}" is not one of its hosts`);
+    if (repair) return { ...data, default: undefined };
+    throw new Error(`Invalid hosts file ${source}: the default "${data.default}" is not one of its hosts. Set another default with autopilot hosts default <name>`);
   }
   return data;
 }

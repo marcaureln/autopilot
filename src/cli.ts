@@ -217,15 +217,20 @@ async function main(): Promise<void> {
     case "update":
       await update(hostFile, values.version);
       break;
-    case "init":
-      await init({ repo: targetRepo(), host: selectedHost()?.target, skills: values.skill, notesFile: values.notes, claudeToken: () => clientClaudeToken(secretsBackend(), process.stdin.isTTY) });
+    case "init": {
+      const backend = secretsBackend();
+      await init({ repo: targetRepo(), host: selectedHost()?.target, skills: values.skill, notesFile: values.notes, claudeToken: () => clientClaudeToken(backend, process.stdin.isTTY) });
       break;
+    }
     case "secrets": {
       const command = parseSecretsCommand(positionals.slice(1), values["from-env"]);
+      if (secretsBackend() === "op") {
+        await secrets(command, targetRepo());
+        break;
+      }
       const target = selectedHost()?.target;
-      if (secretsBackend() === "op") await secrets(command, targetRepo());
       // `import` is what the client sends: it always runs here, on the host.
-      else if (target && command.action !== "import") process.exitCode = await sendSecrets(target, command, targetRepo());
+      if (target && command.action !== "import") process.exitCode = await sendSecrets(target, command, targetRepo());
       else if (!existsSync(hostFile)) throw new Error("the env backend keeps the secrets on a host: add a host with autopilot hosts add, or pass --host");
       else await hostSecrets(command, targetRepo(), auditLog);
       break;

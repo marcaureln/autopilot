@@ -11,8 +11,8 @@ export const HOSTS_PATH = join(xdgConfigHome && isAbsolute(xdgConfigHome) ? xdgC
 
 export const HOSTS_USAGE = "usage: autopilot hosts [add <name> <ssh-target | local> | rm <name> | default <name>]";
 
-function loadHosts(): HostsFile {
-  return existsSync(HOSTS_PATH) ? parseHosts(readFileSync(HOSTS_PATH, "utf8"), HOSTS_PATH) : NO_HOSTS;
+function loadHosts(repair = false): HostsFile {
+  return existsSync(HOSTS_PATH) ? parseHosts(readFileSync(HOSTS_PATH, "utf8"), HOSTS_PATH, repair) : NO_HOSTS;
 }
 
 function saveHosts(file: HostsFile): void {
@@ -32,7 +32,7 @@ export function hostName(host: HostRef): string {
 }
 
 export function saveHost(name: string, target: string): { changed: boolean; isDefault: boolean } {
-  const file = loadHosts();
+  const file = loadHosts(true);
   const next = addHost(file, name, target);
   const changed = JSON.stringify(next) !== JSON.stringify(file);
   if (changed) saveHosts(next);
@@ -52,19 +52,21 @@ export function listHosts(): void {
 
 export async function hostsAdd(name: string, target: string, options: HostSetupOptions): Promise<void> {
   checkHost(name, target);
+  // A file that cannot be saved must fail before the host work, not after it.
+  loadHosts(true);
   await hostSetup(target, options);
   const { isDefault } = saveHost(name, target);
   console.log(`==> saved ${name} (${target}) in ${HOSTS_PATH}${isDefault ? ". It is the default host" : ""}`);
 }
 
 export function hostsRemove(name: string): void {
-  const file = loadHosts();
+  const file = loadHosts(true);
   saveHosts(removeHost(file, name));
   console.log(`Removed ${name} from ${HOSTS_PATH}. This does not uninstall autopilot on the host: its service, release and secrets stay.`);
   if (file.default === name) console.log("There is no default host now. Set one with autopilot hosts default <name>.");
 }
 
 export function hostsDefault(name: string): void {
-  saveHosts(setDefaultHost(loadHosts(), name));
+  saveHosts(setDefaultHost(loadHosts(true), name));
   console.log(`${name} is the default host.`);
 }

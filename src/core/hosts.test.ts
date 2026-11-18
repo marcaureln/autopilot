@@ -22,6 +22,20 @@ for (const { name, text, error } of parses) {
   });
 }
 
+const repairs: { name: string; text: string; expected: HostsFile | RegExp }[] = [
+  { name: "drops a default that is not a host", text: `{ "default": "nas", "hosts": { "pi": { "target": "rpi" } } }`, expected: { default: undefined, hosts: { pi: { target: "rpi" } } } },
+  { name: "keeps a default that is a host", text: JSON.stringify(FILE), expected: FILE },
+  { name: "still rejects text that is not JSON", text: `{ "hosts": `, expected: /Invalid hosts file hosts\.json/ },
+  { name: "still rejects a host named local", text: `{ "hosts": { "local": { "target": "rpi" } } }`, expected: /"local" is not a host name/ },
+];
+
+for (const { name, text, expected } of repairs) {
+  test(`hosts file for edit: ${name}`, () => {
+    if (expected instanceof RegExp) assert.throws(() => parseHosts(text, "hosts.json", true), expected);
+    else assert.deepEqual(parseHosts(text, "hosts.json", true), expected);
+  });
+}
+
 const resolutions: { name: string; file: HostsFile; flag?: string; env?: string; expected: HostRef | undefined }[] = [
   { name: "--host wins over AUTOPILOT_HOST and the default", file: FILE, flag: "mac", env: "pi", expected: { savedName: "mac", target: "local" } },
   { name: "AUTOPILOT_HOST wins over the default", file: FILE, env: "mac", expected: { savedName: "mac", target: "local" } },
