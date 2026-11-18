@@ -58,6 +58,8 @@ const github: GitHub = {
   appSlug: async () => "autopilot",
   appLogin: async () => "autopilot[bot]",
   findInstallation: async (entry) => (entry.owner === "owner" || entry.owner === "org" ? 1 : undefined),
+  canChangeWorkflows: unused,
+  rateLimit: unused,
   listRepos: async (_, owner) => [
     { owner, name: "app-a" },
     { owner, name: "app-b" },

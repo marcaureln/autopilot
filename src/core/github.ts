@@ -85,10 +85,15 @@ function fileChange(file: { filename: string; status: string; previous_filename?
   return { status, path: file.filename, ...lines };
 }
 
+export type Quota = { limit: number; remaining: number; resetAt: Date };
+
 export type GitHub = {
   appSlug(): Promise<string>;
   appLogin(): Promise<string>;
   findInstallation(entry: WatchEntry): Promise<number | undefined>;
+  // Whether the installation lets the App change .github/workflows.
+  canChangeWorkflows(installationId: number): Promise<boolean>;
+  rateLimit(installationId: number): Promise<{ core: Quota; search: Quota }>;
   listRepos(installationId: number, owner: string): Promise<Repo[]>;
   // The issues and pull requests that match a search query, in every repo the installation can read.
   // GitHub allows 30 searches per minute.
@@ -469,6 +474,15 @@ export function createGitHub(auth: { appId: number; privateKey: string }, audit:
         if (hasStatus(error, 404)) return undefined;
         throw error;
       }
+    },
+    async canChangeWorkflows(installationId) {
+      const { data } = await app.apps.getInstallation({ installation_id: installationId });
+      return data.permissions.workflows === "write";
+    },
+    async rateLimit(installationId) {
+      const { data } = await asInstallation(installationId).rateLimit.get();
+      const quota = ({ limit, remaining, reset }: { limit: number; remaining: number; reset: number }): Quota => ({ limit, remaining, resetAt: new Date(reset * 1000) });
+      return { core: quota(data.resources.core), search: quota(data.resources.search) };
     },
     async listRepos(installationId, owner) {
       const octokit = asInstallation(installationId);
