@@ -168,7 +168,7 @@
         }
       },
       "if": { "properties": { "harness": { "const": "opencode" } } },
-      "then": { "properties": { "model": { "pattern": "^[^/#]+/[^#]+$" } } }
+      "then": { "properties": { "model": { "type": "string", "pattern": "^[^/#]+/[^#]+$" } } }
     },
     "skillList": {
       "type": "array",
