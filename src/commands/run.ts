@@ -7,7 +7,7 @@ import { planChecks, type CheckResult, type ChecksJob } from "../core/checks.ts"
 import { claimComment, claimOf, ownClaims } from "../core/claim.ts";
 import { CONFIG_PATH, parseConfig, type Config } from "../core/config.ts";
 import { EnvironmentRefused } from "../core/environment.ts";
-import { gate1, gate2 } from "../core/gate.ts";
+import { planGate, mergeGate } from "../core/gate.ts";
 import type { GitHub, Issue, RepoGitHub } from "../core/github.ts";
 import { usesOnePassword, type Host } from "../core/host.ts";
 import { ANY_TIME, branchName, fixVerdict, headVerdict, issuePhase, latestPull, type BotPull, type HeadVerdict, type Statuses } from "../core/phase.ts";
@@ -216,7 +216,7 @@ async function working(job: Working): Promise<void> {
   switch (phase.kind) {
     case "spec":
       return writeSpec(job);
-    case "gate1":
+    case "plan":
       return move(phase.event);
     case "build":
       return build(job);
@@ -226,7 +226,7 @@ async function working(job: Working): Promise<void> {
       throw new Blocked(`Pull request #${phase.pull.number} was closed without a merge. To build again, remove the label. To change the plan first, comment on the issue.`);
     case "pull": {
       const config = await readConfig(repoGitHub);
-      return checksAndGate2(job, config, phase.pull, retryAt, currentSpec);
+      return checksAndMergeGate(job, config, phase.pull, retryAt, currentSpec);
     }
   }
 }
@@ -252,8 +252,8 @@ async function writeSpec(job: Working): Promise<void> {
     log(key, `${key}: planner failed: ${messageOf(error)}${error instanceof Error && error.cause ? `\n${String(error.cause)}` : ""}`);
     throw new Blocked(`The planner failed: ${messageOf(error)}.`);
   });
-  const gate = gate1(result, config.risk);
-  audit({ event: "gate.decided", issue: key, gate: "gate1", planner: result.risk, rules: gate.rulesRisk, final: gate.risk, scope: result.scope, decision: gate.event });
+  const gate = planGate(result, config.risk);
+  audit({ event: "gate.decided", issue: key, gate: "plan", planner: result.risk, rules: gate.rulesRisk, final: gate.risk, scope: result.scope, decision: gate.event });
   await ctx.repoGitHub.postComment(issue.number, renderSpecComment(result, gate));
   if (gate.event !== "go") await move(gate.event);
 }
@@ -387,7 +387,7 @@ async function rebaseWhenBehind(job: Working, pull: BotPull, defaultBranch: stri
   return true;
 }
 
-async function checksAndGate2(job: Working, config: Config, pull: BotPull, retryAt: string, currentSpec: () => Promise<TrustedSpec | undefined>): Promise<void> {
+async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, retryAt: string, currentSpec: () => Promise<TrustedSpec | undefined>): Promise<void> {
   const { loop, ctx, issue, key } = job;
   const { repoGitHub } = ctx;
   const required = config.verify.required;
@@ -456,15 +456,15 @@ async function checksAndGate2(job: Working, config: Config, pull: BotPull, retry
     pushedByAutopilot,
     intoDefaultBranch: pull.base === defaultBranch,
   };
-  const gate = gate2(facts, config);
-  loop.audit({ event: "gate.decided", issue: key, gate: "gate2", pull: pull.number, planner: spec?.plannerRisk, rules: gate.rulesRisk, merge: config.merge, decision: gate.decision });
+  const gate = mergeGate(facts, config);
+  loop.audit({ event: "gate.decided", issue: key, gate: "merge", pull: pull.number, planner: spec?.plannerRisk, rules: gate.rulesRisk, merge: config.merge, decision: gate.decision });
   const repoName = `${ctx.repo.owner}/${ctx.repo.name}`;
   if (gate.decision === "merge") {
     await repoGitHub.mergePull(pull.number, sha, `${issue.title} (#${pull.number})`, `Fixes #${issue.number}`);
     loop.audit({ event: "pr.merged", repo: repoName, pull: pull.number, sha });
     return loop.log(key, `${key}: merged pull request #${pull.number}`);
   }
-  // The marker first: Gate 2 must not run again on each loop when the review request fails.
+  // The marker first: the merge gate must not run again on each loop when the review request fails.
   await repoGitHub.postComment(
     issue.number,
     `${marker}\nPull request #${pull.number} passed every check and waits for a review: ${gate.reasons.join("; ")}.`,

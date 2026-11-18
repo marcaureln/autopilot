@@ -3,7 +3,7 @@ import type { Config } from "./config.ts";
 
 export type Risk = "low" | "high";
 
-// Line counts are absent at Gate 1, where the planner only knows paths.
+// Line counts are absent at the plan gate, where the planner only knows paths.
 // "unknown" covers GitHub statuses we do not assess, such as copied or changed.
 export type FileChange =
   | { status: "added" | "modified" | "deleted" | "unknown"; path: string; additions?: number; deletions?: number }

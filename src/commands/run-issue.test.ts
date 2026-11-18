@@ -55,7 +55,7 @@ describe("the claim", () => {
   });
 });
 
-describe("Gate 1, after the planner wrote the spec", () => {
+describe("Plan gate, after the planner wrote the spec", () => {
   const rows: { name: string; plan: Partial<PlannerResult>; labels: string[]; gate: string; builds: boolean; checkbox: boolean }[] = [
     { name: "a low risk plan goes to the build", plan: {}, labels: ["autopilot", "autopilot:working"], gate: "go", builds: true, checkbox: false },
     { name: "a plan the planner rates high waits for approval", plan: { risk: "high" }, labels: ["autopilot", "autopilot:awaiting-approval"], gate: "approval_required", builds: false, checkbox: true },
@@ -164,7 +164,7 @@ describe("from the builder's pull request to the merge", () => {
     assert.equal(world.repo.merges.length, 1);
   });
 
-  const gate2 = [
+  const mergeGate = [
     { name: "merge auto and a low risk diff: merges", merge: "auto", files: PASSING_FILES, plannerRisk: "low", merged: true },
     { name: "merge manual: asks for a review", merge: "manual", files: PASSING_FILES, plannerRisk: "low", merged: false },
     { name: "the diff touches package.json: asks for a review", merge: "auto", files: [{ status: "modified", path: "package.json", additions: 1, deletions: 1 }], plannerRisk: "low", merged: false },
@@ -172,8 +172,8 @@ describe("from the builder's pull request to the merge", () => {
     { name: "the diff deletes a file: asks for a review", merge: "auto", files: [{ status: "deleted", path: "src/a.ts", additions: 0, deletions: 9 }], plannerRisk: "low", merged: false },
     { name: "the planner rated the risk high and an owner approved: asks for a review", merge: "auto", files: PASSING_FILES, plannerRisk: "high", merged: false },
   ] satisfies { name: string; merge: string; files: FileChange[]; plannerRisk: "low" | "high"; merged: boolean }[];
-  for (const row of gate2) {
-    test(`Gate 2, ${row.name}`, async () => {
+  for (const row of mergeGate) {
+    test(`Merge gate, ${row.name}`, async () => {
       const world = new FakeWorld({ ...HOST_CONFIG, merge: row.merge });
       world.script.plan = { ...LOW_RISK_PLAN, risk: row.plannerRisk };
       const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });

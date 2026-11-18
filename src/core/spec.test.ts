@@ -31,7 +31,7 @@ test("a spec comment records the gate decision", () => {
   assert.equal(specGate("Looks good"), undefined);
 });
 
-test("a spec comment records the planner risk for Gate 2", () => {
+test("a spec comment records the planner risk for the merge gate", () => {
   assert.equal(specPlannerRisk(go), "low");
   assert.equal(specPlannerRisk(renderSpecComment({ ...result, risk: "high" }, { event: "approval_required", risk: "high", rulesRisk: "high" })), "high");
   assert.equal(specGate("<!-- autopilot:spec gate=go -->"), "go");

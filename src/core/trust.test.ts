@@ -38,7 +38,7 @@ const specCases: { name: string; body: string; editors: string[]; expected: Retu
   { name: "go, edited by the bot", body: go, editors: ["autopilot", "autopilot"], expected: undefined },
   { name: "a go marker in a ticked comment", body: `${go}\n\n- [x] Approve and build`, editors: ["owner", "autopilot"], expected: undefined },
   { name: "not a spec", body: "Looks good", editors: [], expected: undefined },
-  { name: "a spec from before Gate 2", body: "<!-- autopilot:spec gate=go -->\nx", editors: [], expected: { gate: "go", plannerRisk: undefined, buildAllowed: true } },
+  { name: "a spec from before the merge gate", body: "<!-- autopilot:spec gate=go -->\nx", editors: [], expected: { gate: "go", plannerRisk: undefined, buildAllowed: true } },
 ];
 
 for (const { name, body, editors, expected } of specCases) {

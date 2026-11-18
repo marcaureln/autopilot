@@ -1,4 +1,4 @@
-import type { Gate1 } from "./gate.ts";
+import type { PlanGate } from "./gate.ts";
 import type { PlannerResult } from "./planner.ts";
 import type { Risk } from "./risk.ts";
 
@@ -8,7 +8,7 @@ export type Comment = { id: number; nodeId: string; author: string; body: string
 const MARKER = /^<!-- autopilot:spec gate=([a-z_]+)(?: planner=(low|high))? -->/;
 const CHECKBOX = "Approve and build";
 
-const NEXT_STEP: Record<Gate1["event"], string> = {
+const NEXT_STEP: Record<PlanGate["event"], string> = {
   needs_info: "Answer the questions in a comment. autopilot then writes a new spec.",
   approval_required: "autopilot waits for approval. Tick the box below. Only a tick by an owner counts.",
   go: "The build starts now.",
@@ -18,7 +18,7 @@ function fileLine(file: PlannerResult["planned_files"][number]): string {
   return file.status === "renamed" ? `\`${file.previous_path}\` → \`${file.path}\` (renamed)` : `\`${file.path}\` (${file.status})`;
 }
 
-export function renderSpecComment(result: PlannerResult, gate: Gate1): string {
+export function renderSpecComment(result: PlannerResult, gate: PlanGate): string {
   const riskLine = gate.risk === result.risk && gate.risk === gate.rulesRisk ? gate.risk : `${gate.risk} (planner: ${result.risk}, rules: ${gate.rulesRisk})`;
   const lines = [
     `<!-- autopilot:spec gate=${gate.event} planner=${result.risk} -->`,
@@ -38,9 +38,9 @@ export function renderSpecComment(result: PlannerResult, gate: Gate1): string {
   return lines.join("\n");
 }
 
-const GATE_EVENTS: Gate1["event"][] = ["needs_info", "approval_required", "go"];
+const GATE_EVENTS: PlanGate["event"][] = ["needs_info", "approval_required", "go"];
 
-export function specGate(body: string): Gate1["event"] | undefined {
+export function specGate(body: string): PlanGate["event"] | undefined {
   const event = MARKER.exec(body)?.[1];
   return GATE_EVENTS.find((known) => known === event);
 }

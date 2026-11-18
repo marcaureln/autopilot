@@ -96,7 +96,7 @@ const cases: { name: string; changes: FileChange[]; risk?: { high_paths: string[
   })),
 
   { name: "binary file (no lines counted)", changes: [modified("assets/logo.png", 0)], expected: "high" },
-  { name: "planned file at Gate 1 (no line counts)", changes: [{ status: "modified", path: "src/index.ts" }], expected: "low" },
+  { name: "planned file at the plan gate (no line counts)", changes: [{ status: "modified", path: "src/index.ts" }], expected: "low" },
   { name: "unknown GitHub status", changes: [{ status: "unknown", path: "src/a.ts", additions: 0, deletions: 0 }], expected: "high" },
   { name: "deleted file", changes: [{ status: "deleted", path: "src/old.ts", additions: 0, deletions: 3 }], expected: "high" },
   {

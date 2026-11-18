@@ -203,7 +203,7 @@ export function onboardingBody(onboarding: Onboarding): string {
     ...onboarding.notes.map(neutralize),
     ...(validate.kind === "ran" ? validate.results.filter((result) => result.outcome === "failed").map((result) => failedItem(result.check)) : ["Fix `.devcontainer/`: the guardrails refuse it, see the checks above."]),
     host.kind === "watched" ? "Check that the App is installed on the repo: `autopilot watch` printed its install page if it was not." : `Let a host watch the repo: \`autopilot watch ${repo}\` on the default host, or add \`--host <name>\`. It also checks that the App is installed.`,
-    ...(onboarding.merge === "manual" ? ["`merge` is `manual`: switch it to `auto` when you trust the checks."] : ["`merge` is `auto`: Gate 2 merges low-risk pull requests with no review."]),
+    ...(onboarding.merge === "manual" ? ["`merge` is `manual`: switch it to `auto` when you trust the checks."] : ["`merge` is `auto`: the merge gate merges low-risk pull requests with no review."]),
   ];
   const failing = readiness.filter((item) => item.ok === "no");
   const byHand = readiness.filter((item) => item.ok === "by hand");

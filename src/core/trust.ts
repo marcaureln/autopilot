@@ -1,4 +1,4 @@
-import type { Gate1 } from "./gate.ts";
+import type { PlanGate } from "./gate.ts";
 import type { Risk } from "./risk.ts";
 import { isApproved, specGate, specPlannerRisk, type Comment } from "./spec.ts";
 
@@ -22,7 +22,7 @@ export function isOwnerTick(body: string, editors: string[], owners: string[]): 
   return isApproved(body) && edits.length > 0 && edits.every((editor) => owners.includes(editor));
 }
 
-export type TrustedSpec = { gate: Gate1["event"]; plannerRisk: Risk | undefined; buildAllowed: boolean };
+export type TrustedSpec = { gate: PlanGate["event"]; plannerRisk: Risk | undefined; buildAllowed: boolean };
 
 // autopilot never edits its spec comments, so an edited one can carry a changed gate or risk. The one
 // edit that counts is an owner's tick on an approval spec.

@@ -1,4 +1,4 @@
-import type { Gate1 } from "./gate.ts";
+import type { PlanGate } from "./gate.ts";
 
 export type BotPull = {
   number: number;
@@ -11,7 +11,7 @@ export type BotPull = {
 
 export type Phase =
   | { kind: "spec" }
-  | { kind: "gate1"; event: "needs_info" | "approval_required" }
+  | { kind: "plan"; event: "needs_info" | "approval_required" }
   | { kind: "build" }
   | { kind: "pull"; pull: BotPull }
   | { kind: "merged"; pull: BotPull }
@@ -39,12 +39,12 @@ function after(a: string, b: string): boolean {
   return Date.parse(a) > Date.parse(b);
 }
 
-export function issuePhase(spec: { gate: Gate1["event"]; buildAllowed: boolean } | undefined, pull: BotPull | undefined, retryAt: string): Phase {
+export function issuePhase(spec: { gate: PlanGate["event"]; buildAllowed: boolean } | undefined, pull: BotPull | undefined, retryAt: string): Phase {
   if (pull?.state === "open") return { kind: "pull", pull };
   if (pull?.closedAt && after(pull.closedAt, retryAt)) return pull.state === "merged" ? { kind: "merged", pull } : { kind: "closed", pull };
   if (!spec) return { kind: "spec" };
   if (spec.buildAllowed) return { kind: "build" };
-  return { kind: "gate1", event: spec.gate === "needs_info" ? "needs_info" : "approval_required" };
+  return { kind: "plan", event: spec.gate === "needs_info" ? "needs_info" : "approval_required" };
 }
 
 export function latestPull(pulls: BotPull[], issue: number): BotPull | undefined {

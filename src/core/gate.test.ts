@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gate1, gate2, type Gate1, type Gate2 } from "./gate.ts";
+import { planGate, mergeGate, type PlanGate, type MergeGate } from "./gate.ts";
 import type { PlannerResult } from "./planner.ts";
 import type { FileChange, Risk } from "./risk.ts";
 
@@ -15,7 +15,7 @@ const plan: PlannerResult = {
   spec: "Add a guide.",
 };
 
-const cases: { name: string; result: Partial<PlannerResult>; expected: Gate1 }[] = [
+const cases: { name: string; result: Partial<PlannerResult>; expected: PlanGate }[] = [
   { name: "clear, small and low risk goes", result: {}, expected: { event: "go", risk: "low", rulesRisk: "low" } },
   { name: "questions come first", result: { needs_info: true, questions: ["Which file?"], scope: "too_broad", risk: "high" }, expected: { event: "needs_info", risk: "high", rulesRisk: "low" } },
   { name: "too broad needs approval", result: { scope: "too_broad" }, expected: { event: "approval_required", risk: "low", rulesRisk: "low" } },
@@ -44,13 +44,13 @@ const cases: { name: string; result: Partial<PlannerResult>; expected: Gate1 }[]
 
 for (const { name, result, expected } of cases) {
   test(name, () => {
-    assert.deepEqual(gate1({ ...plan, ...result }, risk), expected);
+    assert.deepEqual(planGate({ ...plan, ...result }, risk), expected);
   });
 }
 
 const contributing: FileChange[] = [{ status: "added", path: "CONTRIBUTING.md", additions: 20, deletions: 0 }];
 
-const gate2Cases: { name: string; changes?: FileChange[]; planner?: Risk; merge?: "auto" | "manual"; pushed?: boolean; base?: boolean; expected: Gate2 }[] = [
+const mergeGateCases: { name: string; changes?: FileChange[]; planner?: Risk; merge?: "auto" | "manual"; pushed?: boolean; base?: boolean; expected: MergeGate }[] = [
   { name: "low risk with auto merge merges", expected: { decision: "merge", rulesRisk: "low", reasons: [] } },
   { name: "manual merge asks for a review", merge: "manual", expected: { decision: "review", rulesRisk: "low", reasons: ["`merge` is `manual` in `.github/autopilot.json`"] } },
   {
@@ -69,9 +69,9 @@ const gate2Cases: { name: string; changes?: FileChange[]; planner?: Risk; merge?
   { name: "a pull request moved to another base asks for a review", base: false, expected: { decision: "review", rulesRisk: "low", reasons: ["the pull request does not target the default branch"] } },
 ];
 
-for (const { name, changes, merge, pushed, base, expected, ...rest } of gate2Cases) {
-  test(`gate 2: ${name}`, () => {
+for (const { name, changes, merge, pushed, base, expected, ...rest } of mergeGateCases) {
+  test(`merge gate: ${name}`, () => {
     const planner = "planner" in rest ? rest.planner : "low";
-    assert.deepEqual(gate2({ changes: changes ?? contributing, plannerRisk: planner, pushedByAutopilot: pushed ?? true, intoDefaultBranch: base ?? true }, { risk, merge: merge ?? "auto" }), expected);
+    assert.deepEqual(mergeGate({ changes: changes ?? contributing, plannerRisk: planner, pushedByAutopilot: pushed ?? true, intoDefaultBranch: base ?? true }, { risk, merge: merge ?? "auto" }), expected);
   });
 }
