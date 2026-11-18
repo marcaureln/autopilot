@@ -10,28 +10,27 @@ import type { Host } from "../core/host.ts";
 import { claude } from "./claude.ts";
 import { opencode } from "./opencode.ts";
 
-// The host secrets that a harness can take. Each harness reads only the ones it needs.
 export type Credentials = { claudeToken: string; apiKeys: Record<string, string> };
 
-// What autopilot must know to run a coding agent, in its own image or in the repo's dev container.
 export type Harness = {
   // docker/<name>/: the Dockerfile of the agent image, its managed config, and feature/ for the dev container.
   dir: string;
-  // The files of dir that the image build reads: their content names the image tag.
+  // Hashed into the image tag: list every file the build reads.
   imageFiles: string[];
-  // The id in feature/devcontainer-feature.json.
+  // Must match the id in feature/devcontainer-feature.json.
   featureId: string;
-  // The pinned version of the agent, which the dev container feature installs too.
   version(): string;
   // The agent image has it built in. A dev container gets it as a read-only mount.
   managedConfig: Mount;
-  // Skills and personal instructions, read-only. The agent runs as root in both places.
+  // The agent runs as root in both places.
   mounts(skillsDir: string, configDir: string | undefined): Mount[];
-  // Secret values by env var name. They reach the agent through docker's env or a file, never an argument.
   secretEnv(credentials: Credentials): Record<string, string>;
-  // Not secret: the arguments of docker and of devcontainer exec are in the process list.
+  // Not secret: docker run passes it as arguments, which the process list shows.
   env(workdir: string): Record<string, string>;
-  // "stdin": the agent reads the prompt on its stdin. "file": the command reads PROMPT_FILE itself.
+  // Env var prefixes that only the host may set. The repo's dev container can set env vars
+  // (containerEnv, remoteEnv, ENV), so the agent starts without the ones that match.
+  hostEnvPrefixes: string[];
+  // "file": the command names PROMPT_FILE.
   prompt: "stdin" | "file";
   command(model: string, effort: Agent["effort"]): string[];
 };
@@ -89,7 +88,6 @@ export async function runAgent(job: ImageRun): Promise<void> {
   if (result.exit !== 0) throw new Error(`the agent exited with code ${result.exit}`, { cause: tail(result.output) });
 }
 
-// What startEnvironment adds to the repo's dev container: runDir is mounted at RUN_DIR.
 export function devcontainerSetup(harness: Harness, runDir: string, skillsDir: string, configDir: string | undefined): { mounts: Mount[]; feature: AgentFeature } {
   return {
     mounts: [{ source: runDir, target: RUN_DIR, readonly: true }, harness.managedConfig, ...harness.mounts(skillsDir, configDir)],
@@ -112,16 +110,21 @@ export type DevcontainerRun = {
 
 const ENV_NAME = "agent-env.sh";
 
+// The env file is sourced after the unset, so the host's values are the ones the agent sees.
+export function devcontainerScript(harness: Harness): string {
+  const unset = harness.hostEnvPrefixes.length > 0 ? `for name in $(env | cut -d= -f1); do case "$name" in ${harness.hostEnvPrefixes.map((prefix) => `${prefix}*`).join("|")}) unset "$name" ;; esac; done && ` : "";
+  const stdin = harness.prompt === "stdin" ? ` < ${PROMPT_FILE}` : "";
+  return `cd "$1" && shift && ${unset}set -a && . ${RUN_DIR}/${ENV_NAME} && set +a && exec "$@"${stdin}`;
+}
+
 // The host writes the prompt and the secrets after up, so the repo's install never sees them.
 // safe.directory: the checkout belongs to the host user.
 export async function runAgentInDevcontainer(job: DevcontainerRun): Promise<void> {
   const { harness } = job;
   writeFileSync(join(job.runDir, basename(PROMPT_FILE)), job.prompt);
-  writeFileSync(join(job.runDir, ENV_NAME), shellEnvFile(harness.secretEnv(job.credentials)), { mode: 0o600, flag: "wx" });
-  const stdin = harness.prompt === "stdin" ? ` < ${PROMPT_FILE}` : "";
-  const script = `cd "$1" && shift && set -a && . ${RUN_DIR}/${ENV_NAME} && set +a && exec "$@"${stdin}`;
-  const result = await job.devcontainer.exec(job.containerId, ["sh", "-c", script, "sh", job.workdir, ...harness.command(job.model, job.effort)], {
-    env: { ...harness.env(job.workdir), GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.directory", GIT_CONFIG_VALUE_0: "*" },
+  writeFileSync(join(job.runDir, ENV_NAME), shellEnvFile({ ...harness.env(job.workdir), ...harness.secretEnv(job.credentials) }), { mode: 0o600, flag: "wx" });
+  const result = await job.devcontainer.exec(job.containerId, ["sh", "-c", devcontainerScript(harness), "sh", job.workdir, ...harness.command(job.model, job.effort)], {
+    env: { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.directory", GIT_CONFIG_VALUE_0: "*" },
     timeoutMs: job.timeoutMs,
   });
   if (result.timedOut) throw new Error(`the agent timed out after ${Math.round(job.timeoutMs / 60_000)} minutes`, { cause: tail(result.output) });

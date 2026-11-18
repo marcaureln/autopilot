@@ -27,11 +27,15 @@ export const opencode: Harness = {
     if (Object.keys(apiKeys).length === 0) throw new Error("OpenCode needs a provider API key: add it to secrets.api_keys in host.json");
     return apiKeys;
   },
-  // A repo's opencode.json or .opencode/ could send the API key to another server or load a plugin
-  // (code). Without project config, the repo's AGENTS.md comes back as an instruction file.
-  env: (workdir) => ({ OPENCODE_DISABLE_PROJECT_CONFIG: "1", OPENCODE_CONFIG_CONTENT: JSON.stringify({ instructions: [`${workdir}/AGENTS.md`] }) }),
+  // A repo's opencode.json or .opencode/ could send the API key to another server or load a plugin.
+  // Without project config OpenCode also skips the repo's AGENTS.md, so it is added back.
+  // HOME and the XDG_ variables decide where OpenCode finds its global config.
+  env: (workdir) => ({ HOME: "/root", OPENCODE_DISABLE_PROJECT_CONFIG: "1", OPENCODE_CONFIG_CONTENT: JSON.stringify({ instructions: [`${workdir}/AGENTS.md`] }) }),
+  // OPENCODE_CONFIG, OPENCODE_CONFIG_DIR, OPENCODE_MODELS_URL and others load config, a model
+  // catalog or native code from a path or URL.
+  hostEnvPrefixes: ["OPENCODE_", "XDG_"],
   prompt: "file",
-  // --standalone: only a private server gets the API keys from this environment. The effort is the
-  // model's variant, and a model without that variant fails the run.
+  // --standalone: a private server reads the API keys from this environment, and the shared
+  // background service does not. The effort is the model variant: a model without it fails the run.
   command: (model, effort) => ["opencode", "run", "--standalone", "--model", effort ? `${model}#${effort}` : model, "--auto", "--format", "json", "--file", PROMPT_FILE, "Do the task in the attached file."],
 };
