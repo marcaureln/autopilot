@@ -9,7 +9,7 @@ import { createGitHub } from "../core/github.ts";
 import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
 import { LOCAL_TARGET, RUN_HERE } from "../core/hosts.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
-import { readSecret, type Backend } from "../core/secrets.ts";
+import { OP_UNAVAILABLE, readSecret, type Backend } from "../core/secrets.ts";
 import { connect, installRelease, latestRelease, must, parseTag, SERVICE, type Release, type Connection } from "./host.ts";
 
 const CLI_ROOT = new URL("../../", import.meta.url).pathname;
@@ -195,7 +195,12 @@ export async function hostSetup(target: string, options: HostSetupOptions): Prom
   // setup.sh installs op and loads this token into the service only when the file exists.
   if (missing.some((file) => file.secret === "op_token")) {
     console.log(`==> ${SECRET_LABELS.op_token}`);
-    const token = execFileSync("op", ["read", "--no-newline", OP_TOKEN_REFERENCE], { stdio: ["ignore", "pipe", "inherit"] });
+    let token: Buffer;
+    try {
+      token = execFileSync("op", ["read", "--no-newline", OP_TOKEN_REFERENCE], { stdio: ["ignore", "pipe", "inherit"] });
+    } catch (error) {
+      throw new Error(OP_UNAVAILABLE, { cause: error });
+    }
     await must(remote.shell, "op token", writeHostFile(remote, remote.layout.opToken, "600"), token);
   }
 

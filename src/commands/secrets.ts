@@ -7,7 +7,7 @@ import { detectRepo } from "../core/repo.ts";
 import { readOptionFile } from "../core/option-file.ts";
 import { itemStored } from "../core/setup.ts";
 import type { Audit } from "../core/audit.ts";
-import { readRepoSecrets, repoSecretNames, writeRepoSecrets } from "../core/secrets.ts";
+import { OP_UNAVAILABLE, readRepoSecrets, repoSecretNames, writeRepoSecrets } from "../core/secrets.ts";
 import { forward } from "./client.ts";
 import {
   assertEnvFileValues,
@@ -41,7 +41,7 @@ export function op(args: string[], input?: string): { ok: boolean; stdout: strin
 function ensureOp(): void {
   if (spawnSync("op", ["--version"], { stdio: "ignore" }).error) {
     const install = process.platform === "darwin" ? "brew install 1password-cli" : "see https://developer.1password.com/docs/cli/get-started/";
-    throw new Error(`the 1Password CLI (op) is not installed: ${install}`);
+    throw new Error(`${OP_UNAVAILABLE} Install it with: ${install}`);
   }
   // With the desktop app integration, the first real command asks to unlock; `op whoami` does not.
   let vault = op(["vault", "get", SECRETS_VAULT, "--format", "json"]);
@@ -49,6 +49,7 @@ function ensureOp(): void {
     spawnSync("op", ["signin"], { stdio: "inherit" });
     vault = op(["vault", "get", SECRETS_VAULT, "--format", "json"]);
   }
+  if (!vault.ok && /not signed in|no accounts/i.test(vault.stderr)) throw new Error(OP_UNAVAILABLE);
   if (!vault.ok) throw new Error(`op cannot open the vault ${SECRETS_VAULT}: ${vault.stderr}. Create it and give the host's service account read access to it.`);
 }
 

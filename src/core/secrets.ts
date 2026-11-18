@@ -8,6 +8,8 @@ import { envFile, itemTitle, parseSecretsFile } from "./repo-secrets.ts";
 
 export type Backend = "env" | "op";
 
+export const OP_UNAVAILABLE = "The 1Password CLI (op) is not installed or not signed in. Install it and run op signin, or use --backend env.";
+
 const OP_TOKEN_FILE = LOCAL_LAYOUT.opToken;
 
 // systemd LoadCredential= sets CREDENTIALS_DIRECTORY for the service. Without a token file (a dev
@@ -29,7 +31,7 @@ export function readSecret(reference: string, reason: string, audit: Audit): str
     const path = join(LOCAL_LAYOUT.secretsDir, name);
     const value = existsSync(path) ? readFileSync(path, "utf8").trim() : "";
     audit({ event: "secret.read", reference, reason, result: value ? "ok" : "failed" });
-    if (!value) throw new Error(`the secret file ${path} is missing or empty`);
+    if (!value) throw new Error(`the secret file ${path} is missing or empty. From your computer, run autopilot hosts add <name> <target> to push it.`);
     return value;
   }
   const tokenFile = opTokenFile();
