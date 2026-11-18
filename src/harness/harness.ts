@@ -22,8 +22,8 @@ export type Harness = {
   version(): string;
   // The agent image has it built in. A dev container gets it as a read-only mount.
   managedConfig: Mount;
-  // The agent runs as root in both places.
-  mounts(skillsDir: string, configDir: string | undefined): Mount[];
+  // The agent runs as root in both places. jobDir is a host folder of this job, for files to mount.
+  mounts(skillsDir: string, configDir: string | undefined, jobDir: string): Mount[];
   // The jobs check it before they clone the repo or build its dev container.
   missingCredential(credentials: Credentials): string | undefined;
   secretEnv(credentials: Credentials): Record<string, string>;
@@ -61,6 +61,7 @@ export type ImageRun = {
   skillsDir: string;
   workdir: string;
   configDir?: string;
+  jobDir: string;
   limits: Host["limits"];
   timeoutMinutes: number;
   audit: Audit;
@@ -76,7 +77,7 @@ export async function runAgent(job: ImageRun): Promise<void> {
     mounts: [
       { source: job.workdir, target: "/work", readonly: false },
       { source: job.promptFile, target: PROMPT_FILE, readonly: true },
-      ...harness.mounts(job.skillsDir, job.configDir),
+      ...harness.mounts(job.skillsDir, job.configDir, job.jobDir),
     ],
     network: "bridge",
     env: harness.env("/work"),
@@ -90,9 +91,9 @@ export async function runAgent(job: ImageRun): Promise<void> {
   if (result.exit !== 0) throw new Error(`the agent exited with code ${result.exit}`, { cause: tail(result.output) });
 }
 
-export function devcontainerSetup(harness: Harness, runDir: string, skillsDir: string, configDir: string | undefined): { mounts: Mount[]; feature: AgentFeature } {
+export function devcontainerSetup(harness: Harness, jobDir: string, runDir: string, skillsDir: string, configDir: string | undefined): { mounts: Mount[]; feature: AgentFeature } {
   return {
-    mounts: [{ source: runDir, target: RUN_DIR, readonly: true }, harness.managedConfig, ...harness.mounts(skillsDir, configDir)],
+    mounts: [{ source: runDir, target: RUN_DIR, readonly: true }, harness.managedConfig, ...harness.mounts(skillsDir, configDir, jobDir)],
     feature: { id: harness.featureId, source: join(harness.dir, "feature"), version: harness.version() },
   };
 }

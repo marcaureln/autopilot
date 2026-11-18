@@ -103,6 +103,7 @@ async function onboardingAgent({ clone, jobDir, repo, hasDevcontainer, notes, sk
     promptFile,
     skillsDir,
     workdir: work,
+    jobDir,
     limits: LIMITS,
     timeoutMinutes: AGENT_TIMEOUT_MINUTES,
     audit: noAudit,

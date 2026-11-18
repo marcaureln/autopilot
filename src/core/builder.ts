@@ -266,7 +266,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     const { skillsDir, claudeConfigDir } = await prepareAgent(host, config.skills[role], github, jobDir);
     const runDir = join(jobDir, "run");
     mkdirSync(runDir, { mode: 0o700 });
-    const setup = devcontainerSetup(harness, runDir, skillsDir, claudeConfigDir);
+    const setup = devcontainerSetup(harness, jobDir, runDir, skillsDir, claudeConfigDir);
     mkdirSync(join(work, ".autopilot"));
     appendFileSync(join(work, ".git", "info", "exclude"), `/.autopilot/\n${OVERRIDE_FILE}\n${COMPOSE_OVERRIDE_FILE}\n${setup.feature.id}/\n`);
     started = true;

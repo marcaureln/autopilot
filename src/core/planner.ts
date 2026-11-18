@@ -129,6 +129,7 @@ export async function runPlanner({ github, repoGitHub, repo, host, config, issue
       skillsDir,
       workdir: work,
       configDir: claudeConfigDir,
+      jobDir: job,
       limits: host.limits,
       timeoutMinutes: config.limits.run_timeout_minutes,
       ...access,

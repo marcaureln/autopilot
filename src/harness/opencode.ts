@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PROMPT_FILE } from "../core/environment.ts";
 import type { Harness } from "./harness.ts";
@@ -15,12 +15,16 @@ export const opencode: Harness = {
     return match[1];
   },
   managedConfig: { source: join(DIR, "opencode.json"), target: "/etc/opencode/opencode.json", readonly: true },
-  // OpenCode reads ~/.claude/skills, and AGENTS.md but not CLAUDE.md.
-  mounts(skillsDir, configDir) {
+  // OpenCode reads ~/.claude/skills, and AGENTS.md but not CLAUDE.md. Its global config folder is a
+  // read-only folder of the host, so the image cannot put a config, a plugin or a tool there.
+  mounts(skillsDir, configDir, jobDir) {
+    const globalDir = join(jobDir, "opencode");
+    mkdirSync(globalDir);
     const instructions = configDir && join(configDir, "CLAUDE.md");
+    if (instructions && existsSync(instructions)) copyFileSync(instructions, join(globalDir, "AGENTS.md"));
     return [
       { source: skillsDir, target: "/root/.claude/skills", readonly: true },
-      ...(instructions && existsSync(instructions) ? [{ source: instructions, target: "/root/.config/opencode/AGENTS.md", readonly: true }] : []),
+      { source: globalDir, target: "/root/.config/opencode", readonly: true },
     ];
   },
   missingCredential: ({ apiKeys }) => (Object.keys(apiKeys).length === 0 ? "OpenCode needs a provider API key: add it to secrets.api_keys in host.json" : undefined),
