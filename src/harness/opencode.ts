@@ -15,8 +15,9 @@ export const opencode: Harness = {
     return match[1];
   },
   managedConfig: { source: join(DIR, "opencode.json"), target: "/etc/opencode/opencode.json", readonly: true },
-  // OpenCode reads ~/.claude/skills, and AGENTS.md but not CLAUDE.md. Its global config folder is a
-  // read-only folder of the host, so the image cannot put a config, a plugin or a tool there.
+  // OpenCode reads ~/.claude/skills. The global AGENTS.md comes before ~/.claude/CLAUDE.md, which the
+  // image could add. The global config folder is a read-only folder of the host, so the image cannot
+  // put a config, a plugin or a tool there.
   mounts(skillsDir, configDir, jobDir) {
     const globalDir = join(jobDir, "opencode");
     mkdirSync(globalDir);

@@ -4,6 +4,6 @@
   "name": "OpenCode for autopilot",
   "description": "Installs one exact version of OpenCode from its release binary, checked against a pinned SHA-256. It needs no Node.",
   "options": {
-    "version": { "type": "string", "default": "", "description": "Exact OpenCode version, such as 2.3.0" }
+    "version": { "type": "string", "default": "", "description": "Exact OpenCode version, such as 2.3.1" }
   }
 }

@@ -23,10 +23,10 @@ fi
 
 # From SHA256SUMS of the GitHub release.
 case "$VERSION-$arch" in
-  2.3.0-x64) sha256=fc0f81522aceeabac47693d88389efa2bc517ce74c2c38fd6967819fcc6e4d3b ;;
-  2.3.0-arm64) sha256=3207fb5cdec448d479242c0f1a14f4f7bdfcad3a79209b5eb8f9003725e93711 ;;
-  2.3.0-x64-musl) sha256=dcefa5e90cbd3dc37f7d9741854854021b4b4d495644a6c2bfaf5b0c1634c986 ;;
-  2.3.0-arm64-musl) sha256=a0c7a2cbde0f888fe784e31170332f738db1f110509dc3981f5a2760c6323c40 ;;
+  2.3.1-x64) sha256=2f9ac6811d45831f80741b75e94fbe121fd3fa8ba7ecde3381814ed7410f1820 ;;
+  2.3.1-arm64) sha256=7be3d4efa0844badd66f1f76d8a7597edeb3c26adfed89393b6ddac31dcde358 ;;
+  2.3.1-x64-musl) sha256=20d167630914e2179b0958c4f4d653a33a3fa050ab66d3beb2d677bb685b7183 ;;
+  2.3.1-arm64-musl) sha256=aafe8ae239689fdeff3ed88ce21fb6137beccd3d6587a5f7e11eb0b68b781698 ;;
   *)
     echo "autopilot-opencode: no pinned checksum for OpenCode $VERSION ($arch)" >&2
     exit 1

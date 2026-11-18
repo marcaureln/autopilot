@@ -7,7 +7,7 @@ RUN apt-get update -q \
   && apt-get clean && find /var/lib/apt/lists -type f -delete
 
 COPY feature/install.sh /tmp/install-opencode.sh
-ARG OPENCODE_VERSION=2.3.0
+ARG OPENCODE_VERSION=2.3.1
 RUN VERSION=$OPENCODE_VERSION sh /tmp/install-opencode.sh && rm /tmp/install-opencode.sh
 
 COPY opencode.json /etc/opencode/opencode.json
