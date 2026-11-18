@@ -4,9 +4,10 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { unwatch, watch, watched } from "./commands/watch.ts";
 import { alias } from "./commands/alias.ts";
 import { appCreate } from "./commands/app.ts";
-import { clientClaudeToken, forward, hostSetup, readAppKey, readClaudeToken, selfUpdate } from "./commands/client.ts";
+import { clientClaudeToken, forward, readAppKey, readClaudeToken, selfUpdate, type HostSetupOptions } from "./commands/client.ts";
 import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, startService, stopService, update } from "./commands/host.ts";
+import { findHost, hostName, hostsAdd, hostsDefault, hostsRemove, HOSTS_USAGE, listHosts } from "./commands/hosts.ts";
 import { run } from "./commands/run.ts";
 import { hostSecrets, parseSecretsCommand, secrets, sendSecrets } from "./commands/secrets.ts";
 import { setup } from "./commands/setup.ts";
@@ -16,14 +17,15 @@ import { grypeDbUpdater, runChecks } from "./core/checks.ts";
 import { cliDevcontainer } from "./core/devcontainer-cli.ts";
 import { createGitHub } from "./core/github.ts";
 import { HOST_FILE, loadHost } from "./core/host.ts";
+import type { HostRef } from "./core/hosts.ts";
 import { runPlanner } from "./core/planner.ts";
 import { detectRepo, type Repo } from "./core/repo.ts";
 import { readSecret, type Backend } from "./core/secrets.ts";
 
 const USAGE = `Usage: autopilot <command> [options]
 
-Commands that run on a host. With --host or AUTOPILOT_HOST, the client forwards them over SSH,
-or runs them on this machine for the host "local":
+Commands that run on a host. The client forwards them over SSH to the host of --host, else of
+AUTOPILOT_HOST, else to the default host of the hosts file. For the target "local", they run on this machine:
   watch [<owner>[/<repo>]] [--remove]
                               Watch an account, org or repo for issues with the autopilot label. If the App
                               is not installed there, print its install page. --remove stops watching it.
@@ -44,15 +46,19 @@ Commands that run on the client:
                               --yes, setup asks nothing. With --backend op, the secrets go to 1Password
   app create [--key-out <path> | --backend op]
                               Create your GitHub App in the browser (GitHub's App manifest flow). The private
-                              key goes to a 0600 file: ~/.config/autopilot/app-key.pem, where host setup finds
+                              key goes to a 0600 file: ~/.config/autopilot/app-key.pem, where hosts add finds
                               it, or the --key-out path. With --backend op, it goes to 1Password (vault autopilot)
-  host setup --host <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]
-             [--version <tag> | --from-checkout]
+  hosts                       Show the hosts of the hosts file and which one is the default
+  hosts add <name> <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]
+            [--version <tag> | --from-checkout]
                               Write host.json if it is missing, install a release (or the current commit),
                               and push each host secret that the host does not have: the App key (--app-key,
                               else the key that app create saved) and the Claude token ($CLAUDE_CODE_OAUTH_TOKEN,
-                              else a hidden prompt). A Linux host runs a systemd service. A macOS host runs a
-                              launchd agent of the user
+                              else a hidden prompt). Then save the host in the hosts file. The first host saved
+                              becomes the default. A Linux host runs a systemd service. A macOS host runs a
+                              launchd agent of the user. The SSH target can be a Host alias of ~/.ssh/config
+  hosts rm <name>             Remove a host from the hosts file. It does not uninstall autopilot on the host
+  hosts default <name>        Make a host the default host
   init [--skill <source>]... [--notes <file>]
                               Onboard the repo: an agent writes .devcontainer/ (if the repo has none),
                               the check commands and a draft AGENTS.md. Then init checks the dev container,
@@ -73,11 +79,15 @@ Commands that run on the client:
   alias [<name>] [--remove]   Add "alias <name>=autopilot" (default: ap) to the rc file of $SHELL
 
 Options:
-  --host <ssh-target>  Host to act on, or "local" for this machine (default: $AUTOPILOT_HOST)
+  --host <name | ssh-target>
+                       Host to act on: a name of the hosts file, an SSH target, or "local" for this machine
+                       (default: $AUTOPILOT_HOST, else the default host of the hosts file)
   --config <path>      Host file, on the host (default: ${HOST_FILE}). For setup, the setup file
   --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
   --backend env|op     Where secrets go. env (default): files on the host. op: 1Password, with op://
-                       references in host.json and .github/autopilot.json`;
+                       references in host.json and .github/autopilot.json
+
+The hosts file is ~/.config/autopilot/hosts.json ($XDG_CONFIG_HOME/autopilot/hosts.json). It holds no secret.`;
 
 const HOST_COMMANDS = ["watch", "start", "stop", "status", "logs", "update"];
 
@@ -118,10 +128,16 @@ const { values, positionals } = parseCommandLine({
   },
 });
 
-function hostTarget(): string | undefined {
-  const target = values.host ?? process.env.AUTOPILOT_HOST;
-  if (target?.startsWith("-")) throw new Error(`"${target}" is not an SSH target`);
-  return target;
+function selectedHost(): HostRef | undefined {
+  return findHost(values.host, process.env.AUTOPILOT_HOST);
+}
+
+function hostSetupOptions(): HostSetupOptions {
+  const appId = values["app-id"] === undefined ? undefined : Number(values["app-id"]);
+  if (appId !== undefined && !Number.isInteger(appId)) throw new Error(`--app-id "${values["app-id"]}" is not a number`);
+  const interactive = process.stdin.isTTY;
+  const sources = { app_key: () => readAppKey(values["app-key"], interactive), claude_token: () => readClaudeToken(interactive) };
+  return { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"], backend: secretsBackend(), sources };
 }
 
 function secretsBackend(): Backend {
@@ -139,10 +155,10 @@ function targetRepo(): Repo {
 
 async function main(): Promise<void> {
   const [command = ""] = positionals;
-  const target = hostTarget();
   const hostFile = values.config ?? HOST_FILE;
   // The service runs `start --foreground` on the host itself: never forwarded.
   if (HOST_COMMANDS.includes(command) && !(command === "start" && values.foreground)) {
+    const target = selectedHost()?.target;
     if (target) {
       const options = [
         ...(values.since ? ["--since", values.since] : []),
@@ -153,7 +169,7 @@ async function main(): Promise<void> {
       process.exitCode = await forward(target, [...positionals, ...options]);
       return;
     }
-    if (!existsSync(hostFile)) throw new Error(`no host file at ${hostFile}: to manage a host, set AUTOPILOT_HOST=<ssh-target | local> or pass --host`);
+    if (!existsSync(hostFile)) throw new Error(`no host file at ${hostFile}: add a host with autopilot hosts add <name> <ssh-target | local>, or pass --host`);
   }
   switch (command) {
     case "start": {
@@ -201,28 +217,37 @@ async function main(): Promise<void> {
       await update(hostFile, values.version);
       break;
     case "init":
-      await init({ repo: targetRepo(), host: target, skills: values.skill, notesFile: values.notes, claudeToken: () => clientClaudeToken(secretsBackend(), process.stdin.isTTY) });
+      await init({ repo: targetRepo(), host: selectedHost()?.target, skills: values.skill, notesFile: values.notes, claudeToken: () => clientClaudeToken(secretsBackend(), process.stdin.isTTY) });
       break;
     case "secrets": {
       const command = parseSecretsCommand(positionals.slice(1), values["from-env"]);
+      const target = selectedHost()?.target;
       if (secretsBackend() === "op") await secrets(command, targetRepo());
       // `import` is what the client sends: it always runs here, on the host.
       else if (target && command.action !== "import") process.exitCode = await sendSecrets(target, command, targetRepo());
-      else if (!existsSync(hostFile)) throw new Error("the env backend keeps the secrets on a host: pass --host or set AUTOPILOT_HOST");
+      else if (!existsSync(hostFile)) throw new Error("the env backend keeps the secrets on a host: add a host with autopilot hosts add, or pass --host");
       else await hostSecrets(command, targetRepo(), auditLog);
       break;
     }
+    case "hosts": {
+      const [, action, name, target, ...rest] = positionals;
+      if (action === undefined) listHosts();
+      else if (action === "add" && name && target && rest.length === 0) await hostsAdd(name, target, hostSetupOptions());
+      else if (action === "rm" && name && target === undefined) hostsRemove(name);
+      else if (action === "default" && name && target === undefined) hostsDefault(name);
+      else throw new Error(HOSTS_USAGE);
+      break;
+    }
     case "host": {
-      if (positionals[1] !== "setup" || !target) throw new Error("usage: autopilot host setup --host <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]");
-      const appId = values["app-id"] === undefined ? undefined : Number(values["app-id"]);
-      if (appId !== undefined && !Number.isInteger(appId)) throw new Error(`--app-id "${values["app-id"]}" is not a number`);
-      const interactive = process.stdin.isTTY;
-      const sources = { app_key: () => readAppKey(values["app-key"], interactive), claude_token: () => readClaudeToken(interactive) };
-      await hostSetup(target, { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"], backend: secretsBackend(), sources });
+      const named = positionals[1] === "setup" ? selectedHost() : undefined;
+      if (!named) throw new Error("usage: autopilot hosts add <name> <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]");
+      const name = hostName(named);
+      console.log(`note: autopilot hosts add ${name} ${named.target} replaces host setup`);
+      await hostsAdd(name, named.target, hostSetupOptions());
       break;
     }
     case "setup":
-      await setup({ configFile: values.config, yes: values.yes, host: target, version: values.version, fromCheckout: values["from-checkout"], backend: values.backend === undefined ? undefined : secretsBackend(), appKey: values["app-key"] });
+      await setup({ configFile: values.config, yes: values.yes, host: selectedHost()?.target, version: values.version, fromCheckout: values["from-checkout"], backend: values.backend === undefined ? undefined : secretsBackend(), appKey: values["app-key"] });
       break;
     case "app":
       if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path> | --backend op]");

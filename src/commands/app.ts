@@ -50,7 +50,7 @@ async function freeAppName(login: string): Promise<string> {
 function checkKeyDestination(destination: KeyDestination): void {
   if (destination.kind === "file") {
     if (destination.path === APP_KEY_PATH) {
-      if (existsSync(APP_KEY_PATH)) throw new Error(`${APP_KEY_PATH} already exists: it is the key of an App that you created before. Push it to a host with autopilot host setup, or move it away to create another App`);
+      if (existsSync(APP_KEY_PATH)) throw new Error(`${APP_KEY_PATH} already exists: it is the key of an App that you created before. Push it to a host with autopilot hosts add, or move it away to create another App`);
       mkdirSync(dirname(APP_KEY_PATH), { recursive: true, mode: 0o700 });
     }
     const problem = keyFileProblem(destination.path);
@@ -153,7 +153,7 @@ export async function appCreate(options: { keyOut?: string; backend: Backend }):
     const summary = await created.promise;
     console.log(`App created: ${summary.slug} (id ${summary.id})`);
     console.log(`private key: ${summary.keyLocation}`);
-    if (summary.keyLocation === APP_KEY_PATH) console.log("autopilot host setup pushes it to the host");
+    if (summary.keyLocation === APP_KEY_PATH) console.log("autopilot hosts add pushes it to the host");
     console.log(`install it: ${summary.installUrl}`);
     return summary;
   } finally {

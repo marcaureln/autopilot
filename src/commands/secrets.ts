@@ -188,7 +188,7 @@ export async function hostSecrets(command: SecretsCommand, repo: Repo, audit: Au
       return console.log(names.length > 0 ? names.join("\n") : `${name} has no secrets on this host.`);
     }
     default:
-      throw new Error(`secrets ${command.action} runs on the client: pass --host or set AUTOPILOT_HOST`);
+      throw new Error(`secrets ${command.action} runs on the client: add a host with autopilot hosts add, or pass --host`);
   }
 }
 
