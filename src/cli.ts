@@ -276,5 +276,7 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
+  // `fetch failed` and similar errors say why only in the cause.
+  if (error instanceof Error && error.cause) console.error(String(error.cause).slice(-2000));
   process.exitCode = 1;
 });

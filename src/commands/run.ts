@@ -53,6 +53,11 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// `fetch failed` and similar errors say why only in the cause.
+function messageWithCause(error: unknown): string {
+  return error instanceof Error && error.cause ? `${error.message}\n${String(error.cause)}` : messageOf(error);
+}
+
 async function readConfig(repoGitHub: RepoGitHub): Promise<Config> {
   const text = await repoGitHub.readFile(CONFIG_PATH);
   if (text === undefined) throw new Blocked(`There is no \`${CONFIG_PATH}\` on the default branch.`);
@@ -249,8 +254,8 @@ async function writeSpec(job: Working): Promise<void> {
   const thread = await vouchedThread(job);
   log(key, `${key}: spec, planning with ${config.agents[config.steps.spec].model}`);
   const result = await loop.plan({ github, repoGitHub: ctx.repoGitHub, repo: ctx.repo, host, config, issue, thread }).catch((error: unknown) => {
-    log(key, `${key}: planner failed: ${messageOf(error)}${error instanceof Error && error.cause ? `\n${String(error.cause)}` : ""}`);
-    throw new Blocked(`The planner failed: ${messageOf(error)}.`);
+    log(key, `${key}: planner failed: ${messageWithCause(error)}`);
+    throw new Blocked(`The planner failed: ${messageOf(error)}. Run \`autopilot logs\` for its output.`);
   });
   const gate = planGate(result, config.risk);
   audit({ event: "gate.decided", issue: key, gate: "plan", planner: result.risk, rules: gate.rulesRisk, final: gate.risk, scope: result.scope, decision: gate.event });
@@ -500,7 +505,7 @@ export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
   for (const value of loop.host.allow) {
     const entry = parseWatchEntry(value);
     const installationId = await github.findInstallation(entry).catch((error: unknown) => {
-      log(value, `${value}: error: ${messageOf(error)}`);
+      log(value, `${value}: error: ${messageWithCause(error)}`);
       return null;
     });
     if (installationId === null) continue;
@@ -509,12 +514,12 @@ export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
       continue;
     }
     const repos = entry.repo ? [{ owner: entry.owner, name: entry.repo }] : await github.listRepos(installationId, entry.owner).catch((error: unknown) => {
-      log(value, `${value}: error: ${messageOf(error)}`);
+      log(value, `${value}: error: ${messageWithCause(error)}`);
       return [];
     });
     for (const repo of repos) {
       const repoKey = `${repo.owner}/${repo.name}`;
-      await pollRepo(loop, state, installationId, repo).catch((error: unknown) => log(repoKey, `${repoKey}: error: ${messageOf(error)}`));
+      await pollRepo(loop, state, installationId, repo).catch((error: unknown) => log(repoKey, `${repoKey}: error: ${messageWithCause(error)}`));
     }
   }
 }
@@ -527,7 +532,7 @@ async function pollRepo(loop: Loop, state: LoopState, installationId: number, re
     const key = `${repoKey}#${closed.number}`;
     await repoGitHub.setLabels(closed.number, doneLabels(closed.labels)).then(
       () => log(key, `${key}: closed, autopilot labels removed`),
-      (error: unknown) => log(key, `${key}: error: ${messageOf(error)}`),
+      (error: unknown) => log(key, `${key}: error: ${messageWithCause(error)}`),
     );
   }
   const issues = (await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "open")).filter((issue) => !state.running.has(`${repoKey}#${issue.number}`));
@@ -542,7 +547,7 @@ async function pollRepo(loop: Loop, state: LoopState, installationId: number, re
     if (state.running.size >= host.concurrency) break;
     const key = `${repoKey}#${issue.number}`;
     const job = reconcile(loop, ctx, issue)
-      .catch((error: unknown) => log(key, `${key}: error: ${messageOf(error)}`))
+      .catch((error: unknown) => log(key, `${key}: error: ${messageWithCause(error)}`))
       .finally(() => state.running.delete(key));
     state.running.set(key, job);
   }
