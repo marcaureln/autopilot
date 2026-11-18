@@ -24,8 +24,8 @@ export const SECRETS_NAME = "secrets.sh";
 export const SECRETS_FILE = `${RUN_DIR}/${SECRETS_NAME}`;
 export const PROMPT_FILE = `${RUN_DIR}/prompt.md`;
 
-// A feature of autopilot that installs one exact version of the agent. The CLI finds a local feature
-// next to the config file, so the host copies the source folder there, in a folder named by the id.
+// Our own feature, to pin the agent version. The Dev Container CLI finds a local feature only next to
+// devcontainer.json, so startEnvironment copies it there as ./<id>.
 export type AgentFeature = { id: string; source: string; version: string };
 
 export class EnvironmentRefused extends Error {

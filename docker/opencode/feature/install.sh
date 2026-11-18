@@ -1,5 +1,4 @@
 #!/bin/sh
-# Runs as root while the dev container image builds, and in the Dockerfile of the agent image.
 set -eu
 
 if [ -z "${VERSION:-}" ]; then
@@ -21,7 +20,7 @@ if ls /lib/ld-musl-* >/dev/null 2>&1; then
   if command -v apk >/dev/null; then apk add --no-cache libstdc++ libgcc; fi
 fi
 
-# From SHA256SUMS of the GitHub release. A new version needs its four lines here.
+# From SHA256SUMS of the GitHub release.
 case "$VERSION-$arch" in
   2.3.0-x64) sha256=fc0f81522aceeabac47693d88389efa2bc517ce74c2c38fd6967819fcc6e4d3b ;;
   2.3.0-arm64) sha256=3207fb5cdec448d479242c0f1a14f4f7bdfcad3a79209b5eb8f9003725e93711 ;;
