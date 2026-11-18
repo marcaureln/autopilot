@@ -1,4 +1,5 @@
 import type { Host } from "./host.ts";
+import { TRIGGER_LABEL } from "./state.ts";
 
 export type WatchEntry = { owner: string; repo?: string };
 
@@ -18,4 +19,11 @@ export function addWatchEntry(host: Host, value: string): Host {
 export function removeWatchEntry(host: Host, value: string): Host {
   if (!host.allow.includes(value)) throw new Error(`the host does not watch ${value}`);
   return { ...host, allow: host.allow.filter((entry) => entry !== value) };
+}
+
+// One search covers every entry: GitHub ORs the user: and repo: qualifiers. user: also matches an
+// organization.
+export function searchQuery(state: "open" | "closed", entries: WatchEntry[]): string {
+  const scopes = entries.map((entry) => (entry.repo ? `repo:${entry.owner}/${entry.repo}` : `user:${entry.owner}`));
+  return [`label:${TRIGGER_LABEL}`, "is:issue", `is:${state}`, ...scopes].join(" ");
 }
