@@ -154,7 +154,9 @@ A role can use OpenCode instead of Claude Code. OpenCode uses a provider API key
    "builder": { "harness": "opencode", "model": "anthropic/claude-sonnet-5-5", "effort": "high" }
    ```
 
-The model is `<provider>/<model>`. The effort is the model variant: if the model has no variant with that name, the run fails. Only OpenCode gets the API keys. OpenCode does not read the repo's `opencode.json` or `.opencode/`, so a repo cannot send the key to another server. It reads the repo's `AGENTS.md`. `autopilot init` always uses Claude Code.
+The model is `<provider>/<model>`. The effort is the model variant: if the model has no variant with that name, the run fails. Only OpenCode gets the API keys. It reads the repo's `AGENTS.md`. `autopilot init` always uses Claude Code.
+
+You trust the repo with the API key in the same way as with the Claude token. The builder runs in the repo's dev container, and the repo controls that container: its image, its install commands, and the commands that the agent runs, such as the tests. All of them can read the key. autopilot stops only a repo config file or a dev container env var from sending the key to another server. OpenCode does not read the repo's `opencode.json` or `.opencode/`. The agent starts without the `OPENCODE_*` and `XDG_*` env vars of the dev container. The OpenCode config folder in the container is a read-only folder of the host.
 
 ## Several hosts
 
