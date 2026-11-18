@@ -22,8 +22,9 @@ function saveHosts(file: HostsFile): void {
   renameSync(`${HOSTS_PATH}.tmp`, HOSTS_PATH);
 }
 
+// A forwarded command runs under sudo on a Linux host, which is not where the client keeps its hosts file.
 export function findHost(flag: string | undefined, env: string | undefined): HostRef | undefined {
-  return resolveHost(flag, env, loadHosts);
+  return resolveHost(flag, env, () => (process.env.SUDO_USER ? NO_HOSTS : loadHosts()));
 }
 
 export function hostName(host: HostRef): string {

@@ -99,7 +99,7 @@ With `--backend op`, a new `host.json` has `op://` references, and `hosts add` p
 
 `host.json` has one owner. To add an owner, edit `owners` in `host.json` on the host (`/etc/autopilot/host.json` on Linux, `~/.autopilot/host.json` on macOS), then run `autopilot hosts add` again.
 
-At the end, `hosts add` saves the host in `~/.config/autopilot/hosts.json`. The first host that you add becomes the default host, so the next commands act on it. Check it with `autopilot hosts`. To act on another host, pass `--host <name>`, or make it the default with `autopilot hosts default <name>`.
+At the end, `hosts add` saves the host in `~/.config/autopilot/hosts.json`. The first host that you add becomes the default host, so the next commands act on it. Check it with `autopilot hosts`. To act on another host, pass `--host <name>`, or make it the default with `autopilot hosts default <name>`. A command that the user types on a host that has a hosts file acts on that file's default host: tell the user to pass `--host local` to act on the host itself. A client from before this change sends no `--host=` to a macOS host, so update the client with `autopilot self-update`.
 
 ## 7. Watch the repo
 

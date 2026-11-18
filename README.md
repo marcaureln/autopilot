@@ -200,6 +200,8 @@ The client keeps one file: `~/.config/autopilot/hosts.json`, or `$XDG_CONFIG_HOM
 
 If the value is the name of a host in the file, the command uses the target of that host. If not, the command uses the value as an SSH target, or as `local`. autopilot gives the target to `ssh` as it is, so a `Host` alias of `~/.ssh/config` works.
 
+A command that the client forwards never reads the hosts file on the host: the client sends `--host=`, and under `sudo` the host skips the file. A client from before this change sends no `--host=` to a macOS host, so a macOS host that also has a hosts file forwards the command again: update the client. A command that you type on a host that has a hosts file acts on its default host. Pass `--host local` to act on the host itself.
+
 | Host  | Service                                                                  | Files                              | Logs                       |
 | ----- | ------------------------------------------------------------------------ | ---------------------------------- | -------------------------- |
 | Linux | systemd, as the user `autopilot` with rootless Docker                    | `/etc/autopilot`, `/opt/autopilot` | journald                   |
