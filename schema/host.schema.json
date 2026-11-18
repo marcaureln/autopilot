@@ -44,6 +44,15 @@
           "description": "Claude Code OAuth token for the agent containers.",
           "type": "string",
           "pattern": "^(op://|file:[A-Za-z0-9][A-Za-z0-9._-]*$)"
+        },
+        "api_keys": {
+          "description": "Provider API keys for the OpenCode harness: env var name to reference, for example { \"ANTHROPIC_API_KEY\": \"file:anthropic-api-key\" }. Only OpenCode gets them.",
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(op://|file:[A-Za-z0-9][A-Za-z0-9._-]*$)"
+          }
         }
       }
     },

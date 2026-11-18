@@ -96,10 +96,36 @@ const secretFileCases: { name: string; secrets: Host["secrets"]; layout: Layout;
       { secret: "claude_token", path: "/Users/me/.autopilot/secrets/claude-token" },
     ],
   },
+  {
+    name: "an API key in 1Password",
+    secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token", api_keys: { OPENAI_API_KEY: "op://v/openai/credential" } },
+    layout: LINUX,
+    expected: [
+      { secret: "op_token", path: "/etc/autopilot/op-token" },
+      { secret: "app_key", path: "/etc/autopilot/secrets/app-key.pem" },
+      { secret: "claude_token", path: "/etc/autopilot/secrets/claude-token" },
+    ],
+  },
 ];
 
 for (const { name, secrets, layout, expected } of secretFileCases) {
   test(`host secret files: ${name}`, () => {
     assert.deepEqual(hostSecretFiles(secrets, layout), expected);
+  });
+}
+
+const apiKeyCases: { name: string; apiKeys: Record<string, string>; valid: boolean }[] = [
+  { name: "a file reference", apiKeys: { ANTHROPIC_API_KEY: "file:anthropic-api-key" }, valid: true },
+  { name: "a 1Password reference", apiKeys: { OPENAI_API_KEY: "op://v/openai/credential" }, valid: true },
+  { name: "a value instead of a reference", apiKeys: { ANTHROPIC_API_KEY: "sk-ant-secret" }, valid: false },
+  { name: "a name that is not an env var", apiKeys: { "anthropic-key": "file:anthropic-api-key" }, valid: false },
+];
+
+for (const { name, apiKeys, valid } of apiKeyCases) {
+  test(`api_keys: ${name}`, () => {
+    const secrets = { app_key: "op://v/key/app.pem", claude_token: "op://v/claude/credential", api_keys: apiKeys };
+    const path = writeHost(JSON.stringify({ app_id: 1, secrets, owners: ["me"], allow: [] }));
+    if (valid) assert.deepEqual(loadHost(path).secrets.api_keys, apiKeys);
+    else assert.throws(() => loadHost(path), /api_keys/);
   });
 }
