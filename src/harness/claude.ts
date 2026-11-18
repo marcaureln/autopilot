@@ -35,7 +35,9 @@ export const claude: Harness = {
   secretEnv: ({ claudeToken }) => ({ CLAUDE_CODE_OAUTH_TOKEN: claudeToken }),
   // Claude Code refuses to bypass permissions as root unless it is told it runs in a sandbox.
   env: () => ({ IS_SANDBOX: "1" }),
-  hostEnvPrefixes: [],
+  // ANTHROPIC_BASE_URL, CLAUDE_CONFIG_DIR and others send the token to another server or load
+  // another config. The managed settings also pin ANTHROPIC_BASE_URL, over a repo's .claude/settings.json.
+  hostEnvPrefixes: ["ANTHROPIC_", "CLAUDE_"],
   prompt: "stdin",
   command: (model, effort) => ["claude", "--print", "--model", model, ...(effort ? ["--effort", effort] : []), "--permission-mode", "bypassPermissions", "--settings", SETTINGS],
 };

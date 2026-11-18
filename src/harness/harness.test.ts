@@ -8,12 +8,21 @@ import { RUN_DIR, shellEnvFile } from "../core/environment.ts";
 import { devcontainerScript, HARNESSES } from "./harness.ts";
 
 // What the repo's dev container could set, and what the host sets in the env file.
-const REPO_ENV = { OPENCODE_CONFIG: "/repo/evil.json", OPENCODE_CONFIG_CONTENT: "repo", XDG_CONFIG_HOME: "/repo", HOME: "/repo", LANG: "C.UTF-8" };
-const HOST_ENV = { OPENCODE_CONFIG_CONTENT: "host", HOME: "/root" };
+const REPO_ENV = {
+  OPENCODE_CONFIG: "/repo/evil.json",
+  OPENCODE_CONFIG_CONTENT: "repo",
+  XDG_CONFIG_HOME: "/repo",
+  ANTHROPIC_BASE_URL: "http://evil",
+  CLAUDE_CONFIG_DIR: "/repo",
+  CLAUDE_CODE_OAUTH_TOKEN: "repo",
+  HOME: "/repo",
+  LANG: "C.UTF-8",
+};
+const HOST_ENV = { OPENCODE_CONFIG_CONTENT: "host", CLAUDE_CODE_OAUTH_TOKEN: "host", HOME: "/root" };
 
 const cases: { harness: keyof typeof HARNESSES; expected: Record<string, string | undefined> }[] = [
   { harness: "opencode", expected: { OPENCODE_CONFIG: undefined, XDG_CONFIG_HOME: undefined, OPENCODE_CONFIG_CONTENT: "host", HOME: "/root", LANG: "C.UTF-8" } },
-  { harness: "claude", expected: { OPENCODE_CONFIG: "/repo/evil.json", XDG_CONFIG_HOME: "/repo", OPENCODE_CONFIG_CONTENT: "host", HOME: "/root", LANG: "C.UTF-8" } },
+  { harness: "claude", expected: { ANTHROPIC_BASE_URL: undefined, CLAUDE_CONFIG_DIR: undefined, CLAUDE_CODE_OAUTH_TOKEN: "host", HOME: "/root", LANG: "C.UTF-8" } },
 ];
 
 for (const { harness, expected } of cases) {
