@@ -41,9 +41,10 @@ AUTOPILOT_HOST, else to the default host of the hosts file. For the target "loca
 Commands that run on the client:
   setup [--config <file> --yes] [--backend op]
                               Set up everything in one wizard: prerequisites, the GitHub App, a host and its
-                              secrets, the watched entries, a first repo and the alias. Run it again to fix
-                              what is missing. --config gives the answers (schema/setup.schema.json). With
-                              --yes, setup asks nothing. With --backend op, the secrets go to 1Password
+                              secrets, the watched entries, a first repo and the alias. It saves the host in
+                              the hosts file. Run it again to fix what is missing. --config gives the answers
+                              (schema/setup.schema.json). With --yes, setup asks nothing. With --backend op,
+                              the secrets go to 1Password
   app create [--key-out <path> | --backend op]
                               Create your GitHub App in the browser (GitHub's App manifest flow). The private
                               key goes to a 0600 file: ~/.config/autopilot/app-key.pem, where hosts add finds
@@ -247,7 +248,7 @@ async function main(): Promise<void> {
       break;
     }
     case "setup":
-      await setup({ configFile: values.config, yes: values.yes, host: selectedHost()?.target, version: values.version, fromCheckout: values["from-checkout"], backend: values.backend === undefined ? undefined : secretsBackend(), appKey: values["app-key"] });
+      await setup({ configFile: values.config, yes: values.yes, host: selectedHost(), version: values.version, fromCheckout: values["from-checkout"], backend: values.backend === undefined ? undefined : secretsBackend(), appKey: values["app-key"] });
       break;
     case "app":
       if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path> | --backend op]");

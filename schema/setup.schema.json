@@ -24,7 +24,7 @@
       "minLength": 1
     },
     "host": {
-      "description": "SSH target of the host (for example user@my-host), or local for this machine. Default: --host or AUTOPILOT_HOST.",
+      "description": "Name of a host in the hosts file, SSH target of the host (for example user@my-host), or local for this machine. Setup saves the host in the hosts file. Default: --host, else AUTOPILOT_HOST, else the default host of the hosts file.",
       "type": "string",
       "pattern": "^[^-\\s][^\\s]*$"
     },

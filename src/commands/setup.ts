@@ -6,6 +6,7 @@ import { WATCH_ENTRY } from "../core/allow.ts";
 import type { Audit } from "../core/audit.ts";
 import { CONFIG_PATH } from "../core/config.ts";
 import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret } from "../core/host.ts";
+import type { HostRef } from "../core/hosts.ts";
 import { ownPull, type PullListing } from "../core/onboarding.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret, type Backend } from "../core/secrets.ts";
@@ -14,10 +15,11 @@ import { alias, AliasError, aliasFile, aliasNameProblem, shellOf, withoutAlias }
 import { appCreate, githubLogin } from "./app.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, checkAppKey, CLAUDE_TOKEN_ITEM, clientClaudeToken, forward, found, HOST_SECRETS, hostSetup, missingSecrets, OP_TOKEN_ITEM, readAppKey, readKeyFile } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
+import { findHost, hostName, HOSTS_PATH, saveHost } from "./hosts.ts";
 import { BRANCH as ONBOARDING_BRANCH, init } from "./init.ts";
 import { op, opItemExists } from "./secrets.ts";
 
-export type SetupOptions = { configFile?: string; yes: boolean; host?: string; version?: string; fromCheckout: boolean; backend?: Backend; appKey?: string };
+export type SetupOptions = { configFile?: string; yes: boolean; host?: HostRef; version?: string; fromCheckout: boolean; backend?: Backend; appKey?: string };
 
 type Cancel = typeof CANCEL_SYMBOL;
 
@@ -166,14 +168,21 @@ async function claudeToken(options: SetupOptions): Promise<void> {
   record("Claude token", "done", `saved in ${SECRETS_VAULT}/${CLAUDE_TOKEN_ITEM}`);
 }
 
-async function chooseHost(options: SetupOptions, config: SetupConfig): Promise<{ target: string; remote: Connection }> {
-  const target = await configOrAsk(options, config.host ?? options.host, "host", () =>
-    text({
-      message: "Host: an SSH target such as user@my-host, or local for this machine",
-      initialValue: "local",
-      validate: (input) => (/^[^-\s]\S*$/.test(input ?? "") ? undefined : "An SSH target or local"),
-    }),
-  );
+async function chooseHost(options: SetupOptions, config: SetupConfig): Promise<{ host: HostRef; remote: Connection }> {
+  let host = options.host;
+  if (config.host !== undefined) host = findHost(config.host, undefined);
+  else if (!host) {
+    const value = await configOrAsk(options, undefined, "host", () =>
+      text({
+        message: "Host: an SSH target such as user@my-host, or local for this machine",
+        initialValue: "local",
+        validate: (input) => (/^[^-\s]\S*$/.test(input ?? "") ? undefined : "An SSH target or local"),
+      }),
+    );
+    host = findHost(value, undefined);
+  }
+  if (!host) throw new Error("no host to set up");
+  const { target } = host;
   const remote = await connect(target);
   const probe = await remote.shell.capture(RESOURCES_PROBE);
   if (probe.code !== 0) throw new Error(`cannot read the resources of ${target} (exit ${probe.code})`);
@@ -182,7 +191,7 @@ async function chooseHost(options: SetupOptions, config: SetupConfig): Promise<{
   for (const warning of check.warnings) log.warn(warning);
   if (check.errors.length > 0) throw new Error(check.errors.join("; "));
   record("Host", "already done", `${target}: ${remote.layout.os}, ${describeResources(resources)}`);
-  return { target, remote };
+  return { host, remote };
 }
 
 async function readHost({ layout, shell }: Connection): Promise<Host | undefined> {
@@ -242,6 +251,13 @@ async function setUpHost(options: SetupOptions, config: SetupConfig, { target, r
   if (host.app_id !== app.id) log.warn(`host.json on ${target} uses App ${host.app_id}, not ${app.id}. Setup does not change it: edit ${remote.layout.hostFile} if this is wrong.`);
   if (!host.owners.includes(login)) log.warn(`${login} is not in the owners of ${target} (${host.owners.join(", ")}). Edit ${remote.layout.hostFile} to add it.`);
   return host;
+}
+
+function saveToHosts(host: HostRef): { name: string; isDefault: boolean } {
+  const name = hostName(host);
+  const { changed, isDefault } = saveHost(name, host.target);
+  record("Hosts file", changed ? "done" : "already done", `${name} (${host.target})${isDefault ? ", the default host" : ""} in ${HOSTS_PATH}`);
+  return { name, isDefault };
 }
 
 async function allowEntries(options: SetupOptions, config: SetupConfig, target: string, host: Host, login: string): Promise<void> {
@@ -346,17 +362,19 @@ export async function setup(options: SetupOptions): Promise<void> {
   prerequisites(backend);
   const login = githubSignIn(options);
   if (backend === "op") await onePassword(options);
-  const { target, remote } = await chooseHost(options, config);
+  const { host: chosen, remote } = await chooseHost(options, config);
+  const { target } = chosen;
   const app = await githubApp(options, config, backend, (await readHost(remote))?.app_id);
   if (backend === "op") await claudeToken(options);
   let token: string | undefined;
   const claudeTokenOnce = async () => (token ??= await clientClaudeToken(backend, !options.yes));
   const host = await setUpHost(options, config, { target, remote, app, login, backend, claudeToken: claudeTokenOnce });
+  const saved = saveToHosts(chosen);
   await allowEntries(options, config, target, host, login);
   await onboard(options, config, target, login, claudeTokenOnce);
   await shellAlias(options, config);
   note(results.map(({ step, outcome }) => `${outcome.padEnd(12)}  ${step}`).join("\n"), "Summary");
   log.step(`autopilot status on ${target}`);
   if ((await forward(target, ["status"])) !== 0) throw new Error(`autopilot status failed on ${target}`);
-  outro(`Done. Manage this host with: export AUTOPILOT_HOST=${target}`);
+  outro(saved.isDefault ? `Done. autopilot commands act on ${saved.name} by default.` : `Done. To act on ${saved.name}, pass --host ${saved.name}, or make it the default with autopilot hosts default ${saved.name}.`);
 }
