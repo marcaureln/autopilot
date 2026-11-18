@@ -22,6 +22,7 @@ function repoWith(issues: Issue[]): RepoGitHub {
     provenance: unused,
     token: unused,
     defaultBranch: unused,
+    isEmpty: unused,
     lastUnlabeled: unused,
     userId: unused,
     botPulls: async () => [],

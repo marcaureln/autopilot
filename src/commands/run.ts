@@ -102,6 +102,10 @@ function reviewMarker(pull: number): string {
   return `<!-- autopilot:review pr=${pull} -->`;
 }
 
+function onboardingMarker(pull: number): string {
+  return `<!-- autopilot:onboarding pr=${pull} -->`;
+}
+
 async function claim(loop: Loop, repoGitHub: RepoGitHub, issue: Issue, key: string, bot: string, comments: Comment[]): Promise<Comment[] | undefined> {
   const { host, log, audit } = loop;
   let current = claimOf(comments, bot, host.name);
@@ -288,25 +292,37 @@ async function onboard(job: Working, retryAt: string): Promise<void> {
   const { loop, ctx, issue, key } = job;
   const { repoGitHub, repo } = ctx;
   const repoKey = `${repo.owner}/${repo.name}`;
-  // Before any await, so that two issues of this host never onboard one repo together.
-  if (ctx.onboardingRepos.has(repoKey)) return loop.log(key, `${key}: waits, another issue onboards ${repoKey}`);
-  ctx.onboardingRepos.add(repoKey);
+  // The comment is posted here, not only after the push: a crash between the pull request and its comment, or a
+  // pull request that another host or another issue opened, still leaves a link on this issue.
+  async function waitForMerge(pull: number): Promise<void> {
+    loop.log(key, `${key}: waits for the merge of the onboarding pull request #${pull}`);
+    const marker = onboardingMarker(pull);
+    if (job.comments.some((comment) => comment.author === ctx.bot && comment.body.startsWith(marker))) return;
+    await repoGitHub.postComment(issue.number, `${marker}\nThis repo has no \`${CONFIG_PATH}\`. Pull request #${pull} sets it up. Review it and merge it: the work on this issue then starts.`);
+  }
 
   // Another host or `autopilot init` can open the pull request while this job runs.
   async function waitForOpenPull(blocked: string): Promise<void> {
     const pull = await repoGitHub.onboardingPull();
     if (pull?.state !== "open") throw new Blocked(blocked);
-    loop.log(key, `${key}: waits for the merge of the onboarding pull request #${pull.number}`);
+    await waitForMerge(pull.number);
   }
 
+  const pull = await repoGitHub.onboardingPull();
+  if (pull?.state === "open") return waitForMerge(pull.number);
+  if (pull?.closedAt && Date.parse(pull.closedAt) > Date.parse(retryAt)) {
+    // GitHub can list the merge before the file reads show the config.
+    if (pull.state === "merged") return loop.log(key, `${key}: onboarding pull request #${pull.number} is merged, waits for \`${CONFIG_PATH}\` on the default branch`);
+    throw new Blocked(`The onboarding pull request #${pull.number} was closed without a merge, so this repo has no \`${CONFIG_PATH}\`.`);
+  }
+  // GitHub names a default branch for an empty repo, but the clone of it fails.
+  if (await repoGitHub.isEmpty()) throw new Blocked(`This repo has no commits, so there is no branch to set up. Push one commit to its default branch first, for example a README.`);
+
+  // Taken after the last await above, so that two issues of this host never onboard one repo together. The one that
+  // loses finds the pull request of the other on a later poll.
+  if (ctx.onboardingRepos.has(repoKey)) return loop.log(key, `${key}: waits, another issue onboards ${repoKey}`);
+  ctx.onboardingRepos.add(repoKey);
   try {
-    const pull = await repoGitHub.onboardingPull();
-    if (pull?.state === "open") return loop.log(key, `${key}: waits for the merge of the onboarding pull request #${pull.number}`);
-    if (pull?.closedAt && Date.parse(pull.closedAt) > Date.parse(retryAt)) {
-      // GitHub can list the merge before the file reads show the config.
-      if (pull.state === "merged") return loop.log(key, `${key}: onboarding pull request #${pull.number} is merged, waits for \`${CONFIG_PATH}\` on the default branch`);
-      throw new Blocked(`The onboarding pull request #${pull.number} was closed without a merge, so this repo has no \`${CONFIG_PATH}\`.`);
-    }
     const thread = await vouchedThread(job);
     const base = await repoGitHub.defaultBranch();
     loop.log(key, `${key}: ${repoKey} has no ${CONFIG_PATH}, onboarding on ${ONBOARDING_BRANCH}`);
@@ -326,11 +342,8 @@ async function onboard(job: Working, retryAt: string): Promise<void> {
       return waitForOpenPull(`autopilot pushed ${ONBOARDING_BRANCH} but could not open the pull request: ${messageOf(error)}`);
     }
     loop.audit({ event: "pr.opened", repo: repoKey, pull: number, issue: issue.number, branch: ONBOARDING_BRANCH });
-    await repoGitHub.postComment(
-      issue.number,
-      `This repo has no \`${CONFIG_PATH}\`, so autopilot opened #${number} to set it up. Review it and merge it: the work on this issue then starts.`,
-    );
     loop.log(key, `${key}: opened onboarding pull request #${number}`);
+    await waitForMerge(number);
   } finally {
     ctx.onboardingRepos.delete(repoKey);
   }

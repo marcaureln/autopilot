@@ -34,6 +34,7 @@ export type FakeConfig = Record<string, unknown>;
 
 export class FakeRepoGitHub implements RepoGitHub {
   config: FakeConfig | undefined;
+  empty = false;
   issues = new Map<number, FakeIssue>();
   comments: FakeComment[] = [];
   pulls: FakePull[] = [];
@@ -182,6 +183,9 @@ export class FakeRepoGitHub implements RepoGitHub {
   }
   async defaultBranch(): Promise<string> {
     return "main";
+  }
+  async isEmpty(): Promise<boolean> {
+    return this.empty;
   }
   async lastUnlabeled(): Promise<string | undefined> {
     return undefined;
