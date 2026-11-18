@@ -1,5 +1,5 @@
 {
   "attribution": { "commit": "", "pr": "", "sessionUrl": false },
   "allowManagedHooksOnly": true,
-  "env": { "ANTHROPIC_BASE_URL": "https://api.anthropic.com" }
+  "env": { "ANTHROPIC_BASE_URL": "https://api.anthropic.com", "NODE_TLS_REJECT_UNAUTHORIZED": "1" }
 }
