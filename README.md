@@ -38,7 +38,7 @@ autopilot is small. It is one process, with no server, no queue and no database.
    The wizard does these steps in this order. Each step checks what is in place and does only what is missing, so you can run the wizard again at any time.
    1. **Tools.** It checks git, ssh, mise and gh.
    2. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page. Click **Create GitHub App**. The wizard saves the private key in `~/.config/autopilot/app-key.pem` (mode 600). To use an App that you already have, give its App ID. The host step then asks for the path of its `.pem` file.
-   3. **Host.** Give an SSH target such as `user@my-host`, or `local` for this machine. The wizard installs the latest release on the host. Then it pushes the App key and the Claude token to files on the host, and starts the service. For the token, it runs `claude setup-token` if Claude Code is on this machine. If not, run `claude setup-token` on any machine with Claude Code. Paste the token at the hidden prompt. The wizard saves the host in the hosts file (see [Hosts](#hosts)). If it is your first host, it becomes the default host, and the next commands act on it.
+   3. **Host.** With no `--host`, the wizard uses the default host of the hosts file, if there is one. If not, give an SSH target such as `user@my-host`, or `local` for this machine. The wizard saves the host under the host part of its SSH target. To choose another name, pass `--name <name>`. The wizard installs the latest release on the host. Then it pushes the App key and the Claude token to files on the host, and starts the service. For the token, it runs `claude setup-token` if Claude Code is on this machine. If not, run `claude setup-token` on any machine with Claude Code. Paste the token at the hidden prompt. The wizard saves the host in the hosts file (see [Hosts](#hosts)). If it is your first host, it becomes the default host, and the next commands act on it.
    4. **Owner and watched repos.** Your GitHub login becomes the owner. Only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that the host watches. If the App is not installed there, the wizard opens the install page. Select the repos, then click **Install**.
    5. **First repo.** The wizard runs `autopilot init` on a repo that you select. It opens an onboarding pull request (see [Onboarding](#onboarding)).
    6. **Alias.** It adds `ap` as a short name for `autopilot` to your shell.
@@ -198,7 +198,7 @@ The client keeps one file: `~/.config/autopilot/hosts.json`, or `$XDG_CONFIG_HOM
 2. `AUTOPILOT_HOST`.
 3. The default host of the hosts file.
 
-If the value is the name of a host in the file, the command uses the target of that host. If not, the command uses the value as an SSH target, or as `local`. autopilot gives the target to `ssh` as it is, so a `Host` alias of `~/.ssh/config` works.
+If the value is the name of a host in the file, the command uses the target of that host. If not, the command uses the value as an SSH target, or as `local`. autopilot gives the target to `ssh` as it is, so a `Host` alias of `~/.ssh/config` works. A name in the hosts file wins over a `Host` alias of the same name.
 
 A command that the client forwards never reads the hosts file on the host: the client sends `--host=`, and under `sudo` the host skips the file. A client from before this change sends no `--host=` to a macOS host, so a macOS host that also has a hosts file forwards the command again: update the client. A command that you type on a host that has a hosts file acts on its default host. Pass `--host local` to act on the host itself.
 
@@ -231,7 +231,7 @@ autopilot update                 # install the latest release, or --version vX.Y
 autopilot --host pi status       # act on a host that is not the default
 ```
 
-`autopilot host setup --host <target>` still works. It does the same as `hosts add`. The name is the host part of the SSH target, or the short hostname for `local`. Use `hosts add` instead, because it replaces `host setup`.
+`autopilot host setup --host <target>` still works. It does the same as `hosts add`. Without `--host`, it acts on the default host. The name is `--name`, else the host part of the SSH target, or the short hostname for `local`. It stops before it changes anything if that name is not valid, for example for `user@[fe80::1]`: pass `--name`. `autopilot setup` does the same. Use `hosts add` instead, because it replaces `host setup`.
 
 To replace a host secret, for example a wrong Claude token, remove its file in the secrets folder: `/etc/autopilot/secrets` on Linux, or `~/.autopilot/secrets` on macOS. Then run the same `autopilot hosts add` command again. It asks only for the secret that the host lacks, writes it, and restarts the service.
 

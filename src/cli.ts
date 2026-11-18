@@ -41,8 +41,8 @@ AUTOPILOT_HOST, else to the default host of the hosts file. For the target "loca
 Commands that run on the client:
   setup [--config <file> --yes] [--backend op]
                               Set up everything in one wizard: prerequisites, the GitHub App, a host and its
-                              secrets, the watched entries, a first repo and the alias. It saves the host in
-                              the hosts file. Run it again to fix what is missing. --config gives the answers
+                              secrets, the watched entries, a first repo and the alias. With no --host, it
+                              uses the default host. It saves the host in the hosts file, under --name. Run it again to fix what is missing. --config gives the answers
                               (schema/setup.schema.json). With --yes, setup asks nothing. With --backend op,
                               the secrets go to 1Password
   app create [--key-out <path> | --backend op]

@@ -7,7 +7,7 @@ description: This skill should be used to set up and use autopilot, a tool that 
 
 autopilot runs on a host as a service. Each minute, it reads the GitHub issues that have the `autopilot` label in the watched repos. For each issue, a planner agent writes a spec, a builder agent writes the code in a container, checks run, and a gate merges the pull request or asks for a review. GitHub holds all the state: labels, comments, commit statuses and pull requests.
 
-The `autopilot` command on the user's machine is only a client. It keeps one file, `~/.config/autopilot/hosts.json`, with a name and an SSH target for each host. That file holds no secret. A command acts on the host of `--host <name | ssh-target>`, else of `AUTOPILOT_HOST`, else on the default host of the file. The target `local` is the machine that runs the command. `autopilot hosts` shows the hosts and the default.
+The `autopilot` command on the user's machine is only a client. It keeps one file, `~/.config/autopilot/hosts.json`, with a name and an SSH target for each host. That file holds no secret. A command acts on the host of `--host <name | ssh-target>`, else of `AUTOPILOT_HOST`, else on the default host of the file. A name in the file wins over a `Host` alias of the same name in `~/.ssh/config`. The target `local` is the machine that runs the command. `autopilot hosts` shows the hosts and the default.
 
 Before any command, run `autopilot --help` and use only the commands that it lists. The CLI is the reference. When this skill and `--help` do not agree, `--help` is correct.
 
