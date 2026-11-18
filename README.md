@@ -7,77 +7,29 @@
 
 <p align="center">Turns issues into features, with coding agents on your own machine.</p>
 
-autopilot is small. It is one process, with no server, no queue and no database. GitHub is the only interface, and it holds all the state. The agent harness, the models, the verification mode and the host are each one config field.
+autopilot is small. It is one process, with no server, no queue and no database. GitHub is the only interface, and it holds all the state.
 
 > [!WARNING]
 > autopilot is in early development. Try it on a test repo first.
 
 ## Set up
 
-### What you need
+You need:
 
-- **On your machine:** git, ssh, [mise](https://mise.jdx.dev/installing-mise.html) and [gh](https://cli.github.com/) signed in to GitHub. Setup prints the install command for a missing tool. `autopilot init` also needs Docker with the Compose plugin.
-- **A Claude account.** Run `claude setup-token` on any machine with Claude Code. It prints a token, which the agents use.
-- **Optional: a provider API key** for a role that uses OpenCode. See [Use OpenCode for a role](skills/autopilot/references/setup.md#use-opencode-for-a-role).
-- **Optional: 1Password.** By default, the host keeps its secrets in files. To keep them in 1Password, you also need the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`op`) signed in to your account. Pass `--backend op` to the wizard.
-- **A host** that runs the jobs. It is a Linux machine that you can reach with SSH and sudo, with [Docker Engine](https://docs.docker.com/engine/install/), its [rootless extras](https://docs.docker.com/engine/security/rootless/) and the [Compose plugin](https://docs.docker.com/compose/install/linux/). It can also be a Mac with OrbStack, Colima or Docker Desktop. The host can be the machine you work on.
+- **On your machine:** git, ssh, [mise](https://mise.jdx.dev/installing-mise.html) and [gh](https://cli.github.com/) signed in to GitHub.
+- **A Claude account.** Run `claude setup-token` on any machine with Claude Code. The agents use the token that it prints.
+- **A host** that runs the jobs: a Linux machine with SSH, sudo, [Docker Engine](https://docs.docker.com/engine/install/), its [rootless extras](https://docs.docker.com/engine/security/rootless/) and the [Compose plugin](https://docs.docker.com/compose/install/linux/), or a Mac with OrbStack, Colima or Docker Desktop. It can be the machine you work on.
 
-### Steps
+Then:
 
-1. Install the client. It installs for your user, without root, in `~/.local/share/autopilot` and `~/.local/bin/autopilot`. Update it later with `autopilot self-update`.
-
-   ```sh
-   curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
-   ```
-
-2. Run the setup wizard with `autopilot setup`. It does only what is missing, so you can run it again at any time. Its steps are:
-   1. **Tools.** It checks git, ssh, mise and gh.
-   2. **GitHub App.** Select "Create a new App", then click **Create GitHub App** in the browser. The wizard saves the private key in `~/.config/autopilot/app-key.pem`.
-   3. **Host.** Give an SSH target such as `user@my-host`, or `local`. The wizard installs autopilot there, pushes the App key and the Claude token, and starts the service.
-   4. **Owner and watched repos.** Your GitHub login becomes the owner. Only owners can start a job. The wizard proposes to watch your whole account. On the App install page, select **All repositories**.
-   5. **First repo.** The wizard runs `autopilot init` on a repo that you select (see [Onboarding](#onboarding)).
-   6. **Alias.** It adds `ap` as a short name for `autopilot` to your shell.
-
-   With `--backend op`, the wizard keeps the App key and the Claude token in the 1Password vault `autopilot`. The host reads them with a service account that can only read that vault.
-
-3. Review and merge the onboarding pull request. Make sure that the check commands in `.github/autopilot.json` are correct. Until you merge this pull request, each issue in the repo waits.
-
-4. Write your first issue. Ask for one small change, name the files, and give acceptance criteria. Then add the `autopilot` label:
-
-   ```sh
-   gh issue create --repo <owner>/<repo> --title "Add docs/labels.md" --body "Add docs/labels.md that lists the autopilot labels." --label autopilot
-   ```
-
-5. Follow the issue on GitHub. Within one minute, the host posts a claim comment, then a spec. Then it builds the change, runs the checks and opens a pull request. The labels tell you when you must act:
-
-   | Label                         | What to do                                                                |
-   | ----------------------------- | ------------------------------------------------------------------------- |
-   | `autopilot:working`           | Nothing. Wait.                                                            |
-   | `autopilot:needs-info`        | Answer the questions of the spec in one comment.                          |
-   | `autopilot:awaiting-approval` | Read the spec, then tick **Approve and build**.                           |
-   | `autopilot:blocked`           | Read the last comment, fix the cause, then remove the label to try again. |
-
-   With `"merge": "manual"` (the default from `init`), you review and merge each pull request. To see what the host does, run `autopilot logs`.
-
-### Set up without prompts
-
-Put the answers in a file ([schema](schema/setup.schema.json)), then run `autopilot setup --config setup.json --yes`:
-
-```json
-{
-	"$schema": "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/setup.schema.json",
-	"app_id": 123456,
-	"host": "user@my-host",
-	"allow": ["octocat/app"],
-	"alias": "ap"
-}
+```sh
+curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
+autopilot setup
 ```
 
-GitHub needs a click in the browser to create an App, so run `autopilot app create` first. For an App that you already have, set `app_key` to the path of its `.pem` file. Give the Claude token in `CLAUDE_CODE_OAUTH_TOKEN`. The file never holds a secret value.
+The wizard creates a GitHub App, installs a host, pushes the App key and the Claude token to it, watches your account and onboards a first repo. It does only what is missing, so you can run it again at any time. For each step, and for a setup without prompts, see the [setup reference](skills/autopilot/references/setup.md).
 
-### Set up with a coding agent
-
-Paste this prompt into Claude Code, Codex or another coding agent:
+**With a coding agent.** Paste this prompt into Claude Code, Codex or another agent:
 
 ```text
 Set up autopilot for me (https://github.com/marcaureln/autopilot).
@@ -86,7 +38,20 @@ Ask me before each step that needs my browser or a secret value.
 Never read, print or write a secret value yourself.
 ```
 
-The [skill](skills/autopilot/SKILL.md) also tells the agent how to use autopilot. It can write issues that autopilot can build, answer its questions, approve a spec, review its pull requests and debug a blocked issue.
+The [skill](skills/autopilot/SKILL.md) also tells the agent how to write issues, answer questions, approve specs, review pull requests and debug a blocked issue.
+
+## Use it
+
+Write an issue that asks for one small change, with acceptance criteria. Add the `autopilot` label. The host claims it within one poll, writes a spec, builds the change, runs the checks and opens a pull request. The labels tell you when you must act:
+
+| Label                         | What to do                                                                |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| `autopilot:working`           | Nothing. Wait.                                                            |
+| `autopilot:needs-info`        | Answer the questions of the spec in one comment.                          |
+| `autopilot:awaiting-approval` | Read the spec, then tick **Approve and build**.                           |
+| `autopilot:blocked`           | Read the last comment, fix the cause, then remove the label to try again. |
+
+A repo with no `.github/autopilot.json` is onboarded first: the host opens a "Set up autopilot" pull request with a dev container, the check commands and an `AGENTS.md`. Review it and merge it, then the issue continues. For an empty repo, write in the issue what to build, for example "A 2D platformer in Godot 4". `autopilot init` does the same from a checkout.
 
 ## How it works
 
@@ -106,114 +71,43 @@ flowchart TB
 
 Models propose and rules decide. The risk rules are deterministic, and a model can raise the risk but never lower it.
 
-## Building blocks
+- **Environment.** The repo's own `.devcontainer/` runs the install, the checks and the agent, so any language works. The host refuses a dev container that reaches outside its container, and it cuts the network during the checks.
+- **Checks.** The repo's commands and three scanners (Semgrep, Grype, TruffleHog) run on the host. With `"verify": { "mode": "ci" }`, the host waits for the repo's GitHub Actions jobs instead. [marcaureln/actions](https://github.com/marcaureln/actions) has the scanners as actions.
+- **Secrets.** `autopilot secrets set <NAME>` keeps a value in a file on the host. Only the check commands get it, never the agent.
+- **Hosts.** A host is a systemd service (Linux) or a launchd agent (macOS). The client keeps their names in a hosts file. Several hosts can watch the same repos.
 
-autopilot has a small core. Each block is behind a config field or a small interface. Only the "Today" column exists in the code.
+Each repo is configured in `.github/autopilot.json` ([schema](schema/autopilot.schema.json)). Onboarding sets `"merge": "manual"`. Set `"merge": "auto"` to let the merge gate merge low-risk pull requests.
 
-| Block         | Today                                                                                  | Possible later       |
-| ------------- | -------------------------------------------------------------------------------------- | -------------------- |
-| Forge         | [GitHub](src/core/github.ts)                                                           | GitLab               |
-| Agent harness | [Claude Code](src/harness/claude.ts) ([image](docker/claude)) or [OpenCode](src/harness/opencode.ts) ([image](docker/opencode)), per role | Codex, pi            |
-| Environment   | The repo's dev container ([environment](src/core/environment.ts), [guardrails](src/core/devcontainer.ts)) | -                    |
-| Checks        | [Commands and scanners](src/core/checks.ts), on the host or in the repo's own CI       | -                    |
-| Risk          | [Rules](src/core/risk.ts) and [gates](src/core/gate.ts)                                | -                    |
-| Secrets       | [Files on the host](src/core/secrets.ts), or the [1Password CLI](src/commands/secrets.ts) | -                    |
+| Block         | Today                                                                                                  | Possible later |
+| ------------- | ------------------------------------------------------------------------------------------------------ | -------------- |
+| Forge         | [GitHub](src/core/github.ts)                                                                           | GitLab         |
+| Agent harness | [Claude Code](src/harness/claude.ts) or [OpenCode](src/harness/opencode.ts), per role                  | Codex, pi      |
+| Environment   | [The repo's dev container](src/core/environment.ts), with [guardrails](src/core/devcontainer.ts)       | -              |
+| Checks        | [Commands and scanners](src/core/checks.ts), on the host or in CI                                      | -              |
+| Risk          | [Rules](src/core/risk.ts) and [gates](src/core/gate.ts)                                                | -              |
+| Secrets       | [Files on the host](src/core/secrets.ts), or the [1Password CLI](src/commands/secrets.ts)              | -              |
 
 ## Out of scope
 
-autopilot does one job. It turns issues into features. It does not do these things, on purpose:
+autopilot does one job. It does not do these things, on purpose:
 
-- **Network control.** autopilot does not filter what the agents reach on the internet. If you need that, set it up on the host.
-- **Learning by itself.** autopilot does not change its own prompts. To get better results, improve your skills and your `AGENTS.md`.
-- **A database.** GitHub holds the state. A host keeps only its config and its secrets. Your machine keeps only the hosts file and the App key that `app create` saves.
+- **Network control.** It does not filter what the agents reach on the internet. Set that up on the host.
+- **Learning by itself.** It does not change its own prompts. Improve your skills and your `AGENTS.md`.
+- **A database.** GitHub holds the state.
 - **A UI.** You work in GitHub: issues, labels, comments and pull requests.
-- **Project templates.** Each repo brings its own dev container, so autopilot works with any language or engine.
+- **Project templates.** Each repo brings its own dev container.
 - **A hosted service.** It runs on your machines, with your accounts.
-
-## Configuration
-
-Each repo has a `.github/autopilot.json`, which onboarding writes. The [schema](schema/autopilot.schema.json) describes each field and its default. Onboarding sets `"merge": "manual"`. Set `"merge": "auto"` to let the merge gate merge low-risk pull requests.
-
-### Checks in your own CI
-
-The checks are the repo's own commands and the scanners. By default, the host runs them. With `"verify": { "mode": "ci", "required": ["sast", "deps-scan", "secrets-scan", "test"] }`, the host waits for the repo's own CI on the head commit of the pull request. Each name in `required` is a GitHub Actions job. Only a success passes, so a skipped job blocks the merge. Results from other Apps or from commit statuses do not count, because anyone with write access can post them. When a check fails, the builder gets its output for a fix round. [marcaureln/actions](https://github.com/marcaureln/actions) has the scanners as composite actions.
-
-### Onboarding
-
-Onboarding adds autopilot to a repo in one pull request. You review and merge it. The host never merges it. Start it in one of two ways:
-
-- **With an issue.** Add the `autopilot` label to an issue in a watched repo that has no `.github/autopilot.json`. The host opens the pull request "Set up autopilot". The issue tells the agent what the project is. For an empty repo, write what to build, for example "A 2D platformer in Godot 4". The issue waits until you merge the pull request.
-- **With `autopilot init`.** Run it in a checkout of the repo, or pass `--repo <owner>/<repo>`. It needs Docker with the Compose plugin. `--skill <source>` (repeatable) gives the agents a skill. `--notes <file>` adds your own instructions.
-
-The repo's own `.devcontainer/` is the environment of every job. The install, the checks and the builder run in it, so any language works. The onboarding agent writes `.devcontainer/` if the repo has none, from [Anthropic's dev container](https://github.com/anthropics/claude-code/tree/main/.devcontainer) without its firewall. It also sets the check commands and drafts `AGENTS.md`. Then the onboarding runs each check once. Existing `lint` and `types` errors go to `.github/autopilot-baseline.json`, so only new errors fail.
-
-The host refuses a `.devcontainer/` that reaches outside its container: host commands, `runArgs`, privileges, host mounts and namespaces, published ports, `${localEnv:...}`, and images without an exact version tag. It adds its own memory, CPU and process caps, and it cuts the outside network during the checks.
-
-### Secrets
-
-A test that needs a key gets it from the repo's secrets. By default, autopilot keeps them in one env file per repo on the host. Run these in a checkout of the repo. They act on the default host, or on the host of `--host`:
-
-```sh
-autopilot secrets set STRIPE_KEY        # hidden prompt, or pipe the value on stdin
-autopilot secrets set --from-env .env   # every key in the file
-autopilot secrets list
-autopilot secrets rm STRIPE_KEY
-```
-
-The file is `secrets/repos/<owner>_<repo>.env` in `/etc/autopilot` on Linux, or in `~/.autopilot` on macOS. A value is never a command argument, so it stays out of the shell history. A value must be on one line.
-
-To use 1Password, pass `--backend op` to `setup`, `init`, `app create`, `hosts add` and `secrets`. The values then go to 1Password, with your own sign-in. Each repo gets one item (`<owner>_<repo>`) in the `autopilot` vault. The command adds the reference to `.github/autopilot.json`. Commit that change. A reference in the config wins over a value of the same name in the host's file.
-
-The host gives the values only to the checks that run a command from `verify.commands`. The scanners, the install step and the agent never get them. For such a check, the host shows only whether it passed. As in CI, a person who can change the code of a repo can read its secrets, for example from a test. Give a repo only test-mode or low-value keys.
-
-## Hosts
-
-A host runs autopilot as a service. It keeps its `host.json`, its secrets and a release. The setup reference has the [details](skills/autopilot/references/setup.md#6-host).
-
-The client keeps the hosts file `~/.config/autopilot/hosts.json` ([schema](schema/hosts.schema.json)). It gives a name and an SSH target to each host, and holds no secret. The target `local` is this machine. A command finds its host in this order: `--host`, then `AUTOPILOT_HOST`, then the default host of the hosts file.
-
-| Host  | Service                                                                  | Files                              | Logs                       |
-| ----- | ------------------------------------------------------------------------ | ---------------------------------- | -------------------------- |
-| Linux | systemd, as the user `autopilot` with rootless Docker                    | `/etc/autopilot`, `/opt/autopilot` | journald                   |
-| macOS | launchd agent of your user, with your OrbStack, Colima or Docker Desktop | `~/.autopilot`                     | `~/Library/Logs/autopilot` |
-
-A macOS host runs while you are logged in, and stops while the Mac sleeps.
-
-```sh
-# Once per host. Run it again to repair or upgrade. The first host becomes the default host.
-autopilot hosts add pi user@my-host --owner <login> --app-id <id> --app-key app.pem
-autopilot hosts add mac local --owner <login> --app-id <id>     # this machine
-
-autopilot hosts                  # the hosts, and which one is the default
-autopilot hosts default mac      # the host of the commands that have no --host
-autopilot hosts rm mac           # remove it from the hosts file. It does not uninstall the host
-
-autopilot watch <owner>/<repo>   # opens the App install page if the App is not installed there
-autopilot watch                  # what the host watches; --remove <entry> stops watching it
-autopilot status
-autopilot logs                   # --audit for the JSON audit events
-autopilot start                  # or stop
-autopilot update                 # install the latest release, or --version vX.Y.Z
-autopilot --host pi status       # act on a host that is not the default
-```
-
-A host works on one issue at a time by default. To run more at once, set `concurrency` in its `host.json`. Each issue gets its own containers and `limits`, so size it to the host's memory and to the rate limits of your Claude plan. Several hosts can watch the same repos. The oldest claim comment on an issue wins. To move an issue to another host, delete its claim comment.
 
 ## Development
 
 ```sh
 mise install && pnpm install
 pnpm check               # types + lint + tests
-node src/cli.ts start --foreground --once --config host.json   # one loop on a dev host, with the secrets that host.json names
 ```
 
 Node runs the TypeScript files directly. There is no build step.
 
 ## References
 
-autopilot builds on these projects and ideas:
-
-- [Claude Code devcontainer](https://github.com/anthropics/claude-code/tree/main/.devcontainer): Anthropic's reference devcontainer for Claude Code.
-- [Dev Container CLI](https://github.com/devcontainers/cli) and the [Dev Container specification](https://containers.dev/).
-- [pstack](https://github.com/michael-denyer/pstack-claude): poteto's agent workflows, used as skills for the planner and the builder.
-- [superpowers](https://github.com/obra/superpowers): obra's skills for test-driven development and systematic debugging.
+- [Claude Code devcontainer](https://github.com/anthropics/claude-code/tree/main/.devcontainer), [Dev Container CLI](https://github.com/devcontainers/cli) and the [Dev Container specification](https://containers.dev/).
+- [pstack](https://github.com/michael-denyer/pstack-claude) and [superpowers](https://github.com/obra/superpowers): skills for the planner and the builder.
