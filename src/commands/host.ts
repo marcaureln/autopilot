@@ -4,13 +4,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { AUDIT_TAG } from "../core/audit.ts";
 import { loadHost, type Host } from "../core/host.ts";
+import { LOCAL_TARGET } from "../core/hosts.ts";
 import { hostLayout, LOCAL_LAYOUT, parseOS, type Layout } from "../core/layout.ts";
 import { RELEASE_TAG } from "../core/setup.ts";
 
 const RELEASE_REPO = "marcaureln/autopilot";
 // scripts/setup.sh and scripts/setup-macos.sh give the systemd unit and the launchd job this name.
 export const SERVICE = "autopilot";
-export const LOCAL_TARGET = "local";
 
 export type Release = { kind: "github"; tag: string } | { kind: "checkout"; commit: string; archive: () => Buffer };
 

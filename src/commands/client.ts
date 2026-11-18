@@ -7,9 +7,10 @@ import { confirm, isCancel, log, password, text } from "@clack/prompts";
 import type { Audit } from "../core/audit.ts";
 import { createGitHub } from "../core/github.ts";
 import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
+import { LOCAL_TARGET } from "../core/hosts.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret, type Backend } from "../core/secrets.ts";
-import { connect, installRelease, latestRelease, LOCAL_TARGET, must, parseTag, SERVICE, type Release, type Connection } from "./host.ts";
+import { connect, installRelease, latestRelease, must, parseTag, SERVICE, type Release, type Connection } from "./host.ts";
 
 const CLI_ROOT = new URL("../../", import.meta.url).pathname;
 const HOST_SCHEMA = "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/host.schema.json";
