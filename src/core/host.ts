@@ -60,7 +60,12 @@ export function parseHost(text: string, source: string): Host {
 }
 
 export function loadHost(path = HOST_FILE): Host {
-  return parseHost(readFileSync(path, "utf8"), path);
+  try {
+    return parseHost(readFileSync(path, "utf8"), path);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`The host file ${path} is missing or not valid: ${reason}. Fix it, then run \`autopilot start\`.`, { cause: error });
+  }
 }
 
 const GITHUB_SOURCE = /^github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)(?:\/\/([^#]+))?(?:#(.+))?$/;
