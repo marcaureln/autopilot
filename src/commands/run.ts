@@ -7,8 +7,8 @@ import { planChecks, type CheckResult, type ChecksJob } from "../core/checks.ts"
 import { claimComment, claimOf, ownClaims } from "../core/claim.ts";
 import { CONFIG_PATH, parseConfig, type Config } from "../core/config.ts";
 import { EnvironmentRefused } from "../core/environment.ts";
-import { planGate, mergeGate } from "../core/gate.ts";
-import type { GitHub, Issue, RepoGitHub } from "../core/github.ts";
+import { mergeGate, planGate } from "../core/gate.ts";
+import { hasStatus, type GitHub, type Issue, type RepoGitHub } from "../core/github.ts";
 import { usesOnePassword, type Host } from "../core/host.ts";
 import { ANY_TIME, branchName, fixVerdict, headVerdict, issuePhase, latestPull, type BotPull, type HeadVerdict, type Statuses } from "../core/phase.ts";
 import type { PlannerJob, PlannerResult } from "../core/planner.ts";
@@ -60,7 +60,7 @@ function messageWithCause(error: unknown): string {
 
 async function readConfig(repoGitHub: RepoGitHub): Promise<Config> {
   const text = await repoGitHub.readFile(CONFIG_PATH);
-  if (text === undefined) throw new Blocked(`There is no \`${CONFIG_PATH}\` on the default branch.`);
+  if (text === undefined) throw new Blocked(`There is no \`${CONFIG_PATH}\` on the default branch. Run \`autopilot init\` in a checkout of the repo and merge its pull request.`);
   try {
     return parseConfig(text, CONFIG_PATH);
   } catch (error) {
@@ -473,7 +473,10 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
   loop.audit({ event: "gate.decided", issue: key, gate: "merge", pull: pull.number, planner: spec?.plannerRisk, rules: gate.rulesRisk, merge: config.merge, decision: gate.decision });
   const repoName = `${ctx.repo.owner}/${ctx.repo.name}`;
   if (gate.decision === "merge") {
-    await repoGitHub.mergePull(pull.number, sha, `${issue.title} (#${pull.number})`, `Fixes #${issue.number}`);
+    await repoGitHub.mergePull(pull.number, sha, `${issue.title} (#${pull.number})`, `Fixes #${issue.number}`).catch((error: unknown) => {
+      if (!hasStatus(error, 405) && !hasStatus(error, 409)) throw error;
+      throw new Blocked(`GitHub refused the merge of #${pull.number}: ${messageOf(error)}. Merge it yourself, or set \`merge\` to \`manual\`.`);
+    });
     loop.audit({ event: "pr.merged", repo: repoName, pull: pull.number, sha });
     return loop.log(key, `${key}: merged pull request #${pull.number}`);
   }
@@ -519,7 +522,10 @@ export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
     });
     for (const repo of repos) {
       const repoKey = `${repo.owner}/${repo.name}`;
-      await pollRepo(loop, state, installationId, repo).catch((error: unknown) => log(repoKey, `${repoKey}: error: ${messageWithCause(error)}`));
+      await pollRepo(loop, state, installationId, repo).then(
+        () => log(repoKey, `${repoKey}: polled`),
+        (error: unknown) => log(repoKey, `${repoKey}: error: ${messageWithCause(error)}`),
+      );
     }
   }
 }

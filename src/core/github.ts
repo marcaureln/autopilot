@@ -88,7 +88,7 @@ export type GitHub = {
 
 const quiet = { debug() {}, info() {}, warn() {}, error() {} };
 
-function hasStatus(error: unknown, status: number): boolean {
+export function hasStatus(error: unknown, status: number): boolean {
   return typeof error === "object" && error !== null && "status" in error && error.status === status;
 }
 
