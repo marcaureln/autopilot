@@ -6,7 +6,7 @@ import { confirm, isCancel, log, password, text } from "@clack/prompts";
 import type { Audit } from "../core/audit.ts";
 import { CONFIG_DIR } from "../core/config-dir.ts";
 import { createGitHub } from "../core/github.ts";
-import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
+import { addApiKeys, API_KEY_PREFIX, hostSecretFiles, parseHost, secretLabel, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
 import { LOCAL_TARGET, RUN_HERE } from "../core/hosts.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { OP_UNAVAILABLE, readSecret, type Backend } from "../core/secrets.ts";
@@ -115,7 +115,16 @@ export async function clientClaudeToken(backend: Backend, interactive: boolean):
   return backend === "op" ? readSecret(HOST_SECRETS.op.claude_token, "init: token for the onboarding agent", noAudit) : readClaudeToken(interactive);
 }
 
-export type SecretSources = Record<Exclude<HostSecret, "op_token">, () => Promise<string>>;
+export async function readApiKey(name: string, interactive: boolean): Promise<string> {
+  const fromEnv = process.env[name]?.trim();
+  if (fromEnv) return fromEnv;
+  if (!interactive) throw new Error(`no value for API key ${name}: pass it in the env var ${name}`);
+  const key = await password({ message: `Paste the value of ${name} (hidden)`, validate: (input) => (input?.trim() ? undefined : "The key is empty") });
+  if (isCancel(key)) throw new Error("cancelled");
+  return key.trim();
+}
+
+export type SecretSources = { app_key: () => Promise<string>; claude_token: () => Promise<string>; api_key: (name: string) => Promise<string> };
 
 // The service user reads the host secrets through the group of the secrets folder, as it reads the repo files.
 export function writeSecretFile(remote: Pick<Connection, "layout" | "sudo">, path: string): string {
@@ -160,20 +169,28 @@ function checkoutRelease(): Release {
 // An exit code the shell script uses for "no such file", so that other failures stay visible.
 const NOT_FOUND = 3;
 
-async function hostFile(remote: Connection, options: { owner?: string; appId?: number; backend: Backend }): Promise<Host> {
+async function hostFile(remote: Connection, options: { owner?: string; appId?: number; backend: Backend; apiKeys: string[] }): Promise<Host> {
   const path = remote.layout.hostFile;
   const { code, stdout } = await remote.shell.capture(`${remote.sudo}sh -c 'test -e ${path} || exit ${NOT_FOUND}; cat ${path}'`);
-  if (code === 0) return parseHost(stdout, path);
+  if (code === 0) {
+    const host = parseHost(stdout, path);
+    const text = addApiKeys(stdout, options.apiKeys);
+    if (text === stdout) return host;
+    const updated = parseHost(text, "the updated host.json");
+    console.log(`==> host.json (adds ${options.apiKeys.join(", ")})`);
+    await must(remote.shell, "host.json", writeHostFile(remote, path, "644"), Buffer.from(text));
+    return updated;
+  }
   if (code !== NOT_FOUND) throw new Error(`autopilot could not read ${path} on the host (exit ${code}). See the message above.`);
   if (!options.owner || !options.appId) throw new Error("the host has no host.json yet: pass --owner <login> --app-id <id>");
-  const text = JSON.stringify(initialHostFile({ name: remote.name, owner: options.owner, appId: options.appId, backend: options.backend }), null, 2) + "\n";
+  const text = addApiKeys(JSON.stringify(initialHostFile({ name: remote.name, owner: options.owner, appId: options.appId, backend: options.backend }), null, 2) + "\n", options.apiKeys);
   const host = parseHost(text, "the new host.json");
   console.log(`==> host.json (new, host name ${host.name})`);
   await must(remote.shell, "host.json", writeHostFile(remote, path, "644"), Buffer.from(text));
   return host;
 }
 
-export type HostSetupOptions = { owner?: string; appId?: number; version?: string; fromCheckout: boolean; backend: Backend; sources: SecretSources };
+export type HostSetupOptions = { owner?: string; appId?: number; version?: string; fromCheckout: boolean; backend: Backend; apiKeys: string[]; sources: SecretSources };
 
 export async function hostSetup(target: string, options: HostSetupOptions): Promise<HostSecret[]> {
   const release: Release = options.fromCheckout ? checkoutRelease() : { kind: "github", tag: options.version ? parseTag(options.version) : await latestRelease() };
@@ -181,20 +198,21 @@ export async function hostSetup(target: string, options: HostSetupOptions): Prom
   const host = await hostFile(remote, options);
   const files = hostSecretFiles(host.secrets, remote.layout);
   const missing = await missingSecrets(remote, files);
-  for (const file of files) if (!missing.includes(file)) console.log(`==> ${SECRET_LABELS[file.secret]}: already on the host`);
+  for (const file of files) if (!missing.includes(file)) console.log(`==> ${secretLabel(file.secret)}: already on the host`);
 
   // The values come before the install, so the questions do not wait for it.
   const values: { file: HostSecretFile; value: string }[] = [];
   for (const file of missing) {
-    if (file.secret === "op_token") continue;
-    const value = await options.sources[file.secret]();
-    if (file.secret === "app_key") await checkAppKey(host.app_id, value, "the App key file");
+    const { secret } = file;
+    if (secret === "op_token") continue;
+    const value = await (secret === "app_key" || secret === "claude_token" ? options.sources[secret]() : options.sources.api_key(secret.slice(API_KEY_PREFIX.length)));
+    if (secret === "app_key") await checkAppKey(host.app_id, value, "the App key file");
     values.push({ file, value });
   }
 
   // setup.sh installs op and loads this token into the service only when the file exists.
   if (missing.some((file) => file.secret === "op_token")) {
-    console.log(`==> ${SECRET_LABELS.op_token}`);
+    console.log(`==> ${secretLabel("op_token")}`);
     let token: Buffer;
     try {
       token = execFileSync("op", ["read", "--no-newline", OP_TOKEN_REFERENCE], { stdio: ["ignore", "pipe", "inherit"] });
@@ -208,8 +226,8 @@ export async function hostSetup(target: string, options: HostSetupOptions): Prom
 
   // setup.sh makes the secrets folder and its group, so the files come after it.
   for (const { file, value } of values) {
-    console.log(`==> ${SECRET_LABELS[file.secret]}`);
-    await must(remote.shell, SECRET_LABELS[file.secret], writeSecretFile(remote, file.path), Buffer.from(value));
+    console.log(`==> ${secretLabel(file.secret)}`);
+    await must(remote.shell, secretLabel(file.secret), writeSecretFile(remote, file.path), Buffer.from(value));
   }
   if (values.length > 0) {
     // The service read its secrets when setup.sh started it, before these files existed.
