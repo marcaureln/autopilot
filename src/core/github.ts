@@ -15,9 +15,9 @@ export type FoundIssue = { repo: Repo; issue: Issue };
 
 export type Provenance = { body: Change; title?: Change; commentEdits: Map<number, CommentEdit> };
 
-export type Comparison = { behind: number; ahead: number; changes: string[] };
+type Comparison = { behind: number; ahead: number; changes: string[] };
 
-export type LabelSpec = { name: string; color: string; description: string };
+type LabelSpec = { name: string; color: string; description: string };
 
 export type OnboardingPull = { number: number; state: BotPull["state"]; closedAt: string | undefined };
 

@@ -21,7 +21,7 @@ import { importLfsObjects, pushBranch, readAgentFile, repoUrl, shallowClone } fr
 
 const exec = promisify(execFile);
 
-export const RESULT_PATH = ".autopilot/result.json";
+const RESULT_PATH = ".autopilot/result.json";
 
 const MAX_COMMITS = 50;
 const MAX_BUNDLE_BYTES = 100 * 1024 * 1024;
@@ -160,7 +160,7 @@ ${JSON.stringify(schema, null, 2)}
 `;
 }
 
-export type BuildMode = { kind: "build"; base: string; branch: string } | { kind: "fix"; branch: string; head: string; failures: Failure[] };
+type BuildMode = { kind: "build"; base: string; branch: string } | { kind: "fix"; branch: string; head: string; failures: Failure[] };
 
 export type BuildJob = {
   github: GitHub;

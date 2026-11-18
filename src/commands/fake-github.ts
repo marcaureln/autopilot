@@ -21,7 +21,7 @@ import { loopState, runOnce, drain, type Loop, type LoopState } from "./run.ts";
 export const BOT = "autopilot[bot]";
 export const OWNER = "owner";
 export const HOST_NAME = "pi";
-export const REPO: Repo = { owner: "owner", name: "app" };
+const REPO: Repo = { owner: "owner", name: "app" };
 
 type FakeIssue = { number: number; title: string; body: string; labels: string[]; open: boolean; author: string; createdAt: string; labeledBy: string; labeledAt: string };
 

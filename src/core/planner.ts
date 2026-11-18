@@ -15,7 +15,7 @@ import type { Comment } from "./spec.ts";
 import { prepareAgent } from "./skills.ts";
 import { readAgentFile, shallowClone } from "./workspace.ts";
 
-export type PlannedFile = { path: string; status: "added" | "modified" | "deleted" } | { path: string; status: "renamed"; previous_path: string };
+type PlannedFile = { path: string; status: "added" | "modified" | "deleted" } | { path: string; status: "renamed"; previous_path: string };
 
 export type PlannerResult = {
   needs_info: boolean;
@@ -26,7 +26,7 @@ export type PlannerResult = {
   spec: string;
 };
 
-export const RESULT_PATH = ".autopilot/result.json";
+const RESULT_PATH = ".autopilot/result.json";
 
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile<PlannerResult>(schema);
@@ -42,7 +42,7 @@ export function parsePlannerResult(text: string): PlannerResult {
   return data;
 }
 
-export type PlannerInput = {
+type PlannerInput = {
   repo: string;
   issue: { number: number; title: string; body: string };
   thread: Comment[];

@@ -3,7 +3,7 @@ import schema from "../../schema/autopilot.schema.json" with { type: "json" };
 
 export const CONFIG_PATH = ".github/autopilot.json";
 
-export type Role = "planner" | "builder";
+type Role = "planner" | "builder";
 
 export type Agent = {
   harness: "claude" | "opencode";

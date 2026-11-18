@@ -43,7 +43,7 @@ export type Loop = {
   idle: Idle;
 };
 
-export type Idle = { due: () => boolean; run: () => Promise<void> };
+type Idle = { due: () => boolean; run: () => Promise<void> };
 
 // GitHub statuses do not hold the check output, so it lives in memory. After a restart, a failed
 // check runs again to get its output back.
