@@ -144,8 +144,9 @@ To ask for changes, do not comment on the pull request. autopilot does not read 
 
 ### The issue has `autopilot:blocked`
 
-1. Read the last comment of the bot. It starts with "autopilot stopped:" and gives the reason.
-2. Fix the cause. Common reasons:
+1. Run `autopilot doctor` first. It checks the client, the host and the repo, and prints the command that fixes each problem. It changes nothing.
+2. Read the last comment of the bot. It starts with "autopilot stopped:" and gives the reason.
+3. Fix the cause. Common reasons:
    - An invalid `.github/autopilot.json`: fix the file on the default branch. A repo with no config at all is not blocked: the host onboards it (see "Onboard a repo with an issue"). "There is no `.github/autopilot.json` on the default branch" means the file was removed during a job: run `autopilot init` and merge its pull request.
    - "The onboarding pull request #N was closed without a merge": retry to open a new one, or run `autopilot init`.
    - "The onboarding failed": read `autopilot logs`, then retry.
@@ -165,7 +166,7 @@ To ask for changes, do not comment on the pull request. autopilot does not read 
    - "rate limit reached, waiting until HH:MM" or "GitHub rate limit reached": the host made too many GitHub requests. It sends no request until that time, then continues. If this occurs frequently, raise `poll_interval_seconds` in its `host.json`, or lower `concurrency`.
    - "The App has no permission for ... (403)": accept the App's new permissions on its installation page.
    - "sudo on <host> asks for a password": let the host user run sudo without a password.
-3. Retry: an owner removes the label. `gh issue edit <n> --repo example-org/app --remove-label autopilot:blocked`. Checks and pull requests from before the retry do not count.
+4. Retry: an owner removes the label. `gh issue edit <n> --repo example-org/app --remove-label autopilot:blocked`. Checks and pull requests from before the retry do not count.
 
 ### Debug the dev container
 
@@ -209,6 +210,7 @@ These commands act on the default host. To act on another host, pass `--host <na
 
 ```sh
 autopilot hosts                   # the hosts, and which one is the default
+autopilot doctor [--repo example-org/app]   # why it does not work: the client, the host and the repo, with the fix for each problem
 autopilot status                  # service, release, watched entries, last 20 log lines
 autopilot logs [--since 1h]       # service log, default: last 100 lines
 autopilot logs --audit [--since 1d]   # JSON audit events: secret reads, gates, merges
