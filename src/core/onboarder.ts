@@ -18,7 +18,6 @@ import type { Host } from "./host.ts";
 import {
   devcontainerFiles,
   diskFiles,
-  ONBOARDING_BRANCH,
   onboardingBody,
   onboardingPrompt,
   parseOnboardingResult,
@@ -30,7 +29,7 @@ import {
   type OnboardingRequest,
   type ValidateResult,
 } from "./onboarding.ts";
-import type { Repo } from "./repo.ts";
+import { ONBOARDING_BRANCH, type Repo } from "./repo.ts";
 import { refusedSecrets } from "./repo-secrets.ts";
 import { readSecret } from "./secrets.ts";
 import { prepareAgent } from "./skills.ts";

@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 
 export type Repo = { owner: string; name: string };
 
+export const ONBOARDING_BRANCH = "autopilot/onboarding";
+
 const GITHUB_REMOTE = /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com(?::\d+)?\/)([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
 
 export function parseRemote(url: string): Repo {

@@ -6,8 +6,8 @@ import { readOptionFile } from "../core/option-file.ts";
 import { cliDevcontainer } from "../core/devcontainer-cli.ts";
 import { parseSource } from "../core/host.ts";
 import { ONBOARDING_COMMIT, prepareOnboarding } from "../core/onboarder.ts";
-import { ONBOARDING_BRANCH, onboardingBody, ownPull, type Onboarding, type PullListing } from "../core/onboarding.ts";
-import type { Repo } from "../core/repo.ts";
+import { onboardingBody, ownPull, type Onboarding, type PullListing } from "../core/onboarding.ts";
+import { ONBOARDING_BRANCH, type Repo } from "../core/repo.ts";
 import { LABELS } from "../core/state.ts";
 import { forward } from "./client.ts";
 
