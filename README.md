@@ -122,7 +122,7 @@ autopilot has a small core. Each block is behind a config field or a small inter
 | Block         | Today                                                                                  | Possible later       |
 | ------------- | -------------------------------------------------------------------------------------- | -------------------- |
 | Forge         | [GitHub](src/core/github.ts)                                                           | GitLab               |
-| Agent harness | [Claude Code](src/harness/claude.ts) ([image](docker/claude))                          | OpenCode, Codex, pi  |
+| Agent harness | [Claude Code](src/harness/claude.ts) ([image](docker/claude)) or [OpenCode](src/harness/opencode.ts) ([image](docker/opencode)), per role | Codex, pi            |
 | Environment   | The repo's dev container ([environment](src/core/environment.ts), [guardrails](src/core/devcontainer.ts)) | -                    |
 | Checks        | [Commands and scanners](src/core/checks.ts), on the host or in the repo's own CI       | -                    |
 | Risk          | [Rules](src/core/risk.ts) and [gates](src/core/gate.ts)                                | -                    |

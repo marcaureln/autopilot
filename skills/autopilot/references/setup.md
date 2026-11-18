@@ -136,6 +136,26 @@ autopilot status
 
 The service is `active` (Linux) or `running` (macOS), and `watch` lists the repo. If a log line shows `the secret file ... is missing or empty`, run `autopilot hosts add` again. If a log line shows `op read ... failed`, a 1Password item or the service account is wrong. Then create a small first issue with the `autopilot` label (see SKILL.md), and follow it with `autopilot logs`.
 
+## Use OpenCode for a role
+
+A role can use OpenCode instead of Claude Code. OpenCode uses a provider API key. A Claude subscription does not work with OpenCode.
+
+1. Put the key in a file in the host's secrets folder (`/etc/autopilot/secrets` on Linux, `~/.autopilot/secrets` on macOS), or in 1Password.
+2. In `host.json`, add the reference to `secrets.api_keys`. The name is the env var that OpenCode reads:
+
+   ```json
+   "api_keys": { "ANTHROPIC_API_KEY": "file:anthropic-api-key" }
+   ```
+
+3. Restart the service: `autopilot stop`, then `autopilot start`. The service reads the keys when it starts.
+4. In `.github/autopilot.json`, set the harness of the role:
+
+   ```json
+   "builder": { "harness": "opencode", "model": "anthropic/claude-sonnet-5-5", "effort": "high" }
+   ```
+
+The model is `<provider>/<model>`. The effort is the model variant: if the model has no variant with that name, the run fails. Only OpenCode gets the API keys. OpenCode does not read the repo's `opencode.json` or `.opencode/`, so a repo cannot send the key to another server. It reads the repo's `AGENTS.md`. `autopilot init` always uses Claude Code.
+
 ## Several hosts
 
 Run step 6 for each host, with its own name. Pass `--host <name>` to act on a host that is not the default. Hosts can watch the same repos. The oldest claim comment on an issue decides which host works on it.
