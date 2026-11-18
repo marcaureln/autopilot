@@ -51,8 +51,8 @@ function fakeHost(uname: string): { env: NodeJS.ProcessEnv } {
 }
 
 const hostCases: { uname: string; expected: string }[] = [
-  { uname: "Linux", expected: "sudo autopilot logs --since 1 day ago\n" },
-  { uname: "Darwin", expected: "home-command logs --since 1 day ago\n" },
+  { uname: "Linux", expected: "sudo autopilot --host= logs --since 1 day ago\n" },
+  { uname: "Darwin", expected: "home-command --host= logs --since 1 day ago\n" },
 ];
 
 for (const { uname, expected } of hostCases) {

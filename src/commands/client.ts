@@ -7,7 +7,7 @@ import { confirm, isCancel, log, password, text } from "@clack/prompts";
 import type { Audit } from "../core/audit.ts";
 import { createGitHub } from "../core/github.ts";
 import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
-import { LOCAL_TARGET } from "../core/hosts.ts";
+import { LOCAL_TARGET, RUN_HERE } from "../core/hosts.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret, type Backend } from "../core/secrets.ts";
 import { connect, installRelease, latestRelease, must, parseTag, SERVICE, type Release, type Connection } from "./host.ts";
@@ -41,17 +41,15 @@ export function openInBrowser(url: string): void {
 
 // The client does not know the OS of the host. Host setup puts the command in these places.
 export function hostCommand(args: string[]): string {
-  const quoted = args.map(shellQuote).join(" ");
+  const quoted = [`--host=${RUN_HERE}`, ...args].map(shellQuote).join(" ");
   return `case $(uname -s) in Darwin) exec "$HOME/.autopilot/bin/autopilot" ${quoted} ;; *) exec sudo autopilot ${quoted} ;; esac`;
 }
 
 // `input` goes to the host command on stdin, so a secret value never becomes an argument.
 export function forward(target: string, args: string[], input?: string): Promise<number> {
-  // On the local host, the host command would read AUTOPILOT_HOST=local and forward to itself again.
-  const env = { ...process.env, AUTOPILOT_HOST: undefined };
   const [program, through]: [string, string[]] = target === LOCAL_TARGET ? ["sh", ["-c"]] : ["ssh", [target]];
   const command = [...through, hostCommand(args)];
-  const child = input === undefined ? spawn(program, command, { stdio: ["inherit", "pipe", "inherit"], env }) : spawn(program, command, { stdio: ["pipe", "pipe", "inherit"], env });
+  const child = input === undefined ? spawn(program, command, { stdio: ["inherit", "pipe", "inherit"] }) : spawn(program, command, { stdio: ["pipe", "pipe", "inherit"] });
   // If the host command exits before it reads stdin, the exit code reports it: the EPIPE adds nothing.
   child.stdin?.on("error", () => undefined);
   if (input !== undefined) child.stdin?.end(input);
