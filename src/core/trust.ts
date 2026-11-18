@@ -1,6 +1,6 @@
 import type { PlanGate } from "./gate.ts";
 import type { Risk } from "./risk.ts";
-import { isApproved, specGate, specPlannerRisk, type Comment } from "./spec.ts";
+import { forAPerson, isApproved, plannedPaths, specGate, specPlannerRisk, type Comment } from "./spec.ts";
 
 // Text that reaches the planner, or that moves an issue, must come from an owner. Write access lets
 // other people edit issues and comments, including the bot's, so the edit history decides.
@@ -22,16 +22,16 @@ export function isOwnerTick(body: string, editors: string[], owners: string[]): 
   return isApproved(body) && edits.length > 0 && edits.every((editor) => owners.includes(editor));
 }
 
-export type TrustedSpec = { gate: PlanGate["event"]; plannerRisk: Risk | undefined; buildAllowed: boolean };
+export type TrustedSpec = { gate: PlanGate["event"]; plannerRisk: Risk | undefined; buildAllowed: boolean; plannedFiles: string[]; forAPerson: string | undefined };
 
 // autopilot never edits its spec comments, so an edited one can carry a changed gate or risk. The one
 // edit that counts is an owner's tick on an approval spec.
 export function trustedSpec(body: string, editors: string[], owners: string[]): TrustedSpec | undefined {
   const gate = specGate(body);
   if (!gate) return undefined;
-  const plannerRisk = specPlannerRisk(body);
-  if (editors.length === 0) return { gate, plannerRisk, buildAllowed: gate === "go" };
-  if (gate === "approval_required" && isOwnerTick(body, editors, owners)) return { gate, plannerRisk, buildAllowed: true };
+  const spec = { gate, plannerRisk: specPlannerRisk(body), plannedFiles: plannedPaths(body), forAPerson: forAPerson(body) };
+  if (editors.length === 0) return { ...spec, buildAllowed: gate === "go" };
+  if (gate === "approval_required" && isOwnerTick(body, editors, owners)) return { ...spec, buildAllowed: true };
   return undefined;
 }
 

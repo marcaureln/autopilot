@@ -85,10 +85,19 @@ export function workflowFiles(paths: string[]): string[] {
 }
 
 // Without the Workflows permission, GitHub refuses a push that adds, changes or deletes a workflow file.
-export function workflowStop(paths: string[], canChangeWorkflows: boolean): string | undefined {
+// With it, a changed workflow runs on the pull request, with the repo's Actions secrets, before anyone reviews it.
+// So a person approves each workflow file in the plan first (the plan gate rates `.github/` high), and the host
+// pushes only the workflow files that the approved plan lists.
+export function workflowStop(paths: string[], canChangeWorkflows: boolean, plannedFiles: string[]): string | undefined {
   const workflows = workflowFiles(paths);
-  if (canChangeWorkflows || workflows.length === 0) return undefined;
-  return `the change touches ${workflows.map((path) => `\`${path}\``).join(", ")}. The App has no Workflows permission, so autopilot cannot change files in \`.github/workflows/\`: make this change yourself, or give the App the Workflows permission (Read and write) and accept it on the installation page.`;
+  const list = (files: string[]) => files.map((path) => `\`${path}\``).join(", ");
+  if (!canChangeWorkflows) {
+    if (workflows.length === 0) return undefined;
+    return `the change touches ${list(workflows)}. The App has no Workflows permission, so autopilot cannot change files in \`.github/workflows/\`: make this change yourself, or give the App the Workflows permission (Read and write) and accept it on the installation page.`;
+  }
+  const unplanned = workflows.filter((path) => !plannedFiles.includes(path));
+  if (unplanned.length === 0) return undefined;
+  return `the change touches ${list(unplanned)}, which the approved plan does not list. Add ${unplanned.length === 1 ? "it" : "them"} to the plan and approve it again, or make this change yourself.`;
 }
 
 // The summary is agent text. In a pull request body, a closing keyword closes that issue on merge
@@ -99,13 +108,19 @@ export function neutralize(text: string): string {
     .replace(/@(?=[A-Za-z0-9-])/g, "@\u200b");
 }
 
-export function pullBody(issue: number, summary: string): string {
-  const lines = summary
+function agentText(text: string): string {
+  const lines = text
     .split("\n")
     .filter((line) => !hasAttribution(line))
     .join("\n")
     .trim();
-  return `Fixes #${issue}\n\n${neutralize(lines)}\n`;
+  return neutralize(lines);
+}
+
+// forAPerson: the spec's "For a person" section, for the changes that autopilot cannot push.
+export function pullBody(issue: number, summary: string, forAPerson?: string): string {
+  const section = forAPerson ? `\n## For a person\n\n${agentText(forAPerson)}\n` : "";
+  return `Fixes #${issue}\n\n${agentText(summary)}\n${section}`;
 }
 
 export type Failure = { check: string; output: string };
@@ -183,6 +198,8 @@ export type BuildJob = {
   config: Config;
   issue: BuilderInput["issue"];
   thread: Comment[];
+  // The paths in the approved plan.
+  plannedFiles: string[];
   identity: Identity;
   mode: BuildMode;
   credentials: Credentials;
@@ -332,7 +349,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     const problems = commitProblems(commits, identity);
     if (problems.length > 0) throw new BuildStopped(`autopilot does not push these commits: ${problems.join("; ")}`);
     // GitHub checks each pushed commit, not only the net diff: it refuses a push where one commit adds a workflow and a later commit removes it.
-    const workflowProblem = workflowStop((await git(origin, ["log", "--no-renames", "--name-only", "--format=", "-z", `${start}..${head}`])).split("\0"), canChangeWorkflows);
+    const workflowProblem = workflowStop((await git(origin, ["log", "--no-renames", "--name-only", "--format=", "-z", `${start}..${head}`])).split("\0"), canChangeWorkflows, job.plannedFiles);
     if (workflowProblem) throw new BuildStopped(workflowProblem);
 
     // A first build replaces what an earlier attempt left on the branch. A fix round only adds on top of the commit it checked out.

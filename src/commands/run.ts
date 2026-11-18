@@ -239,7 +239,7 @@ async function working(job: Working): Promise<void> {
     case "plan":
       return move(phase.event);
     case "build":
-      return build(job);
+      return build(job, currentSpec);
     case "merged":
       return log(key, `${key}: pull request #${phase.pull.number} is merged`);
     case "closed":
@@ -353,7 +353,7 @@ async function identityOf(ctx: RepoContext) {
   return botIdentity(ctx.bot, await ctx.repoGitHub.userId(ctx.bot));
 }
 
-async function build(job: Working): Promise<void> {
+async function build(job: Working, currentSpec: () => Promise<TrustedSpec | undefined>): Promise<void> {
   const { loop, ctx, issue, key } = job;
   const { github, host, log, audit } = loop;
   const { repoGitHub, repo } = ctx;
@@ -362,9 +362,10 @@ async function build(job: Working): Promise<void> {
   const base = await repoGitHub.defaultBranch();
   const branch = branchName(issue.number, issue.title);
   log(key, `${key}: build on ${branch} with ${config.agents[config.steps.build].model}`);
-  const built = await buildOrBlock(loop, { github, repoGitHub, repo, host, config, issue, thread, identity: await identityOf(ctx), mode: { kind: "build", base, branch } });
+  const spec = await currentSpec();
+  const built = await buildOrBlock(loop, { github, repoGitHub, repo, host, config, issue, thread, plannedFiles: spec?.plannedFiles ?? [], identity: await identityOf(ctx), mode: { kind: "build", base, branch } });
   await repoGitHub.markPushed(built.head, issue.number);
-  const pull = await repoGitHub.openPull({ head: branch, base, title: issue.title, body: pullBody(issue.number, built.summary) }).catch((error: unknown) => {
+  const pull = await repoGitHub.openPull({ head: branch, base, title: issue.title, body: pullBody(issue.number, built.summary, (await repoGitHub.canChangeWorkflows()) ? undefined : spec?.forAPerson) }).catch((error: unknown) => {
     throw new Blocked(`autopilot pushed ${branch} but could not open the pull request: ${messageOf(error)}`);
   });
   audit({ event: "pr.opened", repo: `${repo.owner}/${repo.name}`, pull, issue: issue.number, branch });
@@ -522,6 +523,7 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
     loop.log(key, `${key}: fix round ${fix.round} for ${verdict.failing.join(", ")} on #${pull.number}`);
     const thread = await vouchedThread(job);
     const built = await buildOrBlock(loop, {
+      plannedFiles: (await currentSpec())?.plannedFiles ?? [],
       github: loop.github,
       repoGitHub,
       repo: ctx.repo,

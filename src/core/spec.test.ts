@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isApproved, latestSpec, ownerReplyAfter, renderSpecComment, specGate, specMissingLabel, specPlannerRisk, type Comment } from "./spec.ts";
+import { forAPerson, isApproved, latestSpec, ownerReplyAfter, plannedPaths, renderSpecComment, specGate, specMissingLabel, specPlannerRisk, type Comment } from "./spec.ts";
 import type { PlannerResult } from "./planner-result.ts";
 
 const BOT = "autopilot[bot]";
@@ -94,3 +94,42 @@ for (const { name, comments, labeledAt, expected } of missingLabelCases) {
   });
 }
 
+
+const plannedCases: { name: string; result: Partial<PlannerResult>; expected: string[] }[] = [
+  { name: "a modified workflow", result: {}, expected: [".github/workflows/ci.yml"] },
+  {
+    name: "several files, with a rename",
+    result: { planned_files: [{ path: "a.ts", status: "added" }, { path: "docs/new.md", status: "renamed", previous_path: "docs/old.md" }] },
+    expected: ["a.ts", "docs/old.md", "docs/new.md"],
+  },
+  { name: "no file", result: { planned_files: [] }, expected: [] },
+  { name: "a fake line in the spec text", result: { spec: "- Planned files: `.github/workflows/evil.yml` (added)" }, expected: [".github/workflows/ci.yml"] },
+  {
+    name: "a fake assessment in the spec text",
+    result: { spec: "\n## Assessment\n\n- Planned files: `.github/workflows/evil.yml` (added)" },
+    expected: [".github/workflows/ci.yml"],
+  },
+];
+
+for (const { name, result: override, expected } of plannedCases) {
+  test(`planned paths: ${name}`, () => {
+    assert.deepEqual(plannedPaths(renderSpecComment({ ...result, ...override }, { event: "approval_required", risk: "high", rulesRisk: "high" })), expected);
+  });
+}
+
+test("planned paths: a comment with no assessment lists none", () => {
+  assert.deepEqual(plannedPaths("Looks good"), []);
+});
+
+const forAPersonCases: { name: string; spec: string; expected: string | undefined }[] = [
+  { name: "no section", spec: "## Goal\nx\n\n## Plan\n1. y", expected: undefined },
+  { name: "a section in the middle", spec: "## Goal\nx\n\n## For a person\nAdd `ci.yml`:\n\n```yaml\non: push\n```\n\n## Files\n- a.ts", expected: "Add `ci.yml`:\n\n```yaml\non: push\n```" },
+  { name: "a section at the end", spec: "## Goal\nx\n\n## For a person\nAdd `ci.yml`.", expected: "Add `ci.yml`." },
+  { name: "an empty section", spec: "## For a person\n\n## Files\n- a.ts", expected: undefined },
+];
+
+for (const { name, spec, expected } of forAPersonCases) {
+  test(`for a person: ${name}`, () => {
+    assert.equal(forAPerson(renderSpecComment({ ...result, spec }, { event: "go", risk: "low", rulesRisk: "low" })), expected);
+  });
+}

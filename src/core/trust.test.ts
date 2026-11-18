@@ -29,16 +29,16 @@ for (const { name, body, editors, expected } of ownerTickCases) {
 const go = "<!-- autopilot:spec gate=go planner=low -->\n## Goal\nx";
 
 const specCases: { name: string; body: string; editors: string[]; expected: ReturnType<typeof trustedSpec> }[] = [
-  { name: "go, never edited", body: go, editors: [], expected: { gate: "go", plannerRisk: "low", buildAllowed: true } },
-  { name: "approval, never edited", body: spec, editors: [], expected: { gate: "approval_required", plannerRisk: "low", buildAllowed: false } },
-  { name: "approval, ticked by an owner", body: ticked, editors: ["owner", "autopilot"], expected: { gate: "approval_required", plannerRisk: "low", buildAllowed: true } },
+  { name: "go, never edited", body: go, editors: [], expected: { gate: "go", plannerRisk: "low", buildAllowed: true, plannedFiles: [], forAPerson: undefined } },
+  { name: "approval, never edited", body: spec, editors: [], expected: { gate: "approval_required", plannerRisk: "low", buildAllowed: false, plannedFiles: [], forAPerson: undefined } },
+  { name: "approval, ticked by an owner", body: ticked, editors: ["owner", "autopilot"], expected: { gate: "approval_required", plannerRisk: "low", buildAllowed: true, plannedFiles: [], forAPerson: undefined } },
   { name: "approval, ticked by a non-owner", body: ticked, editors: ["stranger", "autopilot"], expected: undefined },
   { name: "approval, edited by an owner but not ticked", body: spec, editors: ["owner", "autopilot"], expected: undefined },
   { name: "go, edited by an owner", body: go, editors: ["owner", "autopilot"], expected: undefined },
   { name: "go, edited by the bot", body: go, editors: ["autopilot", "autopilot"], expected: undefined },
   { name: "a go marker in a ticked comment", body: `${go}\n\n- [x] Approve and build`, editors: ["owner", "autopilot"], expected: undefined },
   { name: "not a spec", body: "Looks good", editors: [], expected: undefined },
-  { name: "a spec from before the merge gate", body: "<!-- autopilot:spec gate=go -->\nx", editors: [], expected: { gate: "go", plannerRisk: undefined, buildAllowed: true } },
+  { name: "a spec from before the merge gate", body: "<!-- autopilot:spec gate=go -->\nx", editors: [], expected: { gate: "go", plannerRisk: undefined, buildAllowed: true, plannedFiles: [], forAPerson: undefined } },
 ];
 
 for (const { name, body, editors, expected } of specCases) {
@@ -87,4 +87,11 @@ test("the planner thread keeps only owner and bot comments that no one else edit
     trustedThread(comments, lastEdits, BOT, OWNERS).map((kept) => kept.id),
     [1, 2, 5],
   );
+});
+
+test("trusted spec: carries the planned files and the For a person section", () => {
+  const body = "<!-- autopilot:spec gate=go planner=low -->\n## For a person\nAdd a job.\n\n## Assessment\n\n- Planned files: `.github/workflows/ci.yml` (modified), `a.ts` (added)\n- Next: x";
+  const trusted = trustedSpec(body, [], OWNERS);
+  assert.deepEqual(trusted?.plannedFiles, [".github/workflows/ci.yml", "a.ts"]);
+  assert.equal(trusted?.forAPerson, "Add a job.");
 });

@@ -59,15 +59,22 @@ for (const { name, paths, expected } of workflowCases) {
   });
 }
 
-const stopCases: { name: string; paths: string[]; workflows: boolean; expected: RegExp | undefined }[] = [
-  { name: "a workflow change without the permission", paths: [".github/workflows/ci.yml"], workflows: false, expected: /`\.github\/workflows\/ci\.yml`.*make this change yourself, or give the App the Workflows permission \(Read and write\)/ },
-  { name: "a workflow change with the permission", paths: [".github/workflows/ci.yml"], workflows: true, expected: undefined },
-  { name: "no workflow change without the permission", paths: ["src/a.ts"], workflows: false, expected: undefined },
+const CI = ".github/workflows/ci.yml";
+const DEPLOY = ".github/workflows/deploy.yml";
+
+const stopCases: { name: string; paths: string[]; workflows: boolean; planned: string[]; expected: RegExp | undefined }[] = [
+  { name: "a workflow change without the permission", paths: [CI], workflows: false, planned: [CI], expected: /`\.github\/workflows\/ci\.yml`.*make this change yourself, or give the App the Workflows permission \(Read and write\)/ },
+  { name: "no workflow change without the permission", paths: ["src/a.ts"], workflows: false, planned: [], expected: undefined },
+  { name: "a planned workflow change with the permission", paths: [CI, "src/a.ts"], workflows: true, planned: [CI], expected: undefined },
+  { name: "no workflow change with the permission", paths: ["src/a.ts"], workflows: true, planned: [], expected: undefined },
+  { name: "an unplanned workflow change with the permission", paths: [CI], workflows: true, planned: ["src/a.ts"], expected: /^the change touches `\.github\/workflows\/ci\.yml`, which the approved plan does not list\. Add it to the plan and approve it again, or make this change yourself\.$/ },
+  { name: "only the unplanned workflow is named", paths: [CI, DEPLOY], workflows: true, planned: [CI], expected: /^the change touches `\.github\/workflows\/deploy\.yml`, which/ },
+  { name: "several unplanned workflows", paths: [CI, DEPLOY], workflows: true, planned: [], expected: /`\.github\/workflows\/ci\.yml`, `\.github\/workflows\/deploy\.yml`, which the approved plan does not list\. Add them to the plan/ },
 ];
 
-for (const { name, paths, workflows, expected } of stopCases) {
+for (const { name, paths, workflows, planned, expected } of stopCases) {
   test(`workflow stop: ${name}`, () => {
-    const stop = workflowStop(paths, workflows);
+    const stop = workflowStop(paths, workflows, planned);
     if (expected) assert.match(stop ?? "", expected);
     else assert.equal(stop, undefined);
   });
@@ -88,6 +95,13 @@ for (const { workflows, forbids } of builderRuleCases) {
 
 test("the pull request body links the issue first and drops attribution lines from the summary", () => {
   assert.equal(pullBody(7, "Adds CONTRIBUTING.md.\n🤖 Generated with Claude Code\nFixes #8"), "Fixes #7\n\nAdds CONTRIBUTING.md.\nFi\u200bxes #8\n");
+});
+
+test("the pull request body copies the For a person section, cleaned like the summary", () => {
+  assert.equal(
+    pullBody(7, "Adds a test.", "Add a lint job to `.github/workflows/ci.yml`.\nCo-Authored-By: someone <a@b.c>\nThis closes the gap."),
+    "Fixes #7\n\nAdds a test.\n\n## For a person\n\nAdd a lint job to `.github/workflows/ci.yml`.\nThis cl\u200boses the gap.\n",
+  );
 });
 
 test("a fix prompt carries the failed check output, cut to its end", () => {
