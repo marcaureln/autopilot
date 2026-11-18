@@ -1,13 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { join } from "node:path";
+import { CONFIG_DIR } from "../core/config-dir.ts";
 import { defaultHostName } from "../core/host.ts";
 import { addHost, checkHost, HOSTS_SCHEMA, nameOfTarget, nameProblem, NO_HOSTS, parseHosts, removeHost, resolveHost, setDefaultHost, type HostRef, type HostsFile } from "../core/hosts.ts";
 import { hostSetup, type HostSetupOptions } from "./client.ts";
 
-// The XDG spec says to ignore a relative XDG_CONFIG_HOME.
-const xdgConfigHome = process.env.XDG_CONFIG_HOME;
-export const HOSTS_PATH = join(xdgConfigHome && isAbsolute(xdgConfigHome) ? xdgConfigHome : join(homedir(), ".config"), "autopilot", "hosts.json");
+export const HOSTS_PATH = join(CONFIG_DIR, "hosts.json");
 
 export const HOSTS_USAGE = "usage: autopilot hosts [add <name> <ssh-target | local> | rm <name> | default <name>]";
 
@@ -16,7 +14,7 @@ function loadHosts(repair = false): HostsFile {
 }
 
 function saveHosts(file: HostsFile): void {
-  mkdirSync(dirname(HOSTS_PATH), { recursive: true });
+  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   const text = JSON.stringify({ $schema: HOSTS_SCHEMA, default: file.default, hosts: file.hosts }, null, 2) + "\n";
   writeFileSync(`${HOSTS_PATH}.tmp`, text);
   renameSync(`${HOSTS_PATH}.tmp`, HOSTS_PATH);

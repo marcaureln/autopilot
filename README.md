@@ -192,7 +192,7 @@ The host gives the values only to the checks that run a command from `verify.com
 
 A host runs autopilot as a service. It holds its `host.json`, its secrets and a release. At start, it reads the App key and the Claude token that `host.json` names. By default, these are the files `app-key.pem` and `claude-token` in the secrets folder: `/etc/autopilot/secrets` on Linux (owner root, group `autopilot`, mode 640), or `~/.autopilot/secrets` on macOS (mode 600). An `op://` reference makes the host read the value with `op` and a 1Password service account token.
 
-The client keeps one file: `~/.config/autopilot/hosts.json`, or `$XDG_CONFIG_HOME/autopilot/hosts.json` ([schema](schema/hosts.schema.json)). It gives a name and an SSH target to each host. It holds no secret. The client forwards each host command to the host over SSH. The target `local` is the machine that you run the command on. A command finds its host in this order:
+The client keeps one file: `~/.config/autopilot/hosts.json`, or `$XDG_CONFIG_HOME/autopilot/hosts.json` ([schema](schema/hosts.schema.json)). It gives a name and an SSH target to each host. It holds no secret. `autopilot app create` saves `app-key.pem` in the same folder. The client forwards each host command to the host over SSH. The target `local` is the machine that you run the command on. A command finds its host in this order:
 
 1. `--host <value>`.
 2. `AUTOPILOT_HOST`.

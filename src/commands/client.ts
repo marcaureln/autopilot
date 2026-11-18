@@ -1,10 +1,10 @@
 import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { confirm, isCancel, log, password, text } from "@clack/prompts";
 import type { Audit } from "../core/audit.ts";
+import { CONFIG_DIR } from "../core/config-dir.ts";
 import { createGitHub } from "../core/github.ts";
 import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
 import { LOCAL_TARGET, RUN_HERE } from "../core/hosts.ts";
@@ -23,7 +23,7 @@ export const HOST_SECRETS: Record<Backend, Host["secrets"]> = {
   env: { app_key: "file:app-key.pem", claude_token: "file:claude-token" },
   op: { app_key: `op://${SECRETS_VAULT}/${APP_KEY_ITEM}/${APP_KEY_FILE}`, claude_token: `op://${SECRETS_VAULT}/${CLAUDE_TOKEN_ITEM}/credential` },
 };
-export const APP_KEY_PATH = join(homedir(), ".config", "autopilot", "app-key.pem");
+export const APP_KEY_PATH = join(CONFIG_DIR, "app-key.pem");
 
 export function shellQuote(arg: string): string {
   return `'${arg.replaceAll("'", `'\\''`)}'`;
