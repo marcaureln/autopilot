@@ -22,7 +22,7 @@ export function nameProblem(name: string): string | undefined {
   return HOST_NAME.test(name) && name !== LOCAL_TARGET ? undefined : `"${name}" is not a host name: use letters, digits, ".", "_" and "-", and not "local"`;
 }
 
-export function parseHosts(text: string, source: string, repair = false): HostsFile {
+export function parseHosts(text: string, source: string, dropUnknownDefault = false): HostsFile {
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -35,7 +35,7 @@ export function parseHosts(text: string, source: string, repair = false): HostsF
   const badName = Object.keys(data.hosts).find((name) => nameProblem(name));
   if (badName !== undefined) throw new Error(`Invalid hosts file ${source}: ${nameProblem(badName)}. Rename or remove it in the file`);
   if (data.default !== undefined && !Object.hasOwn(data.hosts, data.default)) {
-    if (repair) return { ...data, default: undefined };
+    if (dropUnknownDefault) return { ...data, default: undefined };
     throw new Error(`Invalid hosts file ${source}: the default "${data.default}" is not one of its hosts. Set another default with autopilot hosts default <name>`);
   }
   return data;

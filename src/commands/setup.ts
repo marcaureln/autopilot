@@ -15,7 +15,7 @@ import { alias, AliasError, aliasFile, aliasNameProblem, shellOf, withoutAlias }
 import { appCreate, githubLogin } from "./app.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, checkAppKey, CLAUDE_TOKEN_ITEM, clientClaudeToken, forward, found, HOST_SECRETS, hostSetup, missingSecrets, OP_TOKEN_ITEM, readAppKey, readKeyFile } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
-import { findHost, HOSTS_PATH, nameToSave, saveHost } from "./hosts.ts";
+import { checkHostName, findHost, HOSTS_PATH, nameToSave, saveHost } from "./hosts.ts";
 import { BRANCH as ONBOARDING_BRANCH, init } from "./init.ts";
 import { op, opItemExists } from "./secrets.ts";
 
@@ -356,7 +356,7 @@ export async function setup(options: SetupOptions): Promise<void> {
   if (options.yes && !options.configFile) throw new Error("--yes needs --config <setup file>");
   const config = options.configFile ? parseSetupConfig(readFileSync(options.configFile, "utf8"), options.configFile) : {};
   const requested = findHost(config.host ?? options.host, process.env.AUTOPILOT_HOST);
-  if (requested) nameToSave(requested, options.name ?? config.name);
+  if (requested) checkHostName(requested, options.name ?? config.name);
   intro("autopilot setup");
   log.info("Each step checks what is in place and does only what is missing.");
   const backend = options.backend ?? config.backend ?? "env";

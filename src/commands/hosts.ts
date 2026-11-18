@@ -9,8 +9,8 @@ export const HOSTS_PATH = join(CONFIG_DIR, "hosts.json");
 
 export const HOSTS_USAGE = "usage: autopilot hosts [add <name> <ssh-target | local> | rm <name> | default <name>]";
 
-function loadHosts(repair = false): HostsFile {
-  return existsSync(HOSTS_PATH) ? parseHosts(readFileSync(HOSTS_PATH, "utf8"), HOSTS_PATH, repair) : NO_HOSTS;
+function loadHosts(dropUnknownDefault = false): HostsFile {
+  return existsSync(HOSTS_PATH) ? parseHosts(readFileSync(HOSTS_PATH, "utf8"), HOSTS_PATH, dropUnknownDefault) : NO_HOSTS;
 }
 
 function saveHosts(file: HostsFile): void {
@@ -22,7 +22,12 @@ function saveHosts(file: HostsFile): void {
 }
 
 export function findHost(flag: string | undefined, env: string | undefined): HostRef | undefined {
-  return resolveHost(flag, env, () => (process.env.SUDO_USER ? NO_HOSTS : loadHosts()));
+  const forwardedUnderSudo = process.env.SUDO_USER !== undefined;
+  return resolveHost(flag, env, () => (forwardedUnderSudo ? NO_HOSTS : loadHosts()));
+}
+
+export function checkHostName(host: HostRef, given: string | undefined): void {
+  nameToSave(host, given);
 }
 
 export function nameToSave(host: HostRef, given: string | undefined): string {
@@ -51,9 +56,13 @@ export function listHosts(): void {
   }
 }
 
+function checkHostsFile(): void {
+  loadHosts(true);
+}
+
 export async function hostsAdd(name: string, target: string, options: HostSetupOptions): Promise<void> {
   checkHost(name, target);
-  loadHosts(true);
+  checkHostsFile();
   await hostSetup(target, options);
   const { isDefault } = saveHost(name, target);
   console.log(`==> saved ${name} (${target}) in ${HOSTS_PATH}${isDefault ? ". It is the default host" : ""}`);
