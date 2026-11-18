@@ -36,6 +36,7 @@ export type RepoGitHub = {
   // refresh: a new token, for a push that comes long after the clone.
   token(refresh?: boolean): Promise<string>;
   defaultBranch(): Promise<string>;
+  isEmpty(): Promise<boolean>;
   lastUnlabeled(issue: number, label: string, actors: string[]): Promise<string | undefined>;
   userId(login: string): Promise<number>;
   botPulls(botLogin: string): Promise<BotPull[]>;
@@ -308,6 +309,16 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
     async defaultBranch() {
       const { data } = await octokit.repos.get({ owner, repo });
       return data.default_branch;
+    },
+    async isEmpty() {
+      try {
+        await octokit.repos.listCommits({ owner, repo, per_page: 1 });
+        return false;
+      } catch (error) {
+        // GitHub answers 409 "Git Repository is empty".
+        if (hasStatus(error, 409)) return true;
+        throw error;
+      }
     },
     async lastUnlabeled(issue, label, actors) {
       const events = await octokit.paginate(octokit.issues.listEvents, { ...issueParams(issue), per_page: 100 });
