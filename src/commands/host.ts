@@ -41,7 +41,7 @@ function shellThrough(program: string, args: string[]): Shell {
 export async function connect(target: string): Promise<Connection> {
   const shell = target === LOCAL_TARGET ? shellThrough("sh", ["-c"]) : shellThrough("ssh", [target]);
   const probe = await shell.capture(`uname -s; printf '%s\\n' "$HOME"; id -u; hostname -s`);
-  if (probe.code !== 0) throw new Error(`cannot reach ${target} (exit ${probe.code})`);
+  if (probe.code !== 0) throw new Error(`Cannot reach ${target} (exit ${probe.code}). Check that \`ssh ${target}\` works with no prompt. See the output above.`);
   const [os = "", home = "", uid = "", name = ""] = probe.stdout.split("\n");
   const layout = hostLayout(parseOS(os), home);
   const sudo = layout.sudo(Number(uid));
@@ -53,7 +53,7 @@ export async function connect(target: string): Promise<Connection> {
 
 export async function must(shell: Shell, step: string, command: string, input?: Buffer): Promise<void> {
   const code = await shell.run(command, input);
-  if (code !== 0) throw new Error(`${step} failed on the host (exit ${code})`);
+  if (code !== 0) throw new Error(`${step} failed on the host (exit ${code}). See the output above.`);
 }
 
 export function parseTag(value: string): string {
