@@ -8,7 +8,7 @@ import { CONFIG_PATH } from "../core/config.ts";
 import { readOptionFile } from "../core/option-file.ts";
 import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret } from "../core/host.ts";
 import type { HostRef } from "../core/hosts.ts";
-import { ownPull, type PullListing } from "../core/onboarding.ts";
+import { ONBOARDING_BRANCH, ownPull, type PullListing } from "../core/onboarding.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret, type Backend } from "../core/secrets.ts";
 import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, repoFileStored, requiredTools, RESOURCES_PROBE, type HostFacts, type SetupConfig } from "../core/setup.ts";
@@ -17,7 +17,7 @@ import { appCreate, githubLogin } from "./app.ts";
 import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, checkAppKey, CLAUDE_TOKEN_ITEM, clientClaudeToken, forward, found, HOST_SECRETS, hostSetup, missingSecrets, OP_TOKEN_ITEM, readAppKey, readKeyFile } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
 import { checkHostName, findHost, HOSTS_PATH, nameToSave, saveHost } from "./hosts.ts";
-import { BRANCH as ONBOARDING_BRANCH, init } from "./init.ts";
+import { init } from "./init.ts";
 import { op, opItemExists } from "./secrets.ts";
 
 export type SetupOptions = { configFile?: string; yes: boolean; host?: string; name?: string; version?: string; fromCheckout: boolean; backend?: Backend; appKey?: string };

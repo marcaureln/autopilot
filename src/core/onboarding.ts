@@ -10,6 +10,8 @@ import { readAgentFile } from "./workspace.ts";
 
 export const RESULT_PATH = ".autopilot/result.json";
 
+export const ONBOARDING_BRANCH = "autopilot/onboarding";
+
 export type OnboardingResult = {
   commands: Partial<Record<"lint" | "types" | "test", string>>;
   agents_md: string;
@@ -207,7 +209,8 @@ export function onboardingBody(onboarding: Onboarding): string {
     ...(environment.existing ? [] : ["Read `.devcontainer/`: the onboarding agent wrote it."]),
     ...onboarding.notes.map(neutralize),
     ...(validate.kind === "ran" ? validate.results.filter((result) => result.outcome === "failed").map((result) => failedItem(result.check)) : ["Fix `.devcontainer/`: the guardrails refuse it, see the checks above."]),
-    host.kind === "watched" ? "Check that the App is installed on the repo: `autopilot watch` printed its install page if it was not." : `Let a host watch the repo: \`autopilot watch ${repo}\` on the default host, or add \`--host <name>\`. It also checks that the App is installed.`,
+    ...(host.kind === "watched" ? ["Check that the App is installed on the repo: `autopilot watch` printed its install page if it was not."] : []),
+    ...(host.kind === "none" ? [`Let a host watch the repo: \`autopilot watch ${repo}\` on the default host, or add \`--host <name>\`. It also checks that the App is installed.`] : []),
     ...(onboarding.merge === "manual" ? ["`merge` is `manual`: switch it to `auto` when you trust the checks."] : ["`merge` is `auto`: the merge gate merges low-risk pull requests with no review."]),
   ];
   const failing = readiness.filter((item) => item.ok === "no");
