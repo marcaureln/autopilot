@@ -113,7 +113,7 @@ function failureBlock({ check, output }: Failure): string {
   return `## ${check}\n\n\`\`\`\n${text.replaceAll("```", "'''") || "(no output)"}\n\`\`\``;
 }
 
-export function builderPrompt({ repo, workdir, issue, thread, secrets, failures }: BuilderInput): string {
+export function builderPrompt({ workdir, issue, thread, secrets, failures }: BuilderInput): string {
   const comments = thread.map((comment) => `**@${comment.author}** (${comment.createdAt}):\n\n${comment.body}`).join("\n\n---\n\n");
   const task = failures
     ? `The checks failed on the current commit of the pull request branch, which is checked out at ${workdir}. Fix the cause of each failure below. Do not weaken, skip or delete a check or a test to make it pass.

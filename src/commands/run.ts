@@ -95,7 +95,7 @@ function later(a: string, b: string | undefined): string {
 
 function codeBlock(text: string): string {
   const cut = text.length > BLOCKED_OUTPUT_CHARS ? `[... cut ...]\n${text.slice(-BLOCKED_OUTPUT_CHARS)}` : text;
-  return `\`\`\`\n${cut.replaceAll("```", "\'\'\'") || "(no output)"}\n\`\`\``;
+  return `\`\`\`\n${cut.replaceAll("```", "'''") || "(no output)"}\n\`\`\``;
 }
 
 function reviewMarker(pull: number): string {
@@ -125,7 +125,7 @@ async function claim(loop: Loop, repoGitHub: RepoGitHub, issue: Issue, key: stri
 }
 
 async function reconcile(loop: Loop, ctx: RepoContext, issue: Issue): Promise<void> {
-  const { github, host, log, audit } = loop;
+  const { host, log, audit } = loop;
   const { repoGitHub, repo, bot } = ctx;
   const key = `${repo.owner}/${repo.name}#${issue.number}`;
   const migrated = migrateLabels(issue.labels);
