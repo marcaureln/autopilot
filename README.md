@@ -102,15 +102,15 @@ The [skill](skills/autopilot/SKILL.md) also tells the agent how to use autopilot
 ```mermaid
 flowchart TB
     A([autopilot label]) --> S[Planner writes a spec]
-    S --> G1{Gate 1}
-    G1 -- unclear --> Q[Asks questions] --> S
-    G1 -- risky --> P[Waits for your approval] --> B
-    G1 -- ok --> B[Builder implements in a devcontainer]
+    S --> PG{Plan gate}
+    PG -- unclear --> Q[Asks questions] --> S
+    PG -- risky --> P[Waits for your approval] --> B
+    PG -- ok --> B[Builder implements in a devcontainer]
     B --> C[Checks: lint, types, tests, scans]
     C -- fail, max 3 rounds --> B
-    C -- pass --> G2{Gate 2}
-    G2 -- low risk --> M([Auto-merge])
-    G2 -- high risk --> R([Waits for your review])
+    C -- pass --> MG{Merge gate}
+    MG -- low risk --> M([Auto-merge])
+    MG -- high risk --> R([Waits for your review])
 ```
 
 Models propose and rules decide. The risk rules are deterministic, and a model can raise the risk but never lower it.

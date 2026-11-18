@@ -126,7 +126,7 @@ Ask the user for skills and notes before you run it. `--skill <source>` (repeata
 
 A config from an older autopilot has a `stack` field. autopilot then stops each issue with an invalid config. Run `autopilot init` again to fix it.
 
-Read the pull request with the user, then merge it. Its "Environment" section names the image, the services, the install, and why. autopilot needs `.github/autopilot.json` on the default branch. `init` sets `"merge": "manual"`, so every pull request of autopilot waits for a review. Change it to `"auto"` to let Gate 2 merge low-risk pull requests.
+Read the pull request with the user, then merge it. Its "Environment" section names the image, the services, the install, and why. autopilot needs `.github/autopilot.json` on the default branch. `init` sets `"merge": "manual"`, so every pull request of autopilot waits for a review. Change it to `"auto"` to let the merge gate merge low-risk pull requests.
 
 ## 9. Check
 

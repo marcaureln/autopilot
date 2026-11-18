@@ -38,7 +38,7 @@ The planner reads the issue title, the body, and the comments of owners. It asks
 - Give the exact content or behavior when it matters: a heading, a sentence, a function name, a command output.
 - Write acceptance criteria that a check or a reader can verify.
 - Say what is out of scope ("Change no other file").
-- Do not ask for a change in a high-risk path unless it is necessary (see "Risk rules"). Such a change always waits for approval at Gate 1 and for a review at Gate 2.
+- Do not ask for a change in a high-risk path unless it is necessary (see "Risk rules"). Such a change always waits for approval at the plan gate and for a review at the merge gate.
 - Do not ask the planner what it can find in the code. Do not write instructions for the agents about how they work. The planner ignores them.
 - Never put a secret, a token, a password or a private URL in an issue or a comment. Issues can be public, and the text goes to the agents.
 
@@ -84,7 +84,7 @@ autopilot uses five labels. An issue has `autopilot` and at most one `autopilot:
 | `autopilot` | The user | Starts the job. It stays on the issue for the whole job. Remove it to stop the job. |
 | `autopilot:working` | The host | The host writes the spec, builds, runs the checks or runs a fix round. Wait. |
 | `autopilot:needs-info` | The user | The planner asks questions. Answer them in one comment. |
-| `autopilot:awaiting-approval` | The user | Gate 1 found high risk or a broad scope. Read the spec, then tick `- [ ] Approve and build`. |
+| `autopilot:awaiting-approval` | The user | The plan gate found high risk or a broad scope. Read the spec, then tick `- [ ] Approve and build`. |
 | `autopilot:blocked` | The user | autopilot stopped. Read the last comment, fix the cause, then remove the label to retry. |
 
 A pull request that waits for a review has no label. The issue keeps `autopilot:working`, the host comments "Pull request #N passed every check and waits for a review: <reasons>", and requests a review from the owners on the pull request.
@@ -116,7 +116,7 @@ The host accepts the tick only when every edit of the spec comment is by an owne
 
 ### A pull request waits for a review
 
-Gate 2 asks for a review when one of these is true: `merge` is `manual` in `.github/autopilot.json`, the risk rules rate the diff high, the planner rated the risk high, the spec records no planner risk, someone other than autopilot pushed the head commit, or the pull request does not target the default branch.
+The merge gate asks for a review when one of these is true: `merge` is `manual` in `.github/autopilot.json`, the risk rules rate the diff high, the planner rated the risk high, the spec records no planner risk, someone other than autopilot pushed the head commit, or the pull request does not target the default branch.
 
 1. Find the pull request. The comment names it. Its branch is `autopilot/<n>-<title>`.
 2. Check the statuses: `gh pr checks <pr> --repo example-org/app`. Each check is a commit status named `autopilot/<check>`.
@@ -228,7 +228,7 @@ Trust boundary: the host gives the values only to the checks that run a command 
 
 ### Risk rules
 
-These always rate a change high, at Gate 1 (planned files) and at Gate 2 (real diff):
+These always rate a change high, at the plan gate (planned files) and at the merge gate (real diff):
 
 - A path in a directory named `.github`, `.devcontainer`, `.husky`, `.githooks`, `.claude`, `.cursor`, `migrations` or `migrate`.
 - `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`, `CODEOWNERS`, `.gitattributes`, `.gitmodules`, `.semgrepignore`, `Makefile`, `justfile`, `mise.toml`, `.mise.toml`.
