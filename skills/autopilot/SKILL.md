@@ -7,14 +7,14 @@ description: This skill should be used to set up and use autopilot, a tool that 
 
 autopilot runs on a host as a service. Each minute, it reads the GitHub issues that have the `autopilot` label in the watched repos. For each issue, a planner agent writes a spec, a builder agent writes the code in a container, checks run, and a gate merges the pull request or asks for a review. GitHub holds all the state: labels, comments, commit statuses and pull requests.
 
-The `autopilot` command on the user's machine is only a client. It keeps no config. It reaches a host through `AUTOPILOT_HOST=<ssh-target>` or `--host <ssh-target>`. The host `local` is the machine that runs the command.
+The `autopilot` command on the user's machine is only a client. It keeps one file, `~/.config/autopilot/hosts.json`, with a name and an SSH target for each host. That file holds no secret. A command acts on the host of `--host <name | ssh-target>`, else of `AUTOPILOT_HOST`, else on the default host of the file. The target `local` is the machine that runs the command. `autopilot hosts` shows the hosts and the default.
 
 Before any command, run `autopilot --help` and use only the commands that it lists. The CLI is the reference. When this skill and `--help` do not agree, `--help` is correct.
 
 ## Rules for the agent
 
 - Never read, print, or put a secret value in a command argument, an issue, a comment, or a file. Let the user type secret values at a hidden prompt.
-- Interactive commands (`autopilot setup`, `autopilot host setup` and `autopilot init` when they ask for the Claude token, `autopilot secrets set <NAME>` with a hidden prompt, `op signin`) need a terminal. Ask the user to run them in their own terminal, then continue.
+- Interactive commands (`autopilot setup`, `autopilot hosts add` and `autopilot init` when they ask for the Claude token, `autopilot secrets set <NAME>` with a hidden prompt, `op signin`) need a terminal. Ask the user to run them in their own terminal, then continue.
 - Approve a spec or merge a pull request only when the user asked for it, or after you show the user the spec or the diff and they agree.
 - The user's `gh` account must be an owner on the host (`owners` in `host.json`). autopilot ignores labels, replies and ticks from other accounts.
 
@@ -24,7 +24,7 @@ To set up from nothing, read `references/setup.md` and follow it. In short:
 
 1. Install the client: `curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh`. It needs `mise`, `curl` and `tar`.
 2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the host with its secrets, the watched entries and the first onboarding PR. By default, the host keeps its secrets in files. With `--backend op`, they go to 1Password.
-3. If `setup` is not available, or it stops, do the steps one by one: `autopilot app create`, `autopilot host setup`, `autopilot watch`, `autopilot init`. `references/setup.md` gives each step.
+3. If `setup` is not available, or it stops, do the steps one by one: `autopilot app create`, `autopilot hosts add`, `autopilot watch`, `autopilot init`. `references/setup.md` gives each step.
 4. Check the host with `autopilot status`. The service must be `active` (Linux) or `running` (macOS), and the watched entries must show the repo.
 5. Merge the onboarding pull request that `autopilot init` opened. Before the merge, autopilot stops each issue with "There is no `.github/autopilot.json` on the default branch".
 
@@ -186,10 +186,10 @@ The other host must watch the repo.
 
 ## Host commands
 
-Set `AUTOPILOT_HOST` or pass `--host` for these commands. The client runs them on the host over SSH.
+These commands act on the default host. To act on another host, pass `--host <name>`. The client runs them on the host over SSH.
 
 ```sh
-export AUTOPILOT_HOST=user@my-host
+autopilot hosts                   # the hosts, and which one is the default
 autopilot status                  # service, release, watched entries, last 20 log lines
 autopilot logs [--since 1h]       # service log, default: last 100 lines
 autopilot logs --audit [--since 1d]   # JSON audit events: secret reads, gates, merges
@@ -204,7 +204,7 @@ autopilot update [--version vX.Y.Z]
 
 ## Secrets
 
-A test that needs a key gets it from the repo's secrets. By default, the host keeps them in one env file per repo. In a checkout of the repo, with `AUTOPILOT_HOST` set:
+A test that needs a key gets it from the repo's secrets. By default, the host keeps them in one env file per repo. In a checkout of the repo:
 
 ```sh
 autopilot secrets set STRIPE_KEY        # hidden prompt, or the value on stdin

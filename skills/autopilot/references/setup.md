@@ -5,7 +5,8 @@ Each person runs their own GitHub App and host. Nothing is shared.
 Ask the user for these values before you start. Do not guess them:
 
 - Their GitHub login. It becomes the only owner.
-- The SSH target of the host (`user@my-host`), or `local` for this machine.
+- The SSH target of the host (`user@my-host`, or a `Host` alias of `~/.ssh/config`), or `local` for this machine.
+- A short name for the host (`pi`). The commands use this name.
 - The first repo (`example-org/app`).
 
 The agent can run the commands that print no secret. The user runs each command marked "(user)", in their own terminal.
@@ -58,7 +59,7 @@ Otherwise, the user creates it by hand at GitHub > Settings > Developer settings
 
 ## 5. Host secrets
 
-The host reads two secrets when it starts: the App key and the Claude token. By default, they are files on the host, and `autopilot host setup` writes them in step 6. Before step 6, the user runs `claude setup-token` (user) on any machine with Claude Code. It prints a token. The user pastes it at the hidden prompt of step 6, or sets it in `CLAUDE_CODE_OAUTH_TOKEN`. Then go to step 6.
+The host reads two secrets when it starts: the App key and the Claude token. By default, they are files on the host, and `autopilot hosts add` writes them in step 6. Before step 6, the user runs `claude setup-token` (user) on any machine with Claude Code. It prints a token. The user pastes it at the hidden prompt of step 6, or sets it in `CLAUDE_CODE_OAUTH_TOKEN`. Then go to step 6.
 
 ### With 1Password (`--backend op`)
 
@@ -83,26 +84,22 @@ Do not read or print any of these values. By default, `autopilot secrets set` wr
 The user runs it (user), because it can ask for the Claude token at a hidden prompt:
 
 ```sh
-autopilot host setup --host user@my-host --owner <login> --app-id <id>
-autopilot host setup --host local --owner <login> --app-id <id>      # this machine
+autopilot hosts add pi user@my-host --owner <login> --app-id <id>
+autopilot hosts add mac local --owner <login> --app-id <id>      # this machine
 ```
 
-It writes `host.json` if the host has none, installs the latest release and starts the service. Then it pushes each secret that the host does not have, over SSH on stdin:
+It writes `host.json` if the host has none, installs the latest release and starts the service. It pushes each secret that the host does not have, over SSH on stdin:
 
 - The App key, from `--app-key <pem file>`, else from `~/.config/autopilot/app-key.pem`. It checks that the key opens the App first.
 - The Claude token, from `CLAUDE_CODE_OAUTH_TOKEN`, else from a hidden prompt. If Claude Code is on the machine, it offers to run `claude setup-token`.
 
-The files are `app-key.pem` and `claude-token` in `/etc/autopilot/secrets` (Linux: owner root, group `autopilot`, mode 640) or in `~/.autopilot/secrets` (macOS: mode 600). `--owner` and `--app-id` are needed only the first time. Run it again to repair a host. Each step checks before it acts, and it does not ask again for a secret that the host has. A re-run keeps a file that exists, so a wrong secret stays on the host. To replace one, for example a wrong Claude token, remove its file (`/etc/autopilot/secrets/claude-token` on Linux, `~/.autopilot/secrets/claude-token` on macOS), then run `autopilot host setup` again. It asks only for the missing secret, writes it and restarts the service. The host name in claim comments is the short `hostname` of the host.
+The files are `app-key.pem` and `claude-token` in `/etc/autopilot/secrets` (Linux: owner root, group `autopilot`, mode 640) or in `~/.autopilot/secrets` (macOS: mode 600). `--owner` and `--app-id` are needed only the first time. Run it again to repair a host. Each step checks before it acts, and it does not ask again for a secret that the host has. A re-run keeps a file that exists, so a wrong secret stays on the host. To replace one, for example a wrong Claude token, remove its file (`/etc/autopilot/secrets/claude-token` on Linux, `~/.autopilot/secrets/claude-token` on macOS), then run the same `autopilot hosts add` command again. It asks only for the missing secret, writes it and restarts the service. The host name in claim comments is the short `hostname` of the host.
 
-With `--backend op`, a new `host.json` has `op://` references, and host setup pushes the service account token instead. To change that token, remove `/etc/autopilot/op-token` (Linux) or `~/.autopilot/op-token` (macOS) on the host first. The references in `host.json` decide, so a host keeps its backend when you run host setup again.
+With `--backend op`, a new `host.json` has `op://` references, and `hosts add` pushes the service account token instead. To change that token, remove `/etc/autopilot/op-token` (Linux) or `~/.autopilot/op-token` (macOS) on the host first. The references in `host.json` decide, so a host keeps its backend when you run `hosts add` again.
 
-`host.json` has one owner. To add an owner, edit `owners` in `host.json` on the host (`/etc/autopilot/host.json` on Linux, `~/.autopilot/host.json` on macOS), then run `autopilot host setup` again.
+`host.json` has one owner. To add an owner, edit `owners` in `host.json` on the host (`/etc/autopilot/host.json` on Linux, `~/.autopilot/host.json` on macOS), then run `autopilot hosts add` again.
 
-Then set the host for the next commands:
-
-```sh
-export AUTOPILOT_HOST=user@my-host
-```
+At the end, `hosts add` saves the host in `~/.config/autopilot/hosts.json`. The first host that you add becomes the default host, so the next commands act on it. Check it with `autopilot hosts`. To act on another host, pass `--host <name>`, or make it the default with `autopilot hosts default <name>`.
 
 ## 7. Watch the repo
 
@@ -121,7 +118,7 @@ If the App is not installed on that account, the command prints the install page
 autopilot init --repo example-org/app
 ```
 
-An agent writes `.devcontainer/` (only if the repo has none), the check commands and a draft `AGENTS.md`. Then `init` checks `.devcontainer/` with the guardrails, starts it (which runs the install), runs each check once, creates the five labels, and opens a pull request from the user's account, on the branch `autopilot/onboarding`. It works for any language. You can run it again safely, because it updates the same pull request. With `AUTOPILOT_HOST` set, it also watches the repo.
+An agent writes `.devcontainer/` (only if the repo has none), the check commands and a draft `AGENTS.md`. Then `init` checks `.devcontainer/` with the guardrails, starts it (which runs the install), runs each check once, creates the five labels, and opens a pull request from the user's account, on the branch `autopilot/onboarding`. It works for any language. You can run it again safely, because it updates the same pull request. With a host (the default host, or `--host`), it also watches the repo.
 
 Ask the user for skills and notes before you run it. `--skill <source>` (repeatable, `github.com/<owner>/<repo>[//<path>][#<ref>]` or a host path) gives the agent a skill and adds it to `skills.planner` and `skills.builder`. `--notes <file>` adds the user's own instructions to the prompt, for example "the tests need Postgres 18".
 
@@ -137,8 +134,8 @@ Read the pull request with the user, then merge it. Its "Environment" section na
 autopilot status
 ```
 
-The service is `active` (Linux) or `running` (macOS), and `watch` lists the repo. If a log line shows `the secret file ... is missing or empty`, run `autopilot host setup` again. If a log line shows `op read ... failed`, a 1Password item or the service account is wrong. Then create a small first issue with the `autopilot` label (see SKILL.md), and follow it with `autopilot logs`.
+The service is `active` (Linux) or `running` (macOS), and `watch` lists the repo. If a log line shows `the secret file ... is missing or empty`, run `autopilot hosts add` again. If a log line shows `op read ... failed`, a 1Password item or the service account is wrong. Then create a small first issue with the `autopilot` label (see SKILL.md), and follow it with `autopilot logs`.
 
 ## Several hosts
 
-Run step 6 for each host. Hosts can watch the same repos. The oldest claim comment on an issue decides which host works on it.
+Run step 6 for each host, with its own name. Pass `--host <name>` to act on a host that is not the default. Hosts can watch the same repos. The oldest claim comment on an issue decides which host works on it.

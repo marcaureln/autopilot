@@ -38,7 +38,7 @@ autopilot is small. It is one process, with no server, no queue and no database.
    The wizard does these steps in this order. Each step checks what is in place and does only what is missing, so you can run the wizard again at any time.
    1. **Tools.** It checks git, ssh, mise and gh.
    2. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page. Click **Create GitHub App**. The wizard saves the private key in `~/.config/autopilot/app-key.pem` (mode 600). To use an App that you already have, give its App ID. The host step then asks for the path of its `.pem` file.
-   3. **Host.** Give an SSH target such as `user@my-host`, or `local` for this machine. The wizard installs the latest release on the host. Then it pushes the App key and the Claude token to files on the host, and starts the service. For the token, it runs `claude setup-token` if Claude Code is on this machine. If not, run `claude setup-token` on any machine with Claude Code. Paste the token at the hidden prompt.
+   3. **Host.** Give an SSH target such as `user@my-host`, or `local` for this machine. The wizard installs the latest release on the host. Then it pushes the App key and the Claude token to files on the host, and starts the service. For the token, it runs `claude setup-token` if Claude Code is on this machine. If not, run `claude setup-token` on any machine with Claude Code. Paste the token at the hidden prompt. The wizard saves the host in the hosts file (see [Hosts](#hosts)). If it is your first host, it becomes the default host, and the next commands act on it.
    4. **Owner and watched repos.** Your GitHub login becomes the owner. Only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that the host watches. If the App is not installed there, the wizard opens the install page. Select the repos, then click **Install**.
    5. **First repo.** The wizard runs `autopilot init` on a repo that you select. It opens an onboarding pull request (see [Onboarding](#onboarding)).
    6. **Alias.** It adds `ap` as a short name for `autopilot` to your shell.
@@ -62,7 +62,7 @@ autopilot is small. It is one process, with no server, no queue and no database.
    | `autopilot:awaiting-approval` | Read the spec, then tick **Approve and build**.                           |
    | `autopilot:blocked`           | Read the last comment, fix the cause, then remove the label to try again. |
 
-   With `"merge": "manual"` (the default from `init`), you review and merge each pull request. To see what the host does, run `autopilot logs` with `AUTOPILOT_HOST` set to your host.
+   With `"merge": "manual"` (the default from `init`), you review and merge each pull request. To see what the host does, run `autopilot logs`.
 
 ### Set up without prompts
 
@@ -171,7 +171,7 @@ The host refuses a `.devcontainer/` that reaches outside its container: host com
 
 ### Secrets
 
-A test that needs a key gets it from the repo's secrets. By default, autopilot keeps them in one env file per repo on the host. Set `AUTOPILOT_HOST` or pass `--host`, then run these in a checkout of the repo:
+A test that needs a key gets it from the repo's secrets. By default, autopilot keeps them in one env file per repo on the host. Run these in a checkout of the repo. They act on the default host, or on the host of `--host`:
 
 ```sh
 autopilot secrets set STRIPE_KEY        # hidden prompt, or pipe the value on stdin
@@ -182,7 +182,7 @@ autopilot secrets rm STRIPE_KEY
 
 The file is `secrets/repos/<owner>_<repo>.env` in `/etc/autopilot` on Linux, or in `~/.autopilot` on macOS. A value is never a command argument, so it stays out of the shell history. A value must be on one line.
 
-The default backend is `env` for `setup`, `init`, `app create`, `host setup` and `secrets`. To keep using 1Password, pass `--backend op` to each of these commands.
+The default backend is `env` for `setup`, `init`, `app create`, `hosts add` and `secrets`. To keep using 1Password, pass `--backend op` to each of these commands.
 
 With `--backend op`, the values go to 1Password, with your own sign-in. Each repo gets one item (`<owner>_<repo>`) in the `autopilot` vault. The command adds the reference to `.github/autopilot.json`. Commit that change. A reference in the config wins over a value of the same name in the host's file.
 
@@ -190,7 +190,15 @@ The host gives the values only to the checks that run a command from `verify.com
 
 ## Hosts
 
-A host runs autopilot as a service. It holds its `host.json`, its secrets and a release. At start, it reads the App key and the Claude token that `host.json` names. By default, these are the files `app-key.pem` and `claude-token` in the secrets folder: `/etc/autopilot/secrets` on Linux (owner root, group `autopilot`, mode 640), or `~/.autopilot/secrets` on macOS (mode 600). An `op://` reference makes the host read the value with `op` and a 1Password service account token. The client keeps no config. It forwards each command to the host over SSH. The host `local` is the machine you run the command on.
+A host runs autopilot as a service. It holds its `host.json`, its secrets and a release. At start, it reads the App key and the Claude token that `host.json` names. By default, these are the files `app-key.pem` and `claude-token` in the secrets folder: `/etc/autopilot/secrets` on Linux (owner root, group `autopilot`, mode 640), or `~/.autopilot/secrets` on macOS (mode 600). An `op://` reference makes the host read the value with `op` and a 1Password service account token.
+
+The client keeps one file: `~/.config/autopilot/hosts.json`, or `$XDG_CONFIG_HOME/autopilot/hosts.json` ([schema](schema/hosts.schema.json)). It gives a name and an SSH target to each host. It holds no secret. The client forwards each host command to the host over SSH. The target `local` is the machine that you run the command on. A command finds its host in this order:
+
+1. `--host <value>`.
+2. `AUTOPILOT_HOST`.
+3. The default host of the hosts file.
+
+If the value is the name of a host in the file, the command uses the target of that host. If not, the command uses the value as an SSH target, or as `local`. autopilot gives the target to `ssh` as it is, so a `Host` alias of `~/.ssh/config` works.
 
 | Host  | Service                                                                  | Files                              | Logs                       |
 | ----- | ------------------------------------------------------------------------ | ---------------------------------- | -------------------------- |
@@ -200,23 +208,30 @@ A host runs autopilot as a service. It holds its `host.json`, its secrets and a 
 A macOS host runs while you are logged in, and stops while the Mac sleeps.
 
 ```sh
-# Once per host: write host.json, install the latest release, push the App key and the Claude token.
+# Once per host: write host.json, install the latest release, push the App key and the Claude token,
+# then save the host in the hosts file. The first host that you add becomes the default host.
 # The key comes from --app-key, or from ~/.config/autopilot/app-key.pem. The token comes from
 # CLAUDE_CODE_OAUTH_TOKEN, or from a hidden prompt. Run it again to repair or upgrade: it keeps the
 # secrets the host has. To replace a secret, remove its file on the host, then run it again.
-autopilot host setup --host user@my-host --owner <login> --app-id <id> --app-key app.pem
-autopilot host setup --host local --owner <login> --app-id <id>     # this machine
+autopilot hosts add pi user@my-host --owner <login> --app-id <id> --app-key app.pem
+autopilot hosts add mac local --owner <login> --app-id <id>     # this machine
 
-export AUTOPILOT_HOST=user@my-host
+autopilot hosts                  # the hosts, and which one is the default
+autopilot hosts default mac      # the host of the commands that have no --host
+autopilot hosts rm mac           # remove it from the hosts file. It does not uninstall the host
+
 autopilot watch <owner>/<repo>   # opens the App install page if the App is not installed there
 autopilot watch                  # what the host watches; --remove <entry> stops watching it
 autopilot status
 autopilot logs                   # --audit for the JSON audit events
 autopilot start                  # or stop
 autopilot update                 # install the latest release, or --version vX.Y.Z
+autopilot --host pi status       # act on a host that is not the default
 ```
 
-To replace a host secret, for example a wrong Claude token, remove its file in the secrets folder: `/etc/autopilot/secrets` on Linux, or `~/.autopilot/secrets` on macOS. Then run `autopilot host setup` again. It asks only for the secret that the host lacks, writes it, and restarts the service.
+`autopilot host setup --host <target>` still works. It does the same as `hosts add`. The name is the host part of the SSH target, or the short hostname for `local`. Use `hosts add` instead, because it replaces `host setup`.
+
+To replace a host secret, for example a wrong Claude token, remove its file in the secrets folder: `/etc/autopilot/secrets` on Linux, or `~/.autopilot/secrets` on macOS. Then run the same `autopilot hosts add` command again. It asks only for the secret that the host lacks, writes it, and restarts the service.
 
 A host works on one issue at a time by default. To run more at once, set `concurrency` in its `host.json`. Each issue gets its own containers and `limits`, so size it to the host's memory and to the rate limits of your Claude plan.
 
