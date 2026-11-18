@@ -21,12 +21,10 @@ function saveHosts(file: HostsFile): void {
   renameSync(tmp, HOSTS_PATH);
 }
 
-// A forwarded command runs under sudo on a Linux host, which is not where the client keeps its hosts file.
 export function findHost(flag: string | undefined, env: string | undefined): HostRef | undefined {
   return resolveHost(flag, env, () => (process.env.SUDO_USER ? NO_HOSTS : loadHosts()));
 }
 
-// The name of a host that is not in the file comes from its target, and the target can make a name that is not valid.
 export function nameToSave(host: HostRef, given: string | undefined): string {
   const name = given ?? host.savedName ?? nameOfTarget(loadHosts(), host.target, defaultHostName());
   const problem = nameProblem(name);
@@ -55,7 +53,6 @@ export function listHosts(): void {
 
 export async function hostsAdd(name: string, target: string, options: HostSetupOptions): Promise<void> {
   checkHost(name, target);
-  // A file that cannot be saved must fail before the host work, not after it.
   loadHosts(true);
   await hostSetup(target, options);
   const { isDefault } = saveHost(name, target);

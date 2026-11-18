@@ -356,7 +356,6 @@ export async function setup(options: SetupOptions): Promise<void> {
   if (options.yes && !options.configFile) throw new Error("--yes needs --config <setup file>");
   const config = options.configFile ? parseSetupConfig(readFileSync(options.configFile, "utf8"), options.configFile) : {};
   const requested = findHost(config.host ?? options.host, process.env.AUTOPILOT_HOST);
-  // A host name that is not valid must stop setup before it changes anything.
   if (requested) nameToSave(requested, options.name ?? config.name);
   intro("autopilot setup");
   log.info("Each step checks what is in place and does only what is missing.");

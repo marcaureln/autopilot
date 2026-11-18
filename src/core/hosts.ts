@@ -22,7 +22,6 @@ export function nameProblem(name: string): string | undefined {
   return HOST_NAME.test(name) && name !== LOCAL_TARGET ? undefined : `"${name}" is not a host name: use letters, digits, ".", "_" and "-", and not "local"`;
 }
 
-// With `repair`, a default that is not a host is dropped, so hosts add, rm and default can fix a file that a hand edit broke.
 export function parseHosts(text: string, source: string, repair = false): HostsFile {
   let data: unknown;
   try {
