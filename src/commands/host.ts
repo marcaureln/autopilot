@@ -63,7 +63,9 @@ export function parseTag(value: string): string {
 
 export async function latestRelease(): Promise<string> {
   const response = await fetch(`https://api.github.com/repos/${RELEASE_REPO}/releases/latest`, { headers: { accept: "application/vnd.github+json" } });
-  if (!response.ok) throw new Error(`no release of ${RELEASE_REPO} found (${response.status})`);
+  if (response.status === 404) throw new Error(`${RELEASE_REPO} has no release (404). Pass --version <tag>.`);
+  if (response.status === 403) throw new Error(`GitHub refused the request for the latest release of ${RELEASE_REPO} (403). This is probably the rate limit for your IP address. Try again later, or pass --version <tag>.`);
+  if (!response.ok) throw new Error(`GitHub answered ${response.status} for the latest release of ${RELEASE_REPO}. Try again later, or pass --version <tag>.`);
   const release: unknown = await response.json();
   if (typeof release !== "object" || release === null || !("tag_name" in release) || typeof release.tag_name !== "string") {
     throw new Error(`unexpected answer for the latest release of ${RELEASE_REPO}`);

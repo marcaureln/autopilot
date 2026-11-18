@@ -18,7 +18,9 @@ function restart(path: string): void {
 
 async function installUrl(slug: string, owner: string): Promise<string> {
   const response = await fetch(`https://api.github.com/users/${owner}`, { headers: { accept: "application/vnd.github+json" } });
-  if (!response.ok) throw new Error(`GitHub account ${owner} not found (${response.status})`);
+  if (response.status === 404) throw new Error(`GitHub account ${owner} not found (404). Check the name.`);
+  if (response.status === 403) throw new Error(`GitHub refused the request for the account ${owner} (403). This is probably the rate limit for your IP address. Try again later.`);
+  if (!response.ok) throw new Error(`GitHub answered ${response.status} for the account ${owner}. Try again later.`);
   const account: unknown = await response.json();
   if (typeof account !== "object" || account === null || !("id" in account)) throw new Error(`unexpected answer for ${owner}`);
   return `https://github.com/apps/${slug}/installations/new/permissions?target_id=${String(account.id)}`;
