@@ -30,7 +30,7 @@ export type Harness = {
   // Secret values by env var name. They reach the agent through docker's env or a file, never an argument.
   secretEnv(credentials: Credentials): Record<string, string>;
   // Not secret: the arguments of docker and of devcontainer exec are in the process list.
-  env: Record<string, string>;
+  env(workdir: string): Record<string, string>;
   // "stdin": the agent reads the prompt on its stdin. "file": the command reads PROMPT_FILE itself.
   prompt: "stdin" | "file";
   command(model: string, effort: Agent["effort"]): string[];
@@ -78,7 +78,7 @@ export async function runAgent(job: ImageRun): Promise<void> {
       ...harness.mounts(job.skillsDir, job.configDir),
     ],
     network: "bridge",
-    env: harness.env,
+    env: harness.env("/work"),
     passthroughEnv: harness.secretEnv(job.credentials),
     ...(harness.prompt === "stdin" && { input: readFileSync(job.promptFile) }),
     limits: job.limits,
@@ -121,7 +121,7 @@ export async function runAgentInDevcontainer(job: DevcontainerRun): Promise<void
   const stdin = harness.prompt === "stdin" ? ` < ${PROMPT_FILE}` : "";
   const script = `cd "$1" && shift && set -a && . ${RUN_DIR}/${ENV_NAME} && set +a && exec "$@"${stdin}`;
   const result = await job.devcontainer.exec(job.containerId, ["sh", "-c", script, "sh", job.workdir, ...harness.command(job.model, job.effort)], {
-    env: { ...harness.env, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.directory", GIT_CONFIG_VALUE_0: "*" },
+    env: { ...harness.env(job.workdir), GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.directory", GIT_CONFIG_VALUE_0: "*" },
     timeoutMs: job.timeoutMs,
   });
   if (result.timedOut) throw new Error(`the agent timed out after ${Math.round(job.timeoutMs / 60_000)} minutes`, { cause: tail(result.output) });

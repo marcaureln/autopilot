@@ -32,7 +32,7 @@ export const claude: Harness = {
   },
   secretEnv: ({ claudeToken }) => ({ CLAUDE_CODE_OAUTH_TOKEN: claudeToken }),
   // Claude Code refuses to bypass permissions as root unless it is told it runs in a sandbox.
-  env: { IS_SANDBOX: "1" },
+  env: () => ({ IS_SANDBOX: "1" }),
   prompt: "stdin",
   command: (model, effort) => ["claude", "--print", "--model", model, ...(effort ? ["--effort", effort] : []), "--permission-mode", "bypassPermissions", "--settings", SETTINGS],
 };

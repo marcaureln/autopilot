@@ -27,7 +27,9 @@ export const opencode: Harness = {
     if (Object.keys(apiKeys).length === 0) throw new Error("OpenCode needs a provider API key: add it to secrets.api_keys in host.json");
     return apiKeys;
   },
-  env: {},
+  // A repo's opencode.json or .opencode/ could send the API key to another server or load a plugin
+  // (code). Without project config, the repo's AGENTS.md comes back as an instruction file.
+  env: (workdir) => ({ OPENCODE_DISABLE_PROJECT_CONFIG: "1", OPENCODE_CONFIG_CONTENT: JSON.stringify({ instructions: [`${workdir}/AGENTS.md`] }) }),
   prompt: "file",
   // --standalone: only a private server gets the API keys from this environment. The effort is the
   // model's variant, and a model without that variant fails the run.
