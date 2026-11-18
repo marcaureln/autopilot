@@ -92,6 +92,46 @@ function hasStatus(error: unknown, status: number): boolean {
   return typeof error === "object" && error !== null && "status" in error && error.status === status;
 }
 
+// Keeps `status`, so callers can still branch on it with `hasStatus`.
+class GitHubError extends Error {
+  status: number;
+  constructor(message: string, status: number, options: ErrorOptions) {
+    super(message);
+    this.status = status;
+    this.cause = options.cause;
+  }
+}
+
+function headerOf(error: Error, name: string): string | undefined {
+  if (!("response" in error) || typeof error.response !== "object" || error.response === null || !("headers" in error.response)) return undefined;
+  const { headers } = error.response;
+  const value: unknown = typeof headers === "object" && headers !== null ? Reflect.get(headers, name) : undefined;
+  return value === undefined ? undefined : String(value);
+}
+
+// A raw Octokit error can carry an HTML page. A message that says what to do replaces it.
+function mapRequestErrors(octokit: Octokit, appId: number): Octokit {
+  octokit.hook.error("request", (error, options) => {
+    if (!(error instanceof Error) || !("status" in error) || typeof error.status !== "number") throw error;
+    const { status } = error;
+    const request = `${options.method} ${new URL(octokit.request.endpoint.parse(options).url).pathname}`;
+    if (status === 401) {
+      throw new GitHubError(`GitHub refused the App key (401). It is not a key of App ${appId}, or the App was deleted.`, status, { cause: error });
+    }
+    if (status === 403 && headerOf(error, "x-ratelimit-remaining") === "0") {
+      const reset = Number(headerOf(error, "x-ratelimit-reset"));
+      const at = Number.isFinite(reset) ? new Date(reset * 1000).toISOString() : "an unknown time";
+      throw new GitHubError(`GitHub rate limit reached. It resets at ${at}. The next poll tries again.`, status, { cause: error });
+    }
+    if (status === 403) {
+      throw new GitHubError(`The App has no permission for ${request} (403). Check the App permissions, then accept them on the installation page.`, status, { cause: error });
+    }
+    if (status >= 500) throw new GitHubError(`GitHub answered ${status}. The next poll tries again.`, status, { cause: error });
+    throw error;
+  });
+  return octokit;
+}
+
 function hasToken(value: unknown): value is { token: string; expiresAt: string } {
   return typeof value === "object" && value !== null && "token" in value && typeof value.token === "string" && "expiresAt" in value && typeof value.expiresAt === "string";
 }
@@ -361,7 +401,7 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
 }
 
 export function createGitHub(auth: { appId: number; privateKey: string }, audit: Audit): GitHub {
-  const app = new Octokit({ authStrategy: createAppAuth, auth, log: quiet });
+  const app = mapRequestErrors(new Octokit({ authStrategy: createAppAuth, auth, log: quiet }), auth.appId);
   const clients = new Map<number, Octokit>();
   const installationIds = new Map<string, number>();
   let slug: string | undefined;
@@ -369,7 +409,7 @@ export function createGitHub(auth: { appId: number; privateKey: string }, audit:
   function asInstallation(installationId: number): Octokit {
     let octokit = clients.get(installationId);
     if (!octokit) {
-      octokit = cacheGetsByEtag(new Octokit({ authStrategy: createAppAuth, auth: { ...auth, installationId }, log: quiet }));
+      octokit = mapRequestErrors(cacheGetsByEtag(new Octokit({ authStrategy: createAppAuth, auth: { ...auth, installationId }, log: quiet })), auth.appId);
       clients.set(installationId, octokit);
     }
     return octokit;
