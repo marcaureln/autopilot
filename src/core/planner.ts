@@ -10,21 +10,10 @@ import { containerName } from "./docker.ts";
 import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
-import type { Risk } from "./risk.ts";
+import type { PlannerResult } from "./planner-result.ts";
 import type { Comment } from "./spec.ts";
 import { prepareAgent } from "./skills.ts";
 import { readAgentFile, shallowClone } from "./workspace.ts";
-
-type PlannedFile = { path: string; status: "added" | "modified" | "deleted" } | { path: string; status: "renamed"; previous_path: string };
-
-export type PlannerResult = {
-  needs_info: boolean;
-  questions: string[];
-  scope: "ok" | "too_broad";
-  risk: Risk;
-  planned_files: PlannedFile[];
-  spec: string;
-};
 
 const RESULT_PATH = ".autopilot/result.json";
 

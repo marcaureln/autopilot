@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { planGate, mergeGate, type PlanGate, type MergeGate } from "./gate.ts";
-import type { PlannerResult } from "./planner.ts";
+import type { PlannerResult } from "./planner-result.ts";
 import type { FileChange, Risk } from "./risk.ts";
 
 const risk = { high_paths: ["src/billing-v2/**"], max_diff_lines: 500 };

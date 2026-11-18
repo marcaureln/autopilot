@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isApproved, latestSpec, ownerReplyAfter, renderSpecComment, specGate, specMissingLabel, specPlannerRisk, type Comment } from "./spec.ts";
-import type { PlannerResult } from "./planner.ts";
+import type { PlannerResult } from "./planner-result.ts";
 
 const BOT = "autopilot[bot]";
 const OWNERS = ["marcaureln"];
