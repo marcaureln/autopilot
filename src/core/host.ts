@@ -22,15 +22,30 @@ export type Source = { kind: "path"; path: string } | { kind: "github"; owner: s
 
 export const HOST_FILE = LOCAL_LAYOUT.hostFile;
 
-export type HostSecret = "app_key" | "claude_token" | "op_token";
+export const API_KEY_PREFIX = "api_key:";
+
+export type HostSecret = "app_key" | "claude_token" | "op_token" | `${typeof API_KEY_PREFIX}${string}`;
 
 export type HostSecretFile = { secret: HostSecret; path: string };
 
-export const SECRET_LABELS: Record<HostSecret, string> = {
-  app_key: "GitHub App key",
-  claude_token: "Claude token",
-  op_token: "1Password service account token",
-};
+export function secretLabel(secret: HostSecret): string {
+  if (secret === "app_key") return "GitHub App key";
+  if (secret === "claude_token") return "Claude token";
+  if (secret === "op_token") return "1Password service account token";
+  return `API key ${secret.slice(API_KEY_PREFIX.length)}`;
+}
+
+// Same pattern as the property names of secrets.api_keys in the host schema.
+export const API_KEY_NAME = /^[A-Z][A-Z0-9_]*$/;
+
+// Adds each name that api_keys lacks, with a file reference. Returns the text itself when nothing changes.
+export function addApiKeys(text: string, names: string[]): string {
+  const data: { secrets: { api_keys?: Record<string, string> } } = JSON.parse(text);
+  const missing = names.filter((name) => !Object.hasOwn(data.secrets.api_keys ?? {}, name));
+  if (missing.length === 0) return text;
+  data.secrets.api_keys = { ...data.secrets.api_keys, ...Object.fromEntries(missing.map((name) => [name, `file:${name.toLowerCase()}`])) };
+  return JSON.stringify(data, null, 2) + "\n";
+}
 
 export function usesOnePassword(secrets: Host["secrets"]): boolean {
   const { api_keys = {}, ...named } = secrets;
@@ -38,10 +53,13 @@ export function usesOnePassword(secrets: Host["secrets"]): boolean {
 }
 
 export function hostSecretFiles(secrets: Host["secrets"], layout: Pick<Layout, "secretsDir" | "opToken">): HostSecretFile[] {
-  const files = (["app_key", "claude_token"] as const).flatMap((secret) => {
-    const reference = secrets[secret];
-    return reference.startsWith("file:") ? [{ secret, path: `${layout.secretsDir}/${reference.slice("file:".length)}` }] : [];
-  });
+  const fileOf = (secret: HostSecret, reference: string): HostSecretFile[] =>
+    reference.startsWith("file:") ? [{ secret, path: `${layout.secretsDir}/${reference.slice("file:".length)}` }] : [];
+  const files = [
+    ...fileOf("app_key", secrets.app_key),
+    ...fileOf("claude_token", secrets.claude_token),
+    ...Object.entries(secrets.api_keys ?? {}).flatMap(([name, reference]) => fileOf(`${API_KEY_PREFIX}${name}`, reference)),
+  ];
   return usesOnePassword(secrets) ? [{ secret: "op_token", path: layout.opToken }, ...files] : files;
 }
 
