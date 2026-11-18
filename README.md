@@ -108,6 +108,8 @@ mise install && pnpm install
 pnpm check               # types + lint + tests
 ```
 
+`pnpm lint:unused` (knip) and `pnpm lint:deps` (dependency-cruiser) look for dead code and import cycles. They run on your machine only, not in CI.
+
 Node runs the TypeScript files directly. There is no build step.
 
 ## References
