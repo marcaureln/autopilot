@@ -99,7 +99,16 @@ With `--backend op`, a new `host.json` has `op://` references, and `hosts add` p
 
 `host.json` has one owner. To add an owner, edit `owners` in `host.json` on the host (`/etc/autopilot/host.json` on Linux, `~/.autopilot/host.json` on macOS), then run `autopilot hosts add` again.
 
-At the end, `hosts add` saves the host in `~/.config/autopilot/hosts.json`. The first host that you add becomes the default host, so the next commands act on it. Check it with `autopilot hosts`. To act on another host, pass `--host <name>`, or make it the default with `autopilot hosts default <name>`. A command that the user types on a host that has a hosts file acts on that file's default host: tell the user to pass `--host local` to act on the host itself. A client from before this change sends no `--host=` to a macOS host, so update the client with `autopilot self-update`.
+At the end, `hosts add` saves the host in `~/.config/autopilot/hosts.json`. The first host that you add becomes the default host, so the next commands act on it. Check it with `autopilot hosts`. To act on another host, pass `--host <name>`, or make it the default with `autopilot hosts default <name>`. The hosts file is `~/.config/autopilot/hosts.json`, or `$XDG_CONFIG_HOME/autopilot/hosts.json`.
+
+How the client finds and reaches a host:
+
+- A command takes its host from `--host`, else `AUTOPILOT_HOST`, else the default host of the hosts file. If the value is a name in the hosts file, the command uses the SSH target of that host. If not, it uses the value as an SSH target, or as `local`.
+- The client gives the target to `ssh` as it is, so a `Host` alias of `~/.ssh/config` works. A name in the hosts file wins over a `Host` alias of the same name.
+- The client forwards each host command over SSH, with `--host=`. Under `sudo`, the host also skips its hosts file. So a forwarded command never reads the hosts file on the host.
+- A command that the user types on a host that has a hosts file acts on that file's default host. Tell the user to pass `--host local` to act on the host itself.
+- An old client sends no `--host=` to a macOS host. A macOS host that has a hosts file then forwards the command again. Update the client with `autopilot self-update`.
+- `autopilot host setup --host <target>` is the old name of `hosts add`. It still works, and saves the host under `--name`, else the host part of the SSH target, else the short hostname for `local`. If that name is not valid, for example for `user@[fe80::1]`, it stops before it changes anything. Pass `--name`.
 
 ## 7. Watch the repo
 
