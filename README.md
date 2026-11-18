@@ -39,13 +39,13 @@ autopilot is small. It is one process, with no server, no queue and no database.
    1. **Tools.** It checks git, ssh, mise and gh.
    2. **GitHub App.** Select "Create a new App". Your browser opens a GitHub page. Click **Create GitHub App**. The wizard saves the private key in `~/.config/autopilot/app-key.pem` (mode 600). To use an App that you already have, give its App ID. The host step then asks for the path of its `.pem` file.
    3. **Host.** With no `--host`, the wizard uses the default host of the hosts file, if there is one. If not, give an SSH target such as `user@my-host`, or `local` for this machine. The wizard saves the host under the host part of its SSH target. To choose another name, pass `--name <name>`. The wizard installs the latest release on the host. Then it pushes the App key and the Claude token to files on the host, and starts the service. For the token, it runs `claude setup-token` if Claude Code is on this machine. If not, run `claude setup-token` on any machine with Claude Code. Paste the token at the hidden prompt. The wizard saves the host in the hosts file (see [Hosts](#hosts)). If it is your first host, it becomes the default host, and the next commands act on it.
-   4. **Owner and watched repos.** Your GitHub login becomes the owner. Only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that the host watches. If the App is not installed there, the wizard opens the install page. Select the repos, then click **Install**.
+   4. **Owner and watched repos.** Your GitHub login becomes the owner. Only owners can start a job. Then give the accounts, orgs or `owner/repo` entries that the host watches. The wizard proposes your login, so the host watches all your repos. If the App is not installed there, the wizard opens the install page. Select **All repositories**, then click **Install**.
    5. **First repo.** The wizard runs `autopilot init` on a repo that you select. It opens an onboarding pull request (see [Onboarding](#onboarding)).
    6. **Alias.** It adds `ap` as a short name for `autopilot` to your shell.
 
    With `--backend op`, the wizard also checks `op`. It creates the vault `autopilot` and a service account that can only read that vault. It saves the App key and the Claude token in the vault, and the host reads them with the service account.
 
-3. Review and merge the onboarding pull request. Make sure that the check commands in `.github/autopilot.json` are correct. Until you merge this pull request, autopilot stops each issue in the repo.
+3. Review and merge the onboarding pull request. Make sure that the check commands in `.github/autopilot.json` are correct. Until you merge this pull request, each issue in the repo waits.
 
 4. Write your first issue. Ask for one small change, name the files, and give acceptance criteria. Then add the `autopilot` label:
 
@@ -157,15 +157,18 @@ The checks are the repo's own commands and the scanners. `verify.mode` says wher
 
 ### Onboarding
 
-`autopilot init` onboards a repo in one pull request that you review and merge. Run it in a checkout of the repo, or pass `--repo <owner>/<repo>`. It needs `gh` and Docker with the Compose plugin.
+Onboarding adds autopilot to a repo in one pull request that you review and merge. The host never merges it. You can start it in two ways:
 
-The repo's own `.devcontainer/` is the environment of every job: the install, the checks and the builder run in it, with its compose services, so any language works. `init`:
+- **With an issue.** Add the `autopilot` label to an issue in a watched repo that has no `.github/autopilot.json`. The host does the onboarding with the App and its own agent token, so you need no laptop. The issue tells the onboarding agent what the project is. For an empty repo, write what to build, for example "A 2D platformer in Godot 4". The host opens the pull request "Set up autopilot" and comments on the issue with its link. The issue waits until you merge the pull request, then its work starts. If you close the pull request without a merge, the host blocks the issue.
+- **With `autopilot init`.** Run it in a checkout of the repo, or pass `--repo <owner>/<repo>`. It needs `gh` and Docker with the Compose plugin.
+
+The repo's own `.devcontainer/` is the environment of every job: the install, the checks and the builder run in it, with its compose services, so any language works. The onboarding:
 
 1. Runs an agent. The agent writes `.devcontainer/` if the repo has none, from [Anthropic's dev container](https://github.com/anthropics/claude-code/tree/main/.devcontainer) without its firewall. It also sets the check commands and drafts `AGENTS.md`. An existing `.devcontainer/` or config keeps its values.
 2. Starts the dev container, cuts its network and runs each check once. Existing `lint` and `types` errors go to `.github/autopilot-baseline.json`, so only new errors fail.
-3. Creates the `autopilot` labels and opens the pull request from your account.
+3. Creates the `autopilot` labels and opens the pull request: from your account with `init`, from the App with an issue.
 
-`--skill <source>` (repeatable) gives the agents a skill. `--notes <file>` adds your own instructions to the onboarding agent.
+With `init`, `--skill <source>` (repeatable) gives the agents a skill. `--notes <file>` adds your own instructions to the onboarding agent.
 
 The host refuses a `.devcontainer/` that reaches outside its container: host commands, `runArgs`, privileges, host mounts and namespaces, published ports, `${localEnv:...}`, and images without an exact version tag. It adds its own memory, CPU and process caps, and it cuts the outside network during the checks.
 

@@ -26,7 +26,17 @@ To set up from nothing, read `references/setup.md` and follow it. In short:
 2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the host with its secrets, the watched entries and the first onboarding PR. By default, the host keeps its secrets in files. With `--backend op`, they go to 1Password.
 3. If `setup` is not available, or it stops, do the steps one by one: `autopilot app create`, `autopilot hosts add`, `autopilot watch`, `autopilot init`. `references/setup.md` gives each step.
 4. Check the host with `autopilot status`. The service must be `active` (Linux) or `running` (macOS), and the watched entries must show the repo.
-5. Merge the onboarding pull request that `autopilot init` opened. Before the merge, autopilot stops each issue with "There is no `.github/autopilot.json` on the default branch".
+5. Merge the onboarding pull request. Before the merge, each issue in the repo waits.
+
+## Onboard a repo with an issue
+
+You can onboard a repo without `autopilot init`. Open an issue in a watched repo that has no `.github/autopilot.json`, and add the `autopilot` label from an owner's account. The host then runs the onboarding agent, opens the pull request "Set up autopilot", and comments on the issue with its link. The issue body tells the onboarding agent what the project is. For an empty repo, write what to build and with which tools, for example "A 2D platformer in Godot 4".
+
+```sh
+gh issue create --repo example-org/game --title "A 2D platformer in Godot 4" --body-file issue.md --label autopilot
+```
+
+Then tell the user to review and merge the pull request. The host never merges it. After the merge, the host writes the spec of the same issue. Each other labeled issue in the repo waits for the merge.
 
 ## Write an issue that autopilot can build
 
@@ -137,6 +147,8 @@ To ask for changes, do not comment on the pull request. autopilot does not read 
 1. Read the last comment of the bot. It starts with "autopilot stopped:" and gives the reason.
 2. Fix the cause. Common reasons:
    - "There is no `.github/autopilot.json` on the default branch", or an invalid config: run `autopilot init` and merge its pull request, or fix the file.
+   - "The onboarding pull request #N was closed without a merge": retry to open a new one, or run `autopilot init`.
+   - "The onboarding failed": read `autopilot logs`, then retry.
    - An invalid config that names `stack`: the config is from an older autopilot. Run `autopilot init` again and merge its pull request.
    - "autopilot does not start the repo's dev container": the comment lists what the guardrails refuse in `.devcontainer/`. Fix the file on the default branch, then retry.
    - "the dev container did not start", or the `install` check fails: fix the image or `postCreateCommand` in `.devcontainer/`.
