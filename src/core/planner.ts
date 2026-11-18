@@ -3,30 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/planner-result.schema.json" with { type: "json" };
-import { HARNESSES, runAgent, type Credentials } from "../harness/harness.ts";
+import { HARNESSES, runAgent } from "../harness/harness.ts";
+import type { Credentials } from "../harness/types.ts";
 import type { Audit } from "./audit.ts";
 import type { Config } from "./config.ts";
 import { containerName } from "./docker.ts";
 import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
-import type { Risk } from "./risk.ts";
+import type { PlannerResult } from "./planner-result.ts";
 import type { Comment } from "./spec.ts";
 import { prepareAgent } from "./skills.ts";
 import { readAgentFile, shallowClone } from "./workspace.ts";
 
-export type PlannedFile = { path: string; status: "added" | "modified" | "deleted" } | { path: string; status: "renamed"; previous_path: string };
-
-export type PlannerResult = {
-  needs_info: boolean;
-  questions: string[];
-  scope: "ok" | "too_broad";
-  risk: Risk;
-  planned_files: PlannedFile[];
-  spec: string;
-};
-
-export const RESULT_PATH = ".autopilot/result.json";
+const RESULT_PATH = ".autopilot/result.json";
 
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile<PlannerResult>(schema);
@@ -42,7 +32,7 @@ export function parsePlannerResult(text: string): PlannerResult {
   return data;
 }
 
-export type PlannerInput = {
+type PlannerInput = {
   repo: string;
   issue: { number: number; title: string; body: string };
   thread: Comment[];

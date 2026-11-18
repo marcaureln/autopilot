@@ -7,7 +7,7 @@ import type { Risk } from "./risk.ts";
 import type { IssueState, State } from "./state.ts";
 
 // Values never go into an event, only names and references.
-export type AuditEvent =
+type AuditEvent =
   | { event: "secret.read"; reference: string; reason: string; result: "ok" | "failed" }
   | { event: "token.minted"; installation: number; repo: string; expires: string }
   | { event: "issue.claimed"; issue: string; host: string }

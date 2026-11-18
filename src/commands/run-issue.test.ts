@@ -2,7 +2,7 @@ import { describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { RateLimited } from "../core/github.ts";
-import type { PlannerResult } from "../core/planner.ts";
+import type { PlannerResult } from "../core/planner-result.ts";
 import { SecretsMissing } from "../core/builder.ts";
 import type { FileChange } from "../core/risk.ts";
 import { BOT, FakeWorld, HOST, HOST_CONFIG, HOST_NAME, LOW_RISK_PLAN, OWNER } from "./fake-github.ts";

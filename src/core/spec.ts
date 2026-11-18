@@ -1,5 +1,5 @@
 import type { PlanGate } from "./gate.ts";
-import type { PlannerResult } from "./planner.ts";
+import type { PlannerResult } from "./planner-result.ts";
 import type { Risk } from "./risk.ts";
 
 export type Comment = { id: number; nodeId: string; author: string; body: string; createdAt: string };

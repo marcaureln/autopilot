@@ -15,7 +15,7 @@ export function repoUrl(repo: Repo): string {
 
 // The token goes in through git's environment config, so it is not in the process list
 // and not written to .git/config.
-export function gitAuthEnv(token: string): NodeJS.ProcessEnv {
+function gitAuthEnv(token: string): NodeJS.ProcessEnv {
   const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
   return {
     ...process.env,

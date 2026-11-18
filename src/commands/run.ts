@@ -11,10 +11,10 @@ import { mergeGate, planGate } from "../core/gate.ts";
 import { hasStatus, RateLimited, type GitHub, type Issue, type RepoGitHub } from "../core/github.ts";
 import { usesOnePassword, type Host } from "../core/host.ts";
 import type { OnboardJob, Onboarded } from "../core/onboarder.ts";
-import { ONBOARDING_BRANCH } from "../core/onboarding.ts";
 import { ANY_TIME, branchName, fixVerdict, headVerdict, issuePhase, latestPull, type BotPull, type HeadVerdict, type Statuses } from "../core/phase.ts";
-import type { PlannerJob, PlannerResult } from "../core/planner.ts";
-import type { Repo } from "../core/repo.ts";
+import type { PlannerJob } from "../core/planner.ts";
+import type { PlannerResult } from "../core/planner-result.ts";
+import { ONBOARDING_BRANCH, type Repo } from "../core/repo.ts";
 import { refusedSecrets } from "../core/repo-secrets.ts";
 import { isApproved, latestSpec, type Comment, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
 import { isOwnerTick, isVouched, trustedSpec, trustedThread, type TrustedSpec } from "../core/trust.ts";
@@ -43,7 +43,7 @@ export type Loop = {
   idle: Idle;
 };
 
-export type Idle = { due: () => boolean; run: () => Promise<void> };
+type Idle = { due: () => boolean; run: () => Promise<void> };
 
 // GitHub statuses do not hold the check output, so it lives in memory. After a restart, a failed
 // check runs again to get its output back.

@@ -3,8 +3,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import type { WatchEntry } from "./allow.ts";
 import type { Audit } from "./audit.ts";
 import { checkRunState, issueOfBranch, type BotPull, type CheckState, type Statuses } from "./phase.ts";
-import type { Repo } from "./repo.ts";
-import { ONBOARDING_BRANCH } from "./onboarding.ts";
+import { ONBOARDING_BRANCH, type Repo } from "./repo.ts";
 import type { FileChange } from "./risk.ts";
 import type { Comment } from "./spec.ts";
 import type { Change, CommentEdit } from "./trust.ts";
@@ -15,9 +14,9 @@ export type FoundIssue = { repo: Repo; issue: Issue };
 
 export type Provenance = { body: Change; title?: Change; commentEdits: Map<number, CommentEdit> };
 
-export type Comparison = { behind: number; ahead: number; changes: string[] };
+type Comparison = { behind: number; ahead: number; changes: string[] };
 
-export type LabelSpec = { name: string; color: string; description: string };
+type LabelSpec = { name: string; color: string; description: string };
 
 export type OnboardingPull = { number: number; state: BotPull["state"]; closedAt: string | undefined };
 

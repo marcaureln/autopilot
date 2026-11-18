@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/builder-result.schema.json" with { type: "json" };
-import { agentImage, devcontainerSetup, HARNESSES, runAgentInDevcontainer, type Credentials } from "../harness/harness.ts";
+import { agentImage, devcontainerSetup, HARNESSES, runAgentInDevcontainer } from "../harness/harness.ts";
+import type { Credentials } from "../harness/types.ts";
 import type { Audit } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { Devcontainer } from "./devcontainer-cli.ts";
@@ -21,7 +22,7 @@ import { importLfsObjects, pushBranch, readAgentFile, repoUrl, shallowClone } fr
 
 const exec = promisify(execFile);
 
-export const RESULT_PATH = ".autopilot/result.json";
+const RESULT_PATH = ".autopilot/result.json";
 
 const MAX_COMMITS = 50;
 const MAX_BUNDLE_BYTES = 100 * 1024 * 1024;
@@ -160,7 +161,7 @@ ${JSON.stringify(schema, null, 2)}
 `;
 }
 
-export type BuildMode = { kind: "build"; base: string; branch: string } | { kind: "fix"; branch: string; head: string; failures: Failure[] };
+type BuildMode = { kind: "build"; base: string; branch: string } | { kind: "fix"; branch: string; head: string; failures: Failure[] };
 
 export type BuildJob = {
   github: GitHub;
