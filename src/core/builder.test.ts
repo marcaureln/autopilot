@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { botIdentity, builderPrompt, commitProblems, neutralize, parseBuilderResult, pullBody, type Commit } from "./builder.ts";
+import { botIdentity, builderPrompt, commitProblems, neutralize, parseBuilderResult, pullBody, workflowFiles, type Commit } from "./builder.ts";
 
 const bot = botIdentity("autopilot[bot]", 123456);
 
@@ -42,6 +42,20 @@ const neutralizeCases: { text: string; expected: string }[] = [
 for (const { text, expected } of neutralizeCases) {
   test(`neutralize "${text}"`, () => {
     assert.equal(neutralize(text), expected);
+  });
+}
+
+const workflowCases: { name: string; paths: string[]; expected: string[] }[] = [
+  { name: "no workflow file", paths: ["src/a.ts", ".github/autopilot.json", "docs/.github/workflows/x.yml"], expected: [] },
+  { name: "a workflow file", paths: ["src/a.ts", ".github/workflows/check.yml"], expected: [".github/workflows/check.yml"] },
+  { name: "a file in a subfolder of workflows", paths: [".github/workflows/scripts/run.sh"], expected: [".github/workflows/scripts/run.sh"] },
+  { name: "both sides of a rename out of workflows", paths: [".github/workflows/ci.yml", "ci.yml"], expected: [".github/workflows/ci.yml"] },
+  { name: "the same file in two commits", paths: [".github/workflows/ci.yml", "", ".github/workflows/ci.yml"], expected: [".github/workflows/ci.yml"] },
+];
+
+for (const { name, paths, expected } of workflowCases) {
+  test(`workflow files: ${name}`, () => {
+    assert.deepEqual(workflowFiles(paths), expected);
   });
 }
 

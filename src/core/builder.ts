@@ -80,6 +80,12 @@ export function commitProblems(commits: Commit[], identity: Identity): string[] 
   });
 }
 
+// The App has no Workflows permission, so GitHub refuses a push that adds, changes or deletes a workflow file.
+// Do not add that permission: with it, an agent could change CI to read the Actions secrets or to pass its own work.
+export function workflowFiles(paths: string[]): string[] {
+  return [...new Set(paths.filter((path) => path.startsWith(".github/workflows/")))];
+}
+
 // The summary is agent text. In a pull request body, a closing keyword closes that issue on merge
 // and a mention notifies a person. A zero-width space breaks both.
 export function neutralize(text: string): string {
@@ -142,6 +148,7 @@ ${comments || "(no comments)"}
 - Do not change the git identity or the git config. Do not add trailers such as Co-Authored-By or Signed-off-by, and no "Generated with" line.
 - Do not push and do not open a pull request. There are no GitHub credentials here; autopilot pushes for you.
 - Keep the change to what the spec asks.
+- Do not add, change, delete or rename files under \`.github/workflows/\`. autopilot cannot push them. If the spec asks for such a change, leave it out and say so in your summary.
 
 # Environment
 
@@ -318,6 +325,11 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     const commits = await readCommits(origin, `${start}..${head}`);
     const problems = commitProblems(commits, identity);
     if (problems.length > 0) throw new BuildStopped(`autopilot does not push these commits: ${problems.join("; ")}`);
+    // Each pushed commit is checked, not only the net diff: a commit that adds a workflow and a later one that removes it can still be refused.
+    const workflows = workflowFiles((await git(origin, ["log", "--no-renames", "--name-only", "--format=", "-z", `${start}..${head}`])).split("\0"));
+    if (workflows.length > 0) {
+      throw new BuildStopped(`the change touches ${workflows.map((path) => `\`${path}\``).join(", ")}. autopilot cannot change files in \`.github/workflows/\`: make this change yourself.`);
+    }
 
     // A first build replaces what an earlier attempt left on the branch. A fix round only adds on top of the commit it checked out.
     const lease = mode.kind === "build" ? "--force" : `--force-with-lease=refs/heads/${mode.branch}:${start}`;
