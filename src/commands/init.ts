@@ -79,6 +79,7 @@ export async function init(options: InitOptions): Promise<void> {
       configDir: undefined,
       skills: options.skills,
       notes,
+      request: undefined,
       credentials: { claudeToken, apiKeys: {} },
       devcontainer: cliDevcontainer,
       limits: LIMITS,

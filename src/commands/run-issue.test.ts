@@ -389,3 +389,90 @@ describe("a builder that needs secrets", () => {
     assert.equal(spec?.startsWith("<!-- autopilot:spec"), true);
   });
 });
+
+describe("a repo with no config", () => {
+  // Polls once with no config: the host opens the onboarding pull request.
+  async function onboarded(world: FakeWorld): Promise<{ issue: number; pull: number }> {
+    world.repo.config = undefined;
+    const issue = world.repo.openIssue({ title: "A 2D platformer in Godot 4", labeledBy: OWNER });
+    await world.poll();
+    const pull = world.repo.pulls.find((candidate) => candidate.head.ref === "autopilot/onboarding");
+    assert.ok(pull, "the host opened the onboarding pull request");
+    return { issue, pull: pull.number };
+  }
+
+  test("an owner's issue gets an onboarding pull request and a comment that links it", async () => {
+    const world = new FakeWorld();
+    const { issue, pull } = await onboarded(world);
+    assert.deepEqual(world.onboarded, [issue]);
+    assert.equal(world.repo.pulls[pull - 1]?.title, "Set up autopilot");
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:working"]);
+    const [comment] = world.repo.commentBodies(issue);
+    assert.match(comment ?? "", new RegExp(`opened #${pull} to set it up`));
+    assert.deepEqual(world.planned, []);
+  });
+
+  test("while the onboarding pull request is open, the issue waits", async () => {
+    const world = new FakeWorld();
+    const { issue } = await onboarded(world);
+    await world.poll(2);
+    assert.deepEqual(world.onboarded, [issue]);
+    assert.equal(world.repo.pulls.length, 1);
+    assert.equal(world.repo.commentBodies(issue).length, 1);
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:working"]);
+    assert.deepEqual(world.planned, []);
+  });
+
+  test("when an owner merges the onboarding pull request, the spec of the same issue starts", async () => {
+    const world = new FakeWorld();
+    const { issue, pull } = await onboarded(world);
+    world.repo.finishPull(pull, "merged");
+    world.repo.config = HOST_CONFIG;
+    await world.poll();
+    assert.deepEqual(world.planned, [issue]);
+    assert.deepEqual(specGates(world, issue), ["go"]);
+    assert.deepEqual(world.onboarded, [issue]);
+  });
+
+  test("when the onboarding pull request is closed without a merge, the issue is blocked", async () => {
+    const world = new FakeWorld();
+    const { issue, pull } = await onboarded(world);
+    world.repo.finishPull(pull, "closed");
+    await world.poll(2);
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
+    assert.match(world.repo.commentBodies(issue).at(-1) ?? "", new RegExp(`^autopilot stopped: The onboarding pull request #${pull} was cl\u200bosed without a merge`), "the comment breaks the closing keyword");
+    assert.deepEqual(world.onboarded, [issue]);
+  });
+
+  test("a failing onboarding blocks the issue and tells why", async () => {
+    const world = new FakeWorld();
+    world.repo.config = undefined;
+    world.script.onboardError = new Error("the onboarding agent wrote no .autopilot/result.json");
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll();
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
+    assert.match(world.repo.commentBodies(issue)[0] ?? "", /^autopilot stopped: The onboarding failed: the onboarding agent wrote no/);
+    assert.equal(world.repo.pulls.length, 0);
+  });
+
+  test("two issues that start together open one onboarding pull request", async () => {
+    const world = new FakeWorld(HOST_CONFIG, { ...HOST, concurrency: 2 });
+    world.repo.config = undefined;
+    const first = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    const second = world.repo.openIssue({ title: "Add a README", labeledBy: OWNER });
+    await world.poll(2);
+    assert.deepEqual(world.onboarded, [first]);
+    assert.equal(world.repo.pulls.length, 1);
+    assert.deepEqual(world.repo.commentBodies(second), []);
+  });
+
+  test("an issue labeled by a non-owner is still ignored", async () => {
+    const world = new FakeWorld();
+    world.repo.config = undefined;
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: "stranger" });
+    await world.poll(2);
+    assert.deepEqual(world.onboarded, []);
+    assert.equal(world.repo.pulls.length, 0);
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot"]);
+  });
+});

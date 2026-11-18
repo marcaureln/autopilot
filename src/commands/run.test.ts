@@ -25,6 +25,7 @@ function repoWith(issues: Awaited<ReturnType<RepoGitHub["listLabeledIssues"]>>):
     lastUnlabeled: unused,
     userId: unused,
     botPulls: async () => [],
+    onboardingPull: unused,
     pullFiles: unused,
     pullCommits: unused,
     statuses: unused,
@@ -67,7 +68,7 @@ const host = {
 async function linesFor(allow: string[]): Promise<string[]> {
   const lines: string[] = [];
   const state = loopState();
-  await runOnce({ github, host: { ...host, allow }, plan: unused, build: unused, check: unused, log: (_, line) => lines.push(line), audit: unused, idle: { due: () => false, run: unused } }, state);
+  await runOnce({ github, host: { ...host, allow }, plan: unused, build: unused, check: unused, onboard: unused, log: (_, line) => lines.push(line), audit: unused, idle: { due: () => false, run: unused } }, state);
   await drain(state);
   return lines;
 }
@@ -109,7 +110,7 @@ async function startedWith(concurrency: number): Promise<number[]> {
     },
   };
   const state = loopState();
-  const loop = { github: { ...github, repo: () => repo }, host: { ...host, allow: ["owner/app-a"], concurrency }, plan: unused, build: unused, check: unused, log: () => undefined, audit: unused, idle: { due: () => false, run: unused } };
+  const loop = { github: { ...github, repo: () => repo }, host: { ...host, allow: ["owner/app-a"], concurrency }, plan: unused, build: unused, check: unused, onboard: unused, log: () => undefined, audit: unused, idle: { due: () => false, run: unused } };
   await runOnce(loop, state);
   await runOnce(loop, state);
   resolve();
@@ -132,6 +133,7 @@ test("an error on one repo is logged and the other repos are still polled", asyn
     plan: unused,
     build: unused,
     check: unused,
+    onboard: unused,
     log: (_: string, line: string) => lines.push(line),
     audit: unused,
     idle: { due: () => false, run: unused },

@@ -63,6 +63,7 @@ const variants: { name: string; change: Partial<Onboarding>; expected: RegExp }[
     expected: /- not run: the guardrails refuse `\.devcontainer\/`\n  - devcontainer\.json: `runArgs`/,
   },
   { name: "the host watches the repo", change: { host: { kind: "watched" } }, expected: /Check that the App is installed on the repo/ },
+  { name: "the host opened it for an issue", change: { host: { kind: "issue", issue: 4 } }, expected: /autopilot opened it for #4\. The work on that issue starts when this pull request is merged\./ },
   { name: "a manual merge", change: {}, expected: /`merge` is `manual`/ },
   { name: "an existing auto merge", change: { merge: "auto" }, expected: /`merge` is `auto`/ },
 ];
@@ -76,15 +77,27 @@ for (const { name, change, expected } of variants) {
 const promptCases: { name: string; input: Parameters<typeof onboardingPrompt>[0]; match: RegExp[]; noMatch: RegExp[] }[] = [
   {
     name: "a repo with no dev container",
-    input: { repo: "acme/app", hasDevcontainer: false, claudeCodeVersion: "2.1.325", notes: undefined },
+    input: { repo: "acme/app", hasDevcontainer: false, claudeCodeVersion: "2.1.325", notes: undefined, request: undefined },
     match: [/CLAUDE_CODE_VERSION.*2\.1\.325/, /no network/, /`devcontainer_files`/, /without its firewall/],
     noMatch: [/# Notes from the owner/, /already has `\.devcontainer\/`/],
   },
   {
     name: "a repo with a dev container and notes",
-    input: { repo: "acme/app", hasDevcontainer: true, claudeCodeVersion: "2.1.325", notes: "Use Postgres 18.\n" },
+    input: { repo: "acme/app", hasDevcontainer: true, claudeCodeVersion: "2.1.325", notes: "Use Postgres 18.\n", request: undefined },
     match: [/already has `\.devcontainer\/`/, /# Notes from the owner\n\nUse Postgres 18\./],
     noMatch: [/CLAUDE_CODE_VERSION/],
+  },
+  {
+    name: "a blank repo onboarded for an issue",
+    input: {
+      repo: "acme/game",
+      hasDevcontainer: false,
+      claudeCodeVersion: "2.1.325",
+      notes: undefined,
+      request: { issue: { number: 4, title: "A 2D platformer in Godot 4", body: "Levels and a player." }, thread: [{ id: 1, nodeId: "n1", author: "owner", body: "Use GDScript.", createdAt: "2026-01-01T00:00:00Z" }] },
+    },
+    match: [/# The request/, /Do not do the work of the issue/, /## Issue #4: A 2D platformer in Godot 4\n\nLevels and a player\./, /\*\*@owner\*\* \(2026-01-01T00:00:00Z\):\n\nUse GDScript\./],
+    noMatch: [/# Notes from the owner/],
   },
 ];
 

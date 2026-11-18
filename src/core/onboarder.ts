@@ -1,20 +1,25 @@
 import { execFile } from "node:child_process";
-import { appendFileSync, cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { claudeCodeVersion } from "../harness/claude.ts";
 import { HARNESSES, runAgent, type Credentials } from "../harness/harness.ts";
 import type { Audit } from "./audit.ts";
 import { BASELINE_PATH, knownFailureLines, renderBaseline, type Baseline } from "./baseline.ts";
+import type { Identity } from "./builder.ts";
 import { planChecks } from "./checks.ts";
 import { CONFIG_PATH, parseConfig, type Config } from "./config.ts";
 import type { Devcontainer } from "./devcontainer-cli.ts";
 import { containerName } from "./docker.ts";
 import { checkCommand, EnvironmentRefused, RUN_DIR, SECRETS_NAME, shellEnvFile, startEnvironment, stopEnvironment } from "./environment.ts";
+import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
 import {
   devcontainerFiles,
   diskFiles,
+  ONBOARDING_BRANCH,
+  onboardingBody,
   onboardingPrompt,
   parseOnboardingResult,
   readiness,
@@ -22,12 +27,14 @@ import {
   RESULT_PATH,
   type Onboarding,
   type OnboardingResult,
+  type Request,
   type ValidateResult,
 } from "./onboarding.ts";
 import type { Repo } from "./repo.ts";
 import { refusedSecrets } from "./repo-secrets.ts";
 import { readSecret } from "./secrets.ts";
-import { readAgentFile, writeRepoFile } from "./workspace.ts";
+import { prepareAgent } from "./skills.ts";
+import { pushBranch, readAgentFile, repoUrl, shallowClone, writeRepoFile } from "./workspace.ts";
 
 const exec = promisify(execFile);
 
@@ -54,6 +61,7 @@ export type OnboardingSetup = {
   // Written into the config as skills of the planner and the builder.
   skills: string[];
   notes: string | undefined;
+  request: Request | undefined;
   credentials: Credentials;
   devcontainer: Devcontainer;
   limits: Host["limits"];
@@ -68,7 +76,7 @@ async function onboardingAgent(setup: OnboardingSetup, hasDevcontainer: boolean)
   mkdirSync(join(work, ".autopilot"));
   appendFileSync(join(work, ".git", "info", "exclude"), "/.autopilot/\n");
   const promptFile = join(jobDir, "prompt.md");
-  writeFileSync(promptFile, onboardingPrompt({ repo: `${repo.owner}/${repo.name}`, hasDevcontainer, claudeCodeVersion: claudeCodeVersion(), notes: setup.notes }));
+  writeFileSync(promptFile, onboardingPrompt({ repo: `${repo.owner}/${repo.name}`, hasDevcontainer, claudeCodeVersion: claudeCodeVersion(), notes: setup.notes, request: setup.request }));
   setup.say(`==> onboarding agent (${AGENT.model}), up to ${AGENT_TIMEOUT_MINUTES} minutes`);
   await runAgent({
     harness: HARNESSES[AGENT.harness],
@@ -180,4 +188,58 @@ export async function prepareOnboarding(setup: OnboardingSetup): Promise<Omit<On
     validate,
     readiness: readiness(files, paths, config.verify.commands),
   };
+}
+
+export type OnboardJob = {
+  github: GitHub;
+  repoGitHub: RepoGitHub;
+  repo: Repo;
+  host: Host;
+  base: string;
+  request: Request;
+  identity: Identity;
+  credentials: Credentials;
+  devcontainer: Devcontainer;
+  audit: Audit;
+  say: (line: string) => void;
+};
+
+// The host's onboarding for an issue: it pushes ONBOARDING_BRANCH as the App and returns the pull request body.
+export async function runOnboarder(job: OnboardJob): Promise<string> {
+  const { repoGitHub, repo, host, identity } = job;
+  const missing = HARNESSES[AGENT.harness].missingCredential(job.credentials);
+  if (missing) throw new Error(missing);
+  const jobDir = mkdtempSync(join(tmpdir(), "autopilot-onboarding-"));
+  try {
+    const clone = join(jobDir, "repo");
+    await shallowClone(repo, await repoGitHub.token(), clone, job.base);
+    const start = await git(clone, ["rev-parse", "HEAD"]);
+    const { skillsDir, claudeConfigDir } = await prepareAgent(host, [], job.github, jobDir);
+    const onboarding = await prepareOnboarding({
+      repo,
+      clone,
+      jobDir,
+      skillsDir,
+      configDir: claudeConfigDir,
+      skills: [],
+      notes: undefined,
+      request: job.request,
+      credentials: job.credentials,
+      devcontainer: job.devcontainer,
+      limits: host.limits,
+      audit: job.audit,
+      say: job.say,
+    });
+    await git(clone, ["config", "user.name", identity.name]);
+    await git(clone, ["config", "user.email", identity.email]);
+    await git(clone, ["add", "--", ...onboarding.generated]);
+    await git(clone, ["commit", "--quiet", "-m", ONBOARDING_COMMIT]);
+    const head = await git(clone, ["rev-parse", "HEAD"]);
+    // An earlier attempt can have left the branch: this one replaces it.
+    await pushBranch(clone, repoUrl(repo), await repoGitHub.token(true), "--force", head, ONBOARDING_BRANCH);
+    job.audit({ event: "git.pushed", repo: `${repo.owner}/${repo.name}`, branch: ONBOARDING_BRANCH, head, base: start, commits: 1, force: true });
+    return onboardingBody({ ...onboarding, host: { kind: "issue", issue: job.request.issue.number } });
+  } finally {
+    rmSync(jobDir, { recursive: true, force: true });
+  }
 }

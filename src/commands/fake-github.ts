@@ -5,8 +5,10 @@ import { claimComment } from "../core/claim.ts";
 import { CONFIG_PATH } from "../core/config.ts";
 import type { BuildJob, Built } from "../core/builder.ts";
 import type { CheckResult, ChecksJob } from "../core/checks.ts";
-import type { GitHub, Issue, Provenance, RepoGitHub } from "../core/github.ts";
+import type { GitHub, Issue, OnboardingPull, Provenance, RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
+import type { OnboardJob } from "../core/onboarder.ts";
+import { ONBOARDING_BRANCH } from "../core/onboarding.ts";
 import { issueOfBranch, type BotPull, type CheckState, type Statuses } from "../core/phase.ts";
 import type { PlannerJob, PlannerResult } from "../core/planner.ts";
 import type { Repo } from "../core/repo.ts";
@@ -26,12 +28,13 @@ type FakeIssue = { number: number; title: string; body: string; labels: string[]
 // `editors` is newest first. Once a comment is edited, GitHub also lists its author as the oldest entry.
 type FakeComment = Comment & { issue: number; editors: string[]; minimized: boolean };
 
-type FakePull = BotPull & { files: FileChange[] };
+type FakePull = BotPull & { files: FileChange[]; title: string; body: string };
 
 export type FakeConfig = Record<string, unknown>;
 
 export class FakeRepoGitHub implements RepoGitHub {
-  config: FakeConfig;
+  // undefined: the default branch has no config.
+  config: FakeConfig | undefined;
   issues = new Map<number, FakeIssue>();
   comments: FakeComment[] = [];
   pulls: FakePull[] = [];
@@ -45,7 +48,7 @@ export class FakeRepoGitHub implements RepoGitHub {
   private nextId = 1;
   private nextIssue = 1;
 
-  constructor(config: FakeConfig) {
+  constructor(config: FakeConfig | undefined) {
     this.config = config;
   }
 
@@ -94,8 +97,16 @@ export class FakeRepoGitHub implements RepoGitHub {
   openPullFor(branch: string, base = "main", files?: FileChange[]): number {
     const commits = this.branches.get(branch) ?? [];
     const number = this.pulls.length + 1;
-    this.pulls.push({ number, issue: issueOfBranch(branch) ?? 0, state: "open", base, head: { ref: branch, sha: commits.at(-1) ?? "" }, closedAt: undefined, files: files ?? DEFAULT_FILES });
+    this.pulls.push({ number, issue: issueOfBranch(branch) ?? 0, state: "open", base, head: { ref: branch, sha: commits.at(-1) ?? "" }, closedAt: undefined, files: files ?? DEFAULT_FILES, title: "", body: "" });
     return number;
+  }
+
+  // A merge or a close by a person on GitHub.
+  finishPull(pull: number, state: "merged" | "closed"): void {
+    const found = this.pulls.find((candidate) => candidate.number === pull);
+    if (!found) throw new Error(`no pull request #${pull}`);
+    found.state = state;
+    found.closedAt = this.now();
   }
 
   ciRun(sha: string, name: string, state: CheckState): void {
@@ -147,7 +158,7 @@ export class FakeRepoGitHub implements RepoGitHub {
   }
   async ensureLabels(): Promise<void> {}
   async readFile(path: string): Promise<string | undefined> {
-    return path === CONFIG_PATH ? JSON.stringify(this.config) : undefined;
+    return path === CONFIG_PATH && this.config ? JSON.stringify(this.config) : undefined;
   }
   async minimizeOutdated(commentNodeId: string): Promise<void> {
     const comment = this.comments.find((candidate) => candidate.nodeId === commentNodeId);
@@ -177,7 +188,11 @@ export class FakeRepoGitHub implements RepoGitHub {
     return 1;
   }
   async botPulls(): Promise<BotPull[]> {
-    return this.pulls.map(({ number, issue, state, base, head, closedAt }) => ({ number, issue, state, base, head: { ...head }, closedAt }));
+    return this.pulls.filter((pull) => issueOfBranch(pull.head.ref) !== undefined).map(({ number, issue, state, base, head, closedAt }) => ({ number, issue, state, base, head: { ...head }, closedAt }));
+  }
+  async onboardingPull(): Promise<OnboardingPull | undefined> {
+    const pull = this.pulls.findLast((candidate) => candidate.head.ref === ONBOARDING_BRANCH);
+    return pull && { number: pull.number, state: pull.state, closedAt: pull.closedAt };
   }
   async pullFiles(pull: number): Promise<FileChange[]> {
     return this.pulls.find((candidate) => candidate.number === pull)?.files ?? [];
@@ -212,7 +227,9 @@ export class FakeRepoGitHub implements RepoGitHub {
   }
   async openPull(pull: { head: string; base: string; title: string; body: string }): Promise<number> {
     if (!this.branches.has(pull.head)) throw new Error(`the branch ${pull.head} was not pushed`);
-    return this.openPullFor(pull.head, pull.base);
+    const number = this.openPullFor(pull.head, pull.base);
+    Object.assign(this.pulls[number - 1] ?? {}, { title: pull.title, body: pull.body });
+    return number;
   }
   async requestReview(pull: number, reviewers: string[]): Promise<void> {
     this.reviewRequests.push({ pull, reviewers });
@@ -270,12 +287,14 @@ export type Script = {
   buildError: Error | undefined;
   // The checks that fail on the 1st, 2nd... run of the checks. A run past the end passes.
   failingRuns: string[][];
+  onboardError: Error | undefined;
 };
 
 export class FakeWorld {
   repo: FakeRepoGitHub;
-  script: Script = { plan: LOW_RISK_PLAN, planError: undefined, buildError: undefined, failingRuns: [] };
+  script: Script = { plan: LOW_RISK_PLAN, planError: undefined, buildError: undefined, failingRuns: [], onboardError: undefined };
   planned: number[] = [];
+  onboarded: number[] = [];
   builds: BuildJob["mode"][] = [];
   checkRuns = 0;
   logs: string[] = [];
@@ -299,6 +318,7 @@ export class FakeWorld {
       plan: (job) => this.plan(job),
       build: (job) => this.build(job),
       check: (job) => this.check(job),
+      onboard: (job) => this.onboard(job),
       log: (_, line) => this.logs.push(line),
       audit: () => undefined,
       idle: { due: () => false, run: async () => undefined },
@@ -325,6 +345,13 @@ export class FakeWorld {
     const head = `sha-${++this.commits}`;
     this.repo.pushCommit(job.mode.branch, head);
     return { head, summary: "Did the change." };
+  }
+
+  private async onboard(job: Omit<OnboardJob, "credentials" | "devcontainer" | "audit" | "say">): Promise<string> {
+    this.onboarded.push(job.request.issue.number);
+    if (this.script.onboardError) throw this.script.onboardError;
+    this.repo.pushCommit(ONBOARDING_BRANCH, `sha-${++this.commits}`);
+    return `Onboards ${job.repo.owner}/${job.repo.name} to autopilot.`;
   }
 
   private async check(job: Omit<ChecksJob, "devcontainer" | "audit">): Promise<CheckResult[]> {

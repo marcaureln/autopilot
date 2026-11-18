@@ -4,6 +4,7 @@ import type { WatchEntry } from "./allow.ts";
 import type { Audit } from "./audit.ts";
 import { checkRunState, issueOfBranch, type BotPull, type CheckState, type Statuses } from "./phase.ts";
 import type { Repo } from "./repo.ts";
+import { ONBOARDING_BRANCH } from "./onboarding.ts";
 import type { FileChange } from "./risk.ts";
 import type { Comment } from "./spec.ts";
 import type { Change, CommentEdit } from "./trust.ts";
@@ -15,6 +16,8 @@ export type Provenance = { body: Change; title?: Change; commentEdits: Map<numbe
 export type Comparison = { behind: number; ahead: number; changes: string[] };
 
 export type LabelSpec = { name: string; color: string; description: string };
+
+export type OnboardingPull = { number: number; state: BotPull["state"]; closedAt: string | undefined };
 
 export type RepoGitHub = {
   listLabeledIssues(label: string, state: "open" | "closed"): Promise<Issue[]>;
@@ -34,6 +37,8 @@ export type RepoGitHub = {
   lastUnlabeled(issue: number, label: string, actors: string[]): Promise<string | undefined>;
   userId(login: string): Promise<number>;
   botPulls(botLogin: string): Promise<BotPull[]>;
+  // The newest pull request from ONBOARDING_BRANCH of the repo itself.
+  onboardingPull(): Promise<OnboardingPull | undefined>;
   pullFiles(pull: number): Promise<FileChange[]>;
   pullCommits(pull: number): Promise<string[]>;
   statuses(sha: string, botLogin: string): Promise<Statuses>;
@@ -311,6 +316,13 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
         const state = pull.merged_at ? "merged" : pull.state === "open" ? "open" : "closed";
         return [{ number: pull.number, issue, state, base: pull.base.ref, head: { ref: pull.head.ref, sha: pull.head.sha }, closedAt: pull.closed_at ?? undefined }];
       });
+    },
+    async onboardingPull() {
+      // init opens it from the user's account and the host from the App's, so any author counts.
+      const { data } = await octokit.pulls.list({ owner, repo, state: "all", head: `${owner}:${ONBOARDING_BRANCH}`, sort: "created", direction: "desc", per_page: 100 });
+      const pull = data.find((candidate) => candidate.head.repo?.full_name === `${owner}/${repo}`);
+      if (!pull) return undefined;
+      return { number: pull.number, state: pull.merged_at ? "merged" : pull.state === "open" ? "open" : "closed", closedAt: pull.closed_at ?? undefined };
     },
     async pullFiles(pull) {
       const files = await octokit.paginate(octokit.pulls.listFiles, { owner, repo, pull_number: pull, per_page: 100 });

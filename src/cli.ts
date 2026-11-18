@@ -11,11 +11,12 @@ import { findHost, hostsAdd, hostsDefault, hostsRemove, HOSTS_USAGE, listHosts, 
 import { run } from "./commands/run.ts";
 import { hostSecrets, parseSecretsCommand, secrets, sendSecrets } from "./commands/secrets.ts";
 import { setup } from "./commands/setup.ts";
-import { auditLog } from "./core/audit.ts";
+import { auditLog, serviceLog } from "./core/audit.ts";
 import { runBuilder } from "./core/builder.ts";
 import { grypeDbUpdater, runChecks } from "./core/checks.ts";
 import { cliDevcontainer } from "./core/devcontainer-cli.ts";
 import { createGitHub } from "./core/github.ts";
+import { runOnboarder } from "./core/onboarder.ts";
 import { HOST_FILE, loadHost } from "./core/host.ts";
 import type { HostRef } from "./core/hosts.ts";
 import { runPlanner } from "./core/planner.ts";
@@ -198,6 +199,7 @@ async function main(): Promise<void> {
           plan: (job) => runPlanner(job, { credentials, audit: auditLog }),
           build: (job) => runBuilder({ ...job, credentials, devcontainer: cliDevcontainer, audit: auditLog }),
           check: (job) => runChecks({ ...job, devcontainer: cliDevcontainer, audit: auditLog }),
+          onboard: (job) => runOnboarder({ ...job, credentials, devcontainer: cliDevcontainer, audit: auditLog, say: (line) => serviceLog(`${job.repo.owner}/${job.repo.name}: ${line}`) }),
         },
         { once: values.once },
       );
