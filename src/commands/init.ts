@@ -45,7 +45,12 @@ const noAudit: Audit = () => {};
 export type InitOptions = { repo: Repo; host: string | undefined; skills: string[]; notesFile: string | undefined; claudeToken: () => Promise<string> };
 
 function run(command: string, args: string[], cwd?: string, input?: string): string {
-  return execFileSync(command, args, { cwd, input, encoding: "utf8", stdio: ["pipe", "pipe", "inherit"] }).trim();
+  try {
+    return execFileSync(command, args, { cwd, input, encoding: "utf8", stdio: ["pipe", "pipe", "inherit"] }).trim();
+  } catch (error) {
+    const exit = error instanceof Error && "status" in error && typeof error.status === "number" ? ` (exit ${error.status})` : "";
+    throw new Error(`${command} failed${exit}. See the message above.`, { cause: error });
+  }
 }
 
 function dockerRunning(): boolean {
