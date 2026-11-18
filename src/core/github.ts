@@ -11,6 +11,8 @@ import type { Change, CommentEdit } from "./trust.ts";
 
 export type Issue = { number: number; title: string; body: string; labels: string[] };
 
+export type FoundIssue = { repo: Repo; issue: Issue };
+
 export type Provenance = { body: Change; title?: Change; commentEdits: Map<number, CommentEdit> };
 
 export type Comparison = { behind: number; ahead: number; changes: string[] };
@@ -20,7 +22,7 @@ export type LabelSpec = { name: string; color: string; description: string };
 export type OnboardingPull = { number: number; state: BotPull["state"]; closedAt: string | undefined };
 
 export type RepoGitHub = {
-  listLabeledIssues(label: string, state: "open" | "closed"): Promise<Issue[]>;
+  listOpenIssues(label: string): Promise<Issue[]>;
   lastLabeled(issue: number, label: string): Promise<{ actor: string; at: string } | undefined>;
   listComments(issue: number): Promise<Comment[]>;
   postComment(issue: number, body: string): Promise<void>;
@@ -88,6 +90,9 @@ export type GitHub = {
   appLogin(): Promise<string>;
   findInstallation(entry: WatchEntry): Promise<number | undefined>;
   listRepos(installationId: number, owner: string): Promise<Repo[]>;
+  // The issues and pull requests that match a search query, in every repo the installation can read.
+  // GitHub allows 30 searches per minute.
+  searchIssues(installationId: number, query: string): Promise<FoundIssue[]>;
   repo(installationId: number, repo: Repo): RepoGitHub;
 };
 
@@ -114,6 +119,14 @@ function headerOf(error: Error, name: string): string | undefined {
   return value === undefined ? undefined : String(value);
 }
 
+export class RateLimited extends GitHubError {
+  resetAt: Date;
+  constructor(resetAt: Date, status: number, options: ErrorOptions) {
+    super(`GitHub rate limit reached. It resets at ${resetAt.toISOString()}. The next poll tries again.`, status, options);
+    this.resetAt = resetAt;
+  }
+}
+
 // A raw Octokit error can carry an HTML page. A message that says what to do replaces it.
 function mapRequestErrors(octokit: Octokit, appId: number): Octokit {
   octokit.hook.error("request", (error, options) => {
@@ -123,10 +136,11 @@ function mapRequestErrors(octokit: Octokit, appId: number): Octokit {
     if (status === 401) {
       throw new GitHubError(`GitHub refused the App key (401). It is not a key of App ${appId}, or the App was deleted.`, status, { cause: error });
     }
-    if (status === 403 && headerOf(error, "x-ratelimit-remaining") === "0") {
+    if ((status === 403 || status === 429) && headerOf(error, "x-ratelimit-remaining") === "0") {
       const reset = Number(headerOf(error, "x-ratelimit-reset"));
-      const at = Number.isFinite(reset) ? new Date(reset * 1000).toISOString() : "an unknown time";
-      throw new GitHubError(`GitHub rate limit reached. It resets at ${at}. The next poll tries again.`, status, { cause: error });
+      // Without a reset time, wait one minute: the search limit resets each minute.
+      const resetAt = Number.isFinite(reset) ? new Date(reset * 1000) : new Date(Date.now() + 60_000);
+      throw new RateLimited(resetAt, status, { cause: error });
     }
     if (status === 403) {
       throw new GitHubError(`The App has no permission for ${request} (403). Check the App permissions, then accept them on the installation page.`, status, { cause: error });
@@ -135,6 +149,15 @@ function mapRequestErrors(octokit: Octokit, appId: number): Octokit {
     throw error;
   });
   return octokit;
+}
+
+function issueOf(issue: { number: number; title: string; body?: string | null; labels: (string | { name?: string })[] }): Issue {
+  return {
+    number: issue.number,
+    title: issue.title,
+    body: issue.body ?? "",
+    labels: issue.labels.map((label) => (typeof label === "string" ? label : (label.name ?? ""))),
+  };
 }
 
 function hasToken(value: unknown): value is { token: string; expiresAt: string } {
@@ -188,17 +211,10 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
   }
 
   return {
-    async listLabeledIssues(label, state) {
-      const issues = await octokit.paginate(octokit.issues.listForRepo, { owner, repo, labels: label, state, per_page: 100 });
+    async listOpenIssues(label) {
+      const issues = await octokit.paginate(octokit.issues.listForRepo, { owner, repo, labels: label, state: "open", per_page: 100 });
       // The issues API also returns pull requests.
-      return issues
-        .filter((issue) => !issue.pull_request)
-        .map((issue) => ({
-          number: issue.number,
-          title: issue.title,
-          body: issue.body ?? "",
-          labels: issue.labels.map((label) => (typeof label === "string" ? label : (label.name ?? ""))),
-        }));
+      return issues.filter((issue) => !issue.pull_request).map(issueOf);
     },
     async lastLabeled(issue, label) {
       const events = await octokit.paginate(octokit.issues.listEvents, { ...issueParams(issue), per_page: 100 });
@@ -458,6 +474,15 @@ export function createGitHub(auth: { appId: number; privateKey: string }, audit:
       const octokit = asInstallation(installationId);
       const repos = await octokit.paginate(octokit.apps.listReposAccessibleToInstallation, { per_page: 100 });
       return repos.filter((repo) => repo.owner.login === owner).map((repo) => ({ owner: repo.owner.login, name: repo.name }));
+    },
+    async searchIssues(installationId, query) {
+      const octokit = asInstallation(installationId);
+      const items = await octokit.paginate(octokit.search.issuesAndPullRequests, { q: query, per_page: 100 });
+      return items.flatMap((item) => {
+        // https://api.github.com/repos/<owner>/<name>
+        const [owner, name] = item.repository_url.split("/").slice(-2);
+        return owner && name ? [{ repo: { owner, name }, issue: issueOf(item) }] : [];
+      });
     },
     repo: (installationId, repo) => repoGitHub(asInstallation(installationId), installationId, repo, audit),
   };

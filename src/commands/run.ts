@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { parseWatchEntry } from "../core/allow.ts";
+import { parseWatchEntry, searchQuery } from "../core/allow.ts";
 import { serviceLog, type Audit } from "../core/audit.ts";
 import { BASELINE_PATH, parseBaseline, type Baseline } from "../core/baseline.ts";
 import { botIdentity, BuildStopped, neutralize, pullBody, SecretsMissing, type BuildJob, type Built, type Failure } from "../core/builder.ts";
@@ -8,7 +8,7 @@ import { claimComment, claimOf, ownClaims } from "../core/claim.ts";
 import { CONFIG_PATH, parseConfig, type Config } from "../core/config.ts";
 import { EnvironmentRefused } from "../core/environment.ts";
 import { mergeGate, planGate } from "../core/gate.ts";
-import { hasStatus, type GitHub, type Issue, type RepoGitHub } from "../core/github.ts";
+import { hasStatus, RateLimited, type GitHub, type Issue, type RepoGitHub } from "../core/github.ts";
 import { usesOnePassword, type Host } from "../core/host.ts";
 import type { OnboardJob, Onboarded } from "../core/onboarder.ts";
 import { ONBOARDING_BRANCH } from "../core/onboarding.ts";
@@ -558,55 +558,118 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
   loop.log(key, `${key}: pull request #${pull.number} waits for a review (${gate.reasons.join("; ")})`);
 }
 
+const WATCHED_TTL_MS = 10 * 60 * 1000;
+
+type Installation = { id: number; entries: string[]; reposByKey: Map<string, Repo> };
+
 // `running` holds one job per issue: an issue never runs twice at once, and at most
 // `host.concurrency` issues run together.
-export type LoopState = { labelsReady: Set<string>; outputs: Map<string, CheckResult[]>; waitingSince: Map<string, number>; running: Map<string, Promise<void>>; onboardingRepos: Set<string> };
+export type LoopState = {
+  labelsReady: Set<string>;
+  outputs: Map<string, CheckResult[]>;
+  waitingSince: Map<string, number>;
+  running: Map<string, Promise<void>>;
+  onboardingRepos: Set<string>;
+  watched: { until: number; installations: Installation[] };
+  rateLimitedUntil: number;
+};
 
 export function loopState(): LoopState {
-  return { labelsReady: new Set(), outputs: new Map(), waitingSince: new Map(), running: new Map(), onboardingRepos: new Set() };
+  return { labelsReady: new Set(), outputs: new Map(), waitingSince: new Map(), running: new Map(), onboardingRepos: new Set(), watched: { until: 0, installations: [] }, rateLimitedUntil: 0 };
 }
 
-// Starts the jobs and returns without waiting for them: see `drain`. An error on one entry or repo
-// is logged, so it does not stop the loop for the others.
-export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
+function repoKeyOf(repo: Repo): string {
+  return `${repo.owner}/${repo.name}`.toLowerCase();
+}
+
+function rateLimited(state: LoopState): boolean {
+  return Date.now() < state.rateLimitedUntil;
+}
+
+function logOrWait(loop: Loop, state: LoopState, key: string, error: unknown): void {
+  if (!(error instanceof RateLimited)) return loop.log(key, `${key}: error: ${messageWithCause(error)}`);
+  state.rateLimitedUntil = Math.max(state.rateLimitedUntil, error.resetAt.getTime());
+  loop.log("rate limit", `rate limit reached, waiting until ${error.resetAt.toTimeString().slice(0, 5)}`);
+}
+
+async function watchedInstallations(loop: Loop, state: LoopState): Promise<Installation[]> {
+  if (Date.now() < state.watched.until) return state.watched.installations;
   const { github, log } = loop;
+  const installations = new Map<number, Installation>();
+  let cacheable = true;
   for (const value of loop.host.allow) {
+    if (rateLimited(state)) break;
     const entry = parseWatchEntry(value);
-    const installationId = await github.findInstallation(entry).catch((error: unknown) => {
-      log(value, `${value}: error: ${messageWithCause(error)}`);
-      return null;
-    });
-    if (installationId === null) continue;
-    if (installationId === undefined) {
-      log(value, `not installed: ${value}`);
-      continue;
-    }
-    const repos = entry.repo ? [{ owner: entry.owner, name: entry.repo }] : await github.listRepos(installationId, entry.owner).catch((error: unknown) => {
-      log(value, `${value}: error: ${messageWithCause(error)}`);
-      return [];
-    });
-    for (const repo of repos) {
-      const repoKey = `${repo.owner}/${repo.name}`;
-      await pollRepo(loop, state, installationId, repo).then(
-        () => log(repoKey, `${repoKey}: polled`),
-        (error: unknown) => log(repoKey, `${repoKey}: error: ${messageWithCause(error)}`),
-      );
+    try {
+      const id = await github.findInstallation(entry);
+      if (id === undefined) {
+        log(value, `not installed: ${value}`);
+        continue;
+      }
+      const repos = entry.repo ? [{ owner: entry.owner, name: entry.repo }] : await github.listRepos(id, entry.owner);
+      const installation: Installation = installations.get(id) ?? { id, entries: [], reposByKey: new Map() };
+      installation.entries.push(value);
+      for (const repo of repos) installation.reposByKey.set(repoKeyOf(repo), repo);
+      installations.set(id, installation);
+    } catch (error) {
+      cacheable = false;
+      logOrWait(loop, state, value, error);
     }
   }
+  state.watched = { until: cacheable ? Date.now() + WATCHED_TTL_MS : 0, installations: [...installations.values()] };
+  return state.watched.installations;
 }
 
-async function pollRepo(loop: Loop, state: LoopState, installationId: number, repo: Repo): Promise<void> {
+// Starts the jobs and returns without waiting for them: see `drain`.
+export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
+  if (rateLimited(state)) return;
   const { github, host, log } = loop;
+  let openIssues = 0;
+  let activeRepos = 0;
+  for (const installation of await watchedInstallations(loop, state)) {
+    if (rateLimited(state)) return;
+    const key = installation.entries.join(", ");
+    const entries = installation.entries.map(parseWatchEntry);
+    // A search also finds public repos where the App is not installed.
+    const search = async (issueState: "open" | "closed") =>
+      (await github.searchIssues(installation.id, searchQuery(issueState, entries))).flatMap(({ repo, issue }) => {
+        const watched = installation.reposByKey.get(repoKeyOf(repo));
+        return watched ? [{ repo: watched, issue }] : [];
+      });
+    try {
+      for (const { repo, issue } of await search("closed")) {
+        const issueKey = `${repo.owner}/${repo.name}#${issue.number}`;
+        await github
+          .repo(installation.id, repo)
+          .setLabels(issue.number, doneLabels(issue.labels))
+          .then(
+            () => log(issueKey, `${issueKey}: closed, autopilot labels removed`),
+            (error: unknown) => logOrWait(loop, state, issueKey, error),
+          );
+      }
+      const found = await search("open");
+      const repos = new Map(found.map(({ repo }) => [repoKeyOf(repo), repo]));
+      openIssues += found.length;
+      activeRepos += repos.size;
+      for (const repo of repos.values()) {
+        if (rateLimited(state) || state.running.size >= host.concurrency) break;
+        const repoKey = `${repo.owner}/${repo.name}`;
+        await pollRepo(loop, state, installation.id, repo).catch((error: unknown) => logOrWait(loop, state, repoKey, error));
+      }
+    } catch (error) {
+      logOrWait(loop, state, key, error);
+    }
+  }
+  log("poll", `polled (open issues: ${openIssues}, repos: ${activeRepos})`);
+}
+
+// The search index can lag behind the labels the loop just set, so the repo's own list gives the
+// current labels.
+async function pollRepo(loop: Loop, state: LoopState, installationId: number, repo: Repo): Promise<void> {
+  const { github, host } = loop;
   const repoGitHub = github.repo(installationId, repo);
   const repoKey = `${repo.owner}/${repo.name}`;
-  for (const closed of await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "closed")) {
-    const key = `${repoKey}#${closed.number}`;
-    await repoGitHub.setLabels(closed.number, doneLabels(closed.labels)).then(
-      () => log(key, `${key}: closed, autopilot labels removed`),
-      (error: unknown) => log(key, `${key}: error: ${messageWithCause(error)}`),
-    );
-  }
-  const issues = (await repoGitHub.listLabeledIssues(TRIGGER_LABEL, "open")).filter((issue) => !state.running.has(`${repoKey}#${issue.number}`));
+  const issues = (await repoGitHub.listOpenIssues(TRIGGER_LABEL)).filter((issue) => !state.running.has(`${repoKey}#${issue.number}`));
   if (issues.length === 0 || state.running.size >= host.concurrency) return;
   if (!state.labelsReady.has(repoKey)) {
     await repoGitHub.ensureLabels(LABELS);
@@ -618,7 +681,7 @@ async function pollRepo(loop: Loop, state: LoopState, installationId: number, re
     if (state.running.size >= host.concurrency) break;
     const key = `${repoKey}#${issue.number}`;
     const job = reconcile(loop, ctx, issue)
-      .catch((error: unknown) => log(key, `${key}: error: ${messageWithCause(error)}`))
+      .catch((error: unknown) => logOrWait(loop, state, key, error))
       .finally(() => state.running.delete(key));
     state.running.set(key, job);
   }

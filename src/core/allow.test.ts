@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addWatchEntry, parseWatchEntry, removeWatchEntry } from "./allow.ts";
+import { addWatchEntry, parseWatchEntry, removeWatchEntry, searchQuery } from "./allow.ts";
 
 const host = { name: "pi", app_id: 1, secrets: { app_key: "op://v/k/f", claude_token: "op://v/c/f" }, owners: ["me"], allow: ["me"], docker: "rootless" as const, poll_interval_seconds: 60, concurrency: 1, limits: { memory: "6g", cpus: 2, pids: 1024 } };
 
@@ -25,3 +25,13 @@ test("removes an entry, and fails for an unknown one", () => {
   assert.deepEqual(removeWatchEntry(host, "me").allow, []);
   assert.throws(() => removeWatchEntry(host, "other"), /the host does not watch other/);
 });
+
+for (const row of [
+  { state: "open", entries: ["me"], query: "label:autopilot is:issue is:open user:me" },
+  { state: "closed", entries: ["example-org/app"], query: "label:autopilot is:issue is:closed repo:example-org/app" },
+  { state: "open", entries: ["me", "example-org/app", "example-org/api"], query: "label:autopilot is:issue is:open user:me repo:example-org/app repo:example-org/api" },
+] as const) {
+  test(`the search for ${row.state} issues of ${row.entries.join(", ")}`, () => {
+    assert.equal(searchQuery(row.state, row.entries.map(parseWatchEntry)), row.query);
+  });
+}

@@ -1,15 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { GitHub, RepoGitHub } from "../core/github.ts";
+import type { FoundIssue, GitHub, Issue, RepoGitHub } from "../core/github.ts";
 import { changesOnly, drain, loopState, runOnce } from "./run.ts";
 
 function unused(): never {
   throw new Error("not called for an issue in a builder state");
 }
 
-function repoWith(issues: Awaited<ReturnType<RepoGitHub["listLabeledIssues"]>>): RepoGitHub {
+function repoWith(issues: Issue[]): RepoGitHub {
   return {
-    listLabeledIssues: async (_, state) => (state === "open" ? issues : []),
+    listOpenIssues: async () => issues,
     lastLabeled: unused,
     listComments: unused,
     postComment: unused,
@@ -42,6 +42,18 @@ function repoWith(issues: Awaited<ReturnType<RepoGitHub["listLabeledIssues"]>>):
   };
 }
 
+const BLOCKED: Issue = { number: 7, title: "Add CONTRIBUTING.md", body: "", labels: ["autopilot", "autopilot:blocked"] };
+
+function searchFindsAppA(query: string): FoundIssue[] {
+  if (query.includes("is:closed")) return [];
+  return query.split(" ").flatMap((term) => {
+    const [kind = "", scope = ""] = term.split(":");
+    const [owner = "", name] = scope.split("/");
+    const names = kind === "user" ? ["app-a", "app-b"] : kind === "repo" && name ? [name] : [];
+    return names.filter((candidate) => candidate === "app-a").map((candidate) => ({ repo: { owner, name: candidate }, issue: BLOCKED }));
+  });
+}
+
 const github: GitHub = {
   appSlug: async () => "autopilot",
   appLogin: async () => "autopilot[bot]",
@@ -50,7 +62,8 @@ const github: GitHub = {
     { owner, name: "app-a" },
     { owner, name: "app-b" },
   ],
-  repo: (_, repo) => repoWith(repo.name === "app-a" ? [{ number: 7, title: "Add CONTRIBUTING.md", body: "", labels: ["autopilot", "autopilot:blocked"] }] : []),
+  searchIssues: async (_, query) => searchFindsAppA(query),
+  repo: (_, repo) => repoWith(repo.name === "app-a" ? [BLOCKED] : []),
 };
 
 const host = {
@@ -74,16 +87,16 @@ async function linesFor(allow: string[]): Promise<string[]> {
 }
 
 test("an owner entry visits labeled issues in every repo of that owner", async () => {
-  assert.deepEqual(await linesFor(["owner"]), ["owner/app-a#7: blocked", "owner/app-a: polled", "owner/app-b: polled"]);
+  assert.deepEqual(await linesFor(["owner"]), ["owner/app-a#7: blocked", "polled (open issues: 1, repos: 1)"]);
 });
 
 test("a repo entry visits only that repo", async () => {
-  assert.deepEqual(await linesFor(["org/app-b"]), ["org/app-b: polled"]);
-  assert.deepEqual(await linesFor(["org/app-a"]), ["org/app-a#7: blocked", "org/app-a: polled"]);
+  assert.deepEqual(await linesFor(["org/app-b"]), ["polled (open issues: 0, repos: 0)"]);
+  assert.deepEqual(await linesFor(["org/app-a"]), ["org/app-a#7: blocked", "polled (open issues: 1, repos: 1)"]);
 });
 
 test("an entry where the App is not installed is reported, not polled", async () => {
-  assert.deepEqual(await linesFor(["stranger"]), ["not installed: stranger"]);
+  assert.deepEqual(await linesFor(["stranger"]), ["not installed: stranger", "polled (open issues: 0, repos: 0)"]);
 });
 
 test("the log prints a line only when it changes for its key", () => {
@@ -126,9 +139,18 @@ test("the loop runs at most `concurrency` issues at once and never one issue twi
 
 test("an error on one repo is logged and the other repos are still polled", async () => {
   const lines: string[] = [];
-  const broken: RepoGitHub = { ...repoWith([]), listLabeledIssues: async () => Promise.reject(new Error("HTTP 410: issues are off")) };
+  const broken: RepoGitHub = { ...repoWith([]), listOpenIssues: async () => Promise.reject(new Error("HTTP 410: issues are off")) };
+  const other: Issue = { number: 9, title: "x", body: "", labels: ["autopilot", "autopilot:blocked"] };
+  const found = [
+    { repo: { owner: "owner", name: "app-a" }, issue: BLOCKED },
+    { repo: { owner: "owner", name: "app-b" }, issue: other },
+  ];
   const loop = {
-    github: { ...github, repo: (_: number, repo: { name: string }) => (repo.name === "app-a" ? broken : repoWith([{ number: 9, title: "x", body: "", labels: ["autopilot", "autopilot:blocked"] }])) },
+    github: {
+      ...github,
+      searchIssues: async (_: number, query: string) => (query.includes("is:open") ? found : []),
+      repo: (_: number, repo: { name: string }) => (repo.name === "app-a" ? broken : repoWith([other])),
+    },
     host: { ...host, allow: ["owner"] },
     plan: unused,
     build: unused,
@@ -141,5 +163,5 @@ test("an error on one repo is logged and the other repos are still polled", asyn
   const state = loopState();
   await runOnce(loop, state);
   await drain(state);
-  assert.deepEqual(lines, ["owner/app-a: error: HTTP 410: issues are off", "owner/app-b#9: blocked", "owner/app-b: polled"]);
+  assert.deepEqual(lines, ["owner/app-a: error: HTTP 410: issues are off", "owner/app-b#9: blocked", "polled (open issues: 2, repos: 2)"]);
 });

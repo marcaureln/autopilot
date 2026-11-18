@@ -1,5 +1,7 @@
 import { describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
+import { setTimeout as sleep } from "node:timers/promises";
+import { RateLimited } from "../core/github.ts";
 import type { PlannerResult } from "../core/planner.ts";
 import { SecretsMissing } from "../core/builder.ts";
 import type { FileChange } from "../core/risk.ts";
@@ -485,5 +487,64 @@ describe("a repo with no config", () => {
     assert.deepEqual(world.onboarded, []);
     assert.equal(world.repo.pulls.length, 0);
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot"]);
+  });
+});
+
+describe("the poll", () => {
+  const ownerHost = { ...HOST, allow: [OWNER], concurrency: 2 };
+
+  test("one search finds the labeled issues in two repos of the owner", async () => {
+    const world = new FakeWorld(HOST_CONFIG, ownerHost);
+    const api = world.addRepo({ owner: OWNER, name: "api" });
+    world.addRepo({ owner: OWNER, name: "docs" });
+    const appIssue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    const apiIssue = api.openIssue({ title: "Add a README", labeledBy: OWNER });
+    await world.poll();
+    assert.deepEqual(world.repo.labelsOf(appIssue), ["autopilot", "autopilot:working"]);
+    assert.deepEqual(api.labelsOf(apiIssue), ["autopilot", "autopilot:working"]);
+    assert.equal(world.searches, 2, "one search for open issues and one for closed issues, for any number of repos");
+  });
+
+  test("a public repo of the owner where the App is not installed is ignored", async () => {
+    const world = new FakeWorld(HOST_CONFIG, ownerHost);
+    const outside = world.addRepo({ owner: OWNER, name: "public" }, { installed: false });
+    const issue = outside.openIssue({ title: TITLE, labeledBy: OWNER });
+    const closed = outside.openIssue({ title: "Add a README", labeledBy: OWNER });
+    const found = outside.issues.get(closed);
+    if (found) found.open = false;
+    await world.poll(2);
+    assert.deepEqual(outside.labelsOf(issue), ["autopilot"]);
+    assert.deepEqual(outside.labelsOf(closed), ["autopilot"]);
+    assert.deepEqual(outside.commentBodies(issue), []);
+    assert.deepEqual(world.planned, []);
+  });
+
+  test("a closed issue in another repo of the owner loses its autopilot labels", async () => {
+    const world = new FakeWorld(HOST_CONFIG, ownerHost);
+    const api = world.addRepo({ owner: OWNER, name: "api" });
+    const issue = api.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll();
+    const found = api.issues.get(issue);
+    if (found) found.open = false;
+    await world.poll();
+    assert.deepEqual(api.labelsOf(issue), []);
+    assert.ok(world.logs.includes(`${OWNER}/api#${issue}: closed, autopilot labels removed`));
+  });
+
+  test("after a rate limit, the loop logs one line and sends no request until the reset", async () => {
+    const world = new FakeWorld();
+    world.nextSearchRateLimit = new RateLimited(new Date(Date.now() + 100), 403, {});
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll(2);
+    assert.equal(world.searches, 1);
+    assert.deepEqual(world.planned, []);
+    const limits = world.logs.filter((line) => line.includes("rate limit"));
+    assert.equal(limits.length, 1);
+    assert.match(limits[0] ?? "", /^rate limit reached, waiting until \d\d:\d\d$/);
+    assert.ok(!world.logs.some((line) => line.includes("error")));
+    await sleep(150);
+    await world.poll();
+    assert.deepEqual(world.planned, [issue]);
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:working"]);
   });
 });

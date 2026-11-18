@@ -78,7 +78,7 @@ gh issue create --repo example-org/app --title "Add docs/limits.md" --body-file 
 
 To start on an existing issue: `gh issue edit <n> --repo example-org/app --add-label autopilot`.
 
-The host acts within one poll interval (`poll_interval_seconds` in its `host.json`, 60 s by default). Each poll costs GitHub requests for each watched repo, and the App can make 5,000 requests per hour. For an account with many repos (about 40 or more), set 120 s or more. It works on `concurrency` issues at a time (1 by default, in its `host.json`). The planner takes a few minutes. The build and the checks can take up to `limits.run_timeout_minutes` (default 45). Check the issue every few minutes:
+The host acts within one poll interval (`poll_interval_seconds` in its `host.json`, 60 s by default). Each poll makes two GitHub searches for each App installation, and more requests only for the repos that have an open `autopilot` issue. The number of watched repos does not change the cost. GitHub allows 30 searches per minute. It works on `concurrency` issues at a time (1 by default, in its `host.json`). The planner takes a few minutes. The build and the checks can take up to `limits.run_timeout_minutes` (default 45). Check the issue every few minutes:
 
 ```sh
 gh issue view <n> --repo example-org/app --json labels,state --jq '{state, labels: [.labels[].name]}'
@@ -162,7 +162,7 @@ To ask for changes, do not comment on the pull request. autopilot does not read 
    - The `secrets` "do not point to this repo's own 1Password item": run `autopilot secrets set --backend op <NAME>` again for each one.
    Errors that reach the user on the command line or in `autopilot logs`, not in a comment:
    - "GitHub refused the App key (401)": the host has the key of another App, or the App was deleted. Replace `app-key.pem` on the host.
-   - "GitHub rate limit reached": the host makes too many requests. Raise `poll_interval_seconds` in its `host.json`, or watch fewer repos.
+   - "rate limit reached, waiting until HH:MM" or "GitHub rate limit reached": the host made too many GitHub requests. It sends no request until that time, then continues. If this occurs frequently, raise `poll_interval_seconds` in its `host.json`, or lower `concurrency`.
    - "The App has no permission for ... (403)": accept the App's new permissions on its installation page.
    - "sudo on <host> asks for a password": let the host user run sudo without a password.
 3. Retry: an owner removes the label. `gh issue edit <n> --repo example-org/app --remove-label autopilot:blocked`. Checks and pull requests from before the retry do not count.

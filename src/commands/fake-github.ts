@@ -5,7 +5,7 @@ import { claimComment } from "../core/claim.ts";
 import { CONFIG_PATH } from "../core/config.ts";
 import type { BuildJob, Built } from "../core/builder.ts";
 import type { CheckResult, ChecksJob } from "../core/checks.ts";
-import type { GitHub, Issue, OnboardingPull, Provenance, RepoGitHub } from "../core/github.ts";
+import { RateLimited, type FoundIssue, type GitHub, type Issue, type OnboardingPull, type Provenance, type RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
 import type { OnboardJob, Onboarded } from "../core/onboarder.ts";
 import { ONBOARDING_BRANCH } from "../core/onboarding.ts";
@@ -131,12 +131,16 @@ export class FakeRepoGitHub implements RepoGitHub {
     return this.pulls.find((candidate) => candidate.number === pull)?.head.sha;
   }
 
+  labeledIssues(label: string, open: boolean): Issue[] {
+    return [...this.issues.values()]
+      .filter((issue) => issue.labels.includes(label) && issue.open === open)
+      .map(({ number, title, body, labels }) => ({ number, title, body, labels: [...labels] }));
+  }
+
   // --- RepoGitHub
 
-  async listLabeledIssues(label: string, state: "open" | "closed"): Promise<Issue[]> {
-    return [...this.issues.values()]
-      .filter((issue) => issue.labels.includes(label) && issue.open === (state === "open"))
-      .map(({ number, title, body, labels }) => ({ number, title, body, labels: [...labels] }));
+  async listOpenIssues(label: string): Promise<Issue[]> {
+    return this.labeledIssues(label, true);
   }
   async lastLabeled(issue: number, label: string) {
     const found = this.issues.get(issue);
@@ -290,8 +294,13 @@ export type Script = {
   onboardRace: boolean;
 };
 
+type WorldRepo = { repo: Repo; github: FakeRepoGitHub; installed: boolean };
+
 export class FakeWorld {
   repo: FakeRepoGitHub;
+  repos: WorldRepo[] = [];
+  searches = 0;
+  nextSearchRateLimit: RateLimited | undefined;
   script: Script = { plan: LOW_RISK_PLAN, planError: undefined, buildError: undefined, failingRuns: [], onboardError: undefined, onboardRace: false };
   planned: number[] = [];
   onboarded: number[] = [];
@@ -304,13 +313,18 @@ export class FakeWorld {
   private commits = 0;
 
   constructor(config: FakeConfig = HOST_CONFIG, host: Host = HOST) {
-    this.repo = new FakeRepoGitHub(config);
+    this.repo = this.addRepo(REPO, { config });
     this.github = {
       appSlug: async () => "autopilot",
       appLogin: async () => BOT,
       findInstallation: async () => 1,
-      listRepos: async () => [REPO],
-      repo: () => this.repo,
+      listRepos: async (_, owner) => this.repos.filter((candidate) => candidate.installed && candidate.repo.owner === owner).map((candidate) => candidate.repo),
+      searchIssues: async (_, query) => this.search(query),
+      repo: (_, repo) => {
+        const found = this.repos.find((candidate) => candidate.repo.owner === repo.owner && candidate.repo.name === repo.name);
+        if (!found) throw new Error(`no repo ${repo.owner}/${repo.name}`);
+        return found.github;
+      },
     };
     this.loop = {
       github: this.github,
@@ -323,6 +337,24 @@ export class FakeWorld {
       audit: () => undefined,
       idle: { due: () => false, run: async () => undefined },
     };
+  }
+
+  addRepo(repo: Repo, { config = HOST_CONFIG, installed = true }: { config?: FakeConfig | undefined; installed?: boolean } = {}): FakeRepoGitHub {
+    const github = new FakeRepoGitHub(config);
+    this.repos.push({ repo, github, installed });
+    return github;
+  }
+
+  private async search(query: string): Promise<FoundIssue[]> {
+    this.searches++;
+    const limit = this.nextSearchRateLimit;
+    this.nextSearchRateLimit = undefined;
+    if (limit) throw limit;
+    const terms = query.split(" ");
+    const label = terms.find((term) => term.startsWith("label:"))?.slice("label:".length) ?? "";
+    const open = terms.includes("is:open");
+    const inScope = (repo: Repo) => terms.includes(`user:${repo.owner}`) || terms.includes(`repo:${repo.owner}/${repo.name}`);
+    return this.repos.filter(({ repo }) => inScope(repo)).flatMap(({ repo, github }) => github.labeledIssues(label, open).map((issue) => ({ repo, issue })));
   }
 
   // One poll of the host: every labeled issue gets one step.
