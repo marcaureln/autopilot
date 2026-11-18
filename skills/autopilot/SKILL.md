@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: This skill should be used to set up and use autopilot, a tool that runs coding agents on your own machine to work on GitHub issues. Use it when the user asks to "set up autopilot", "install autopilot", "add a host", "onboard this repo to autopilot", "have autopilot build this", "write an issue for autopilot", "approve the autopilot spec", "answer autopilot's questions", "review the autopilot PR", "why is my autopilot issue blocked", "retry the autopilot issue", "stop autopilot on this issue", "move the issue to another host", "add a secret for autopilot", "watch a repo", "read the autopilot logs", "a check fails only in autopilot", or "debug the dev container".
+description: This skill should be used to set up and use autopilot, a tool that turns issues into features, with coding agents on the user's own machine. Use it when the user asks to "set up autopilot", "install autopilot", "add a host", "onboard this repo to autopilot", "have autopilot build this", "write an issue for autopilot", "approve the autopilot spec", "answer autopilot's questions", "review the autopilot PR", "why is my autopilot issue blocked", "retry the autopilot issue", "stop autopilot on this issue", "move the issue to another host", "add a secret for autopilot", "watch a repo", "read the autopilot logs", "a check fails only in autopilot", or "debug the dev container".
 ---
 
 # autopilot
@@ -78,7 +78,7 @@ gh issue create --repo example-org/app --title "Add docs/limits.md" --body-file 
 
 To start on an existing issue: `gh issue edit <n> --repo example-org/app --add-label autopilot`.
 
-The host acts within one poll interval (60 s by default). It works on `concurrency` issues at a time (1 by default, in its `host.json`). The planner takes a few minutes. The build and the checks can take up to `limits.run_timeout_minutes` (default 45). Check the issue every few minutes:
+The host acts within one poll interval (`poll_interval_seconds` in its `host.json`, 60 s by default). Each poll costs GitHub requests for each watched repo, and the App can make 5,000 requests per hour. For an account with many repos (about 40 or more), set 120 s or more. It works on `concurrency` issues at a time (1 by default, in its `host.json`). The planner takes a few minutes. The build and the checks can take up to `limits.run_timeout_minutes` (default 45). Check the issue every few minutes:
 
 ```sh
 gh issue view <n> --repo example-org/app --json labels,state --jq '{state, labels: [.labels[].name]}'
@@ -146,18 +146,25 @@ To ask for changes, do not comment on the pull request. autopilot does not read 
 
 1. Read the last comment of the bot. It starts with "autopilot stopped:" and gives the reason.
 2. Fix the cause. Common reasons:
-   - "There is no `.github/autopilot.json` on the default branch", or an invalid config: run `autopilot init` and merge its pull request, or fix the file.
+   - An invalid `.github/autopilot.json`: fix the file on the default branch. A repo with no config at all is not blocked: the host onboards it (see "Onboard a repo with an issue"). "There is no `.github/autopilot.json` on the default branch" means the file was removed during a job: run `autopilot init` and merge its pull request.
    - "The onboarding pull request #N was closed without a merge": retry to open a new one, or run `autopilot init`.
    - "The onboarding failed": read `autopilot logs`, then retry.
    - An invalid config that names `stack`: the config is from an older autopilot. Run `autopilot init` again and merge its pull request.
    - "autopilot does not start the repo's dev container": the comment lists what the guardrails refuse in `.devcontainer/`. Fix the file on the default branch, then retry.
    - "the dev container did not start", or the `install` check fails: fix the image or `postCreateCommand` in `.devcontainer/`.
-   - "The planner failed" or "the builder failed": read `autopilot logs`, then retry.
+   - "The planner failed" or "The build failed": the comment gives the reason. Read `autopilot logs` for the agent's output. If it says the token is invalid or expired, replace the Claude token on the host (references/setup.md, section "6. Host"). Then retry.
+   - "GitHub refused the merge of #N": a branch protection rule refused the merge. Merge the pull request yourself, or set `merge` to `manual`.
+   - "The `secrets` in `.github/autopilot.json` are 1Password references, and this host has no 1Password": set each secret again with `autopilot secrets set <NAME>`, then remove the references from the config.
    - "the builder made no commit": the spec asked for nothing to change, or the builder failed. Make the issue more precise in a comment, then retry.
    - A check "failed twice in a row", or the checks still fail after `limits.fix_rounds` rounds: the comment shows the output. Fix the code or the check command, or make the issue smaller.
    - "Someone who is not an owner changed the issue title or description": an owner edits the text, or removes the `autopilot` label and adds it again. Then retry.
    - "Pull request #N was closed without a merge": comment on the issue to change the plan, then retry.
    - The `secrets` "do not point to this repo's own 1Password item": run `autopilot secrets set --backend op <NAME>` again for each one.
+   Errors that reach the user on the command line or in `autopilot logs`, not in a comment:
+   - "GitHub refused the App key (401)": the host has the key of another App, or the App was deleted. Replace `app-key.pem` on the host.
+   - "GitHub rate limit reached": the host makes too many requests. Raise `poll_interval_seconds` in its `host.json`, or watch fewer repos.
+   - "The App has no permission for ... (403)": accept the App's new permissions on its installation page.
+   - "sudo on <host> asks for a password": let the host user run sudo without a password.
 3. Retry: an owner removes the label. `gh issue edit <n> --repo example-org/app --remove-label autopilot:blocked`. Checks and pull requests from before the retry do not count.
 
 ### Debug the dev container
@@ -213,6 +220,11 @@ autopilot update [--version vX.Y.Z]
 ```
 
 `autopilot watch` prints the GitHub App install page and opens it when the App is not installed on that account. The host starts to poll a new entry at the next loop. Each log line names the issue as `owner/repo#n`. Search for it in `autopilot logs` to see what the host did. A line "ignored, the autopilot label was added by X, not an owner" means the wrong account added the label.
+
+## Agents and checks
+
+- Each role (`planner`, `builder`) uses Claude Code by default. To use OpenCode for a role, set `agents.<role>.harness` to `"opencode"` and the model to `<provider>/<model>` in `.github/autopilot.json`, and give the host a provider API key in `secrets.api_keys` of its `host.json`. See "Use OpenCode for a role" in references/setup.md.
+- By default the host runs the checks (`verify.mode` `host`). With `verify.mode` `ci`, the host waits for the repo's own GitHub Actions jobs, and each name in `verify.required` is a job name. Only a success passes.
 
 ## Secrets
 
