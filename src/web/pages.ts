@@ -108,7 +108,7 @@ export function appCreatedPage(app: { slug: string; id: number; keyPath: string;
       "Step 2 of 2 · Install",
       `<span class="ap-tag ap-tag-live">Created</span>`,
       `<h1>${escape(app.slug)} is ready</h1>
-<p>Install the App on the accounts and orgs that autopilot may work on.</p>
+<p>Install the App on the accounts and orgs that autopilot may work on. Choose <strong>All repositories</strong>: a new repo then works with no other step.</p>
 ${rows([
   ["App ID", String(app.id)],
   ["Private key", app.keyPath],

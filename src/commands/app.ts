@@ -154,7 +154,7 @@ export async function appCreate(options: { keyOut?: string; backend: Backend }):
     console.log(`App created: ${summary.slug} (id ${summary.id})`);
     console.log(`private key: ${summary.keyLocation}`);
     if (summary.keyLocation === APP_KEY_PATH) console.log("autopilot hosts add pushes it to the host");
-    console.log(`install it: ${summary.installUrl}`);
+    console.log(`install it on All repositories: ${summary.installUrl}`);
     return summary;
   } finally {
     server.close();

@@ -124,7 +124,7 @@ async function githubApp(options: SetupOptions, config: SetupConfig, backend: Ba
         );
   if (choice === "create") {
     const app = await appCreate({ backend });
-    record("GitHub App", "done", `created ${app.slug} (id ${app.id}). Install it: ${app.installUrl}`);
+    record("GitHub App", "done", `created ${app.slug} (id ${app.id}). Install it on All repositories: ${app.installUrl}`);
     return { id: app.id, keyFile: backend === "env" ? app.keyLocation : undefined };
   }
 
@@ -268,8 +268,8 @@ async function allowEntries(options: SetupOptions, config: SetupConfig, target: 
       : parseList(
           await answer(
             text({
-              message: "Accounts, orgs or owner/repo entries that autopilot may work on (comma-separated, empty for none)",
-              initialValue: host.allow.join(", "),
+              message: "Accounts, orgs or owner/repo entries that autopilot may work on (comma-separated, empty for none). An account covers all its repos",
+              initialValue: host.allow.length > 0 ? host.allow.join(", ") : login,
               placeholder: login,
               validate: (input) => (parseList(input ?? "").every((entry) => WATCH_ENTRY.test(entry)) ? undefined : "Use owner or owner/repo entries"),
             }),
@@ -301,7 +301,7 @@ function onboardingPullOpen(repo: string, owner: string, name: string): boolean 
 }
 
 async function chooseRepos(login: string): Promise<string[]> {
-  if (!(await answer(confirm({ message: "Onboard a repo now? autopilot init opens a pull request on it." })))) return [];
+  if (!(await answer(confirm({ message: "Onboard a repo now? autopilot init opens a pull request on it. You can also do it later: add the autopilot label to an issue in the repo." })))) return [];
   const listing = spawnSync("gh", ["repo", "list", login, "--limit", "100", "--no-archived", "--json", "nameWithOwner", "--jq", ".[].nameWithOwner"], { encoding: "utf8" });
   const repos = listing.status === 0 ? listing.stdout.split("\n").filter(Boolean) : [];
   if (repos.length === 0) {
