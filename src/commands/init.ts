@@ -7,6 +7,7 @@ import type { Audit } from "../core/audit.ts";
 import { BASELINE_PATH, knownFailureLines, renderBaseline, type Baseline } from "../core/baseline.ts";
 import { planChecks } from "../core/checks.ts";
 import { CONFIG_PATH, parseConfig, type Config } from "../core/config.ts";
+import { readOptionFile } from "../core/option-file.ts";
 import { cliDevcontainer } from "../core/devcontainer-cli.ts";
 import { containerName } from "../core/docker.ts";
 import { checkCommand, EnvironmentRefused, RUN_DIR, SECRETS_NAME, shellEnvFile, startEnvironment, stopEnvironment } from "../core/environment.ts";
@@ -173,7 +174,7 @@ function ensureLabels(repo: string): void {
 export async function init(options: InitOptions): Promise<void> {
   const repo = `${options.repo.owner}/${options.repo.name}`;
   for (const skill of options.skills) parseSource(skill, "--skill");
-  const notes = options.notesFile === undefined ? undefined : readFileSync(options.notesFile, "utf8");
+  const notes = options.notesFile === undefined ? undefined : readOptionFile("--notes", options.notesFile);
   if (!dockerRunning()) throw new Error("Docker is not running: init runs the onboarding agent and the checks in containers");
   const claudeToken = await options.claudeToken();
   const jobDir = mkdtempSync(join(tmpdir(), "autopilot-init-"));

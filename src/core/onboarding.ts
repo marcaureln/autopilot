@@ -99,7 +99,12 @@ function unique(items: string[]): string[] {
 
 // An existing config keeps its values. `stack` is from the stack packs: the dev container replaces it.
 export function renderConfig(existingText: string | undefined, commands: Record<string, string>, skills: string[]): string {
-  const existing: ConfigObject | undefined = existingText === undefined ? undefined : JSON.parse(existingText);
+  let existing: ConfigObject | undefined;
+  try {
+    existing = existingText === undefined ? undefined : JSON.parse(existingText);
+  } catch (error) {
+    throw new Error(`${CONFIG_PATH} in the repo is not valid JSON: ${error instanceof Error ? error.message : error}. Fix it on the default branch, then run \`autopilot init\` again.`);
+  }
   const { stack: _, ...base }: ConfigObject = existing ?? { $schema: configSchema.$id, version: 1, merge: "manual" };
   const planner = unique([...(base.skills?.planner ?? []), ...skills]);
   const builder = unique([...(base.skills?.builder ?? []), ...skills]);

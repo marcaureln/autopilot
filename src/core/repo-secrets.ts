@@ -1,3 +1,4 @@
+import { CONFIG_PATH } from "./config.ts";
 import type { Repo } from "./repo.ts";
 
 export const SECRETS_VAULT = "autopilot";
@@ -72,7 +73,12 @@ export function envFile(secrets: Record<string, string>): string {
 type ConfigObject = Record<string, unknown> & { secrets?: Record<string, string> };
 
 function parseObject(text: string): ConfigObject {
-  const data: unknown = JSON.parse(text);
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${CONFIG_PATH} is not valid JSON: ${error instanceof Error ? error.message : error}. Fix it, then run the command again.`);
+  }
   if (typeof data !== "object" || data === null || Array.isArray(data)) throw new Error("the config is not a JSON object");
   return data as ConfigObject;
 }

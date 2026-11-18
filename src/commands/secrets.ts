@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CONFIG_PATH } from "../core/config.ts";
 import type { Repo } from "../core/repo.ts";
 import { detectRepo } from "../core/repo.ts";
+import { readOptionFile } from "../core/option-file.ts";
 import { itemStored } from "../core/setup.ts";
 import type { Audit } from "../core/audit.ts";
 import { readRepoSecrets, repoSecretNames, writeRepoSecrets } from "../core/secrets.ts";
@@ -134,7 +135,7 @@ async function readValue(name: string): Promise<string> {
 }
 
 async function valuesOf(command: { action: "set"; name: string } | { action: "set-from-env"; file: string }): Promise<Record<string, string>> {
-  const values = command.action === "set" ? { [command.name]: await readValue(command.name) } : Object.fromEntries(parseEnvFile(readFileSync(command.file, "utf8")));
+  const values = command.action === "set" ? { [command.name]: await readValue(command.name) } : Object.fromEntries(parseEnvFile(readOptionFile("--from-env", command.file)));
   if (Object.keys(values).length === 0) throw new Error(`no secret in ${command.action === "set-from-env" ? command.file : "the input"}`);
   assertEnvFileValues(values);
   return values;

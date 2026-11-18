@@ -21,7 +21,12 @@ const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile<SetupConfig>(schema);
 
 export function parseSetupConfig(text: string, source: string): SetupConfig {
-  const data: unknown = JSON.parse(text);
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Invalid setup file ${source}: ${error instanceof Error ? error.message : error}. Fix the file that --config names.`);
+  }
   if (!validate(data)) throw new Error(`Invalid setup file ${source}: ${ajv.errorsText(validate.errors, { dataVar: "setup" })}`);
   return data;
 }

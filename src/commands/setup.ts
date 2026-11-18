@@ -5,6 +5,7 @@ import { cancel, confirm, type CANCEL_SYMBOL, intro, isCancel, log, note, outro,
 import { WATCH_ENTRY } from "../core/allow.ts";
 import type { Audit } from "../core/audit.ts";
 import { CONFIG_PATH } from "../core/config.ts";
+import { readOptionFile } from "../core/option-file.ts";
 import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret } from "../core/host.ts";
 import type { HostRef } from "../core/hosts.ts";
 import { ownPull, type PullListing } from "../core/onboarding.ts";
@@ -354,7 +355,7 @@ async function shellAlias(options: SetupOptions, config: SetupConfig): Promise<v
 
 export async function setup(options: SetupOptions): Promise<void> {
   if (options.yes && !options.configFile) throw new Error("--yes needs --config <setup file>");
-  const config = options.configFile ? parseSetupConfig(readFileSync(options.configFile, "utf8"), options.configFile) : {};
+  const config = options.configFile ? parseSetupConfig(readOptionFile("--config", options.configFile), options.configFile) : {};
   const requested = findHost(config.host ?? options.host, process.env.AUTOPILOT_HOST);
   if (requested) checkHostName(requested, options.name ?? config.name);
   intro("autopilot setup");
