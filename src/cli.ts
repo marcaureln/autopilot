@@ -5,6 +5,9 @@ import { unwatch, watch, watched } from "./commands/watch.ts";
 import { alias } from "./commands/alias.ts";
 import { appCreate } from "./commands/app.ts";
 import { clientClaudeToken, forward, readAppKey, readClaudeToken, selfUpdate, type HostSetupOptions } from "./commands/client.ts";
+import { doctor } from "./commands/doctor.ts";
+import { CHECKS_FAILED } from "./core/doctor.ts";
+import { doctorHost } from "./commands/doctor-host.ts";
 import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, startService, stopService, update } from "./commands/host.ts";
 import { findHost, hostsAdd, hostsDefault, hostsRemove, HOSTS_USAGE, listHosts, nameToSave } from "./commands/hosts.ts";
@@ -79,6 +82,9 @@ Commands that run on the client:
   self-update [--version <tag>]
                               Install a release of this CLI (default: the latest), as install.sh does
   alias [<name>] [--remove]   Add "alias <name>=autopilot" (default: ap) to the rc file of $SHELL
+  doctor                      Find out why it does not work. It checks this machine, the host and the repo
+                              (--repo, else this checkout), and for each problem prints the command that
+                              fixes it. It changes nothing. Exit code 1 if a check fails
 
 Options:
   --host <name | ssh-target>
@@ -123,6 +129,7 @@ const { values, positionals } = parseCommandLine({
     repo: { type: "string" },
     backend: { type: "string" },
     "from-env": { type: "string" },
+    "actions-secrets": { type: "string" },
     skill: { type: "string", multiple: true, default: [] },
     notes: { type: "string" },
     remove: { type: "boolean", default: false },
@@ -149,6 +156,15 @@ function secretsBackend(): Backend {
   const backend = values.backend ?? "env";
   if (backend !== "env" && backend !== "op") throw new Error(`--backend ${backend} is not a backend: env (the default) or op`);
   return backend;
+}
+
+function optionalRepo(): Repo | undefined {
+  try {
+    return targetRepo();
+  } catch (error) {
+    if (values.repo !== undefined) throw error;
+    return undefined;
+  }
 }
 
 function targetRepo(): Repo {
@@ -263,6 +279,15 @@ async function main(): Promise<void> {
     case "setup":
       await setup({ configFile: values.config, yes: values.yes, host: values.host, name: values.name, version: values.version, fromCheckout: values["from-checkout"], backend: values.backend === undefined ? undefined : secretsBackend(), appKey: values["app-key"] });
       break;
+    case "doctor":
+      process.exitCode = await doctor({ hostFile, host: selectedHost, repo: optionalRepo() });
+      break;
+    case "doctor-host": {
+      const actionsSecrets = values["actions-secrets"] === undefined ? undefined : Number(values["actions-secrets"]);
+      if (actionsSecrets !== undefined && !Number.isInteger(actionsSecrets)) throw new Error(`--actions-secrets "${values["actions-secrets"]}" is not a number`);
+      process.exitCode = (await doctorHost(hostFile, values.repo === undefined ? undefined : targetRepo(), actionsSecrets)) === 0 ? 0 : CHECKS_FAILED;
+      break;
+    }
     case "app":
       if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path> | --backend op]");
       await appCreate({ keyOut: values["key-out"], backend: secretsBackend() });

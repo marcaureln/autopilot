@@ -120,6 +120,15 @@ export function grypeDbUpdater(limits: Host["limits"], audit: Audit): { due: () 
   };
 }
 
+export const GRYPE_IMAGE = IMAGES["deps-scan"];
+export const GRYPE_DB_VOLUME = GRYPE_DB_CACHE.source;
+
+export const GRYPE_DB_UPDATE_COMMAND = `docker run --rm --volume ${GRYPE_DB_VOLUME}:${GRYPE_DB_CACHE.target} --env GRYPE_DB_CACHE_DIR=${GRYPE_ENV.GRYPE_DB_CACHE_DIR} ${GRYPE_IMAGE} db update`;
+
+export function grypeDbStatus(limits: Host["limits"], audit: Audit): Promise<ContainerResult> {
+  return runContainer({ name: containerName("grype-db-status"), image: GRYPE_IMAGE, command: ["db", "status", "--output", "json"], mounts: [GRYPE_DB_CACHE], network: "none", env: GRYPE_ENV, limits, timeoutMs: 60_000, audit });
+}
+
 // Jobs that run together share the database volume: one checks and updates it at a time.
 let grypeDbLock: Promise<unknown> = Promise.resolve();
 
