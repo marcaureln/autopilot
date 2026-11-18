@@ -10,6 +10,7 @@ export type SetupConfig = {
   app_id?: number;
   app_key?: string;
   host?: string;
+  name?: string;
   owner?: string;
   allow?: string[];
   init?: string[];

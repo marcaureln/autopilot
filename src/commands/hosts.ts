@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { defaultHostName } from "../core/host.ts";
-import { addHost, checkHost, HOSTS_SCHEMA, nameOfTarget, NO_HOSTS, parseHosts, removeHost, resolveHost, setDefaultHost, type HostRef, type HostsFile } from "../core/hosts.ts";
+import { addHost, checkHost, HOSTS_SCHEMA, nameOfTarget, nameProblem, NO_HOSTS, parseHosts, removeHost, resolveHost, setDefaultHost, type HostRef, type HostsFile } from "../core/hosts.ts";
 import { hostSetup, type HostSetupOptions } from "./client.ts";
 
 // The XDG spec says to ignore a relative XDG_CONFIG_HOME.
@@ -27,8 +27,12 @@ export function findHost(flag: string | undefined, env: string | undefined): Hos
   return resolveHost(flag, env, () => (process.env.SUDO_USER ? NO_HOSTS : loadHosts()));
 }
 
-export function hostName(host: HostRef): string {
-  return host.savedName ?? nameOfTarget(loadHosts(), host.target, defaultHostName());
+// The name of a host that is not in the file comes from its target, and the target can make a name that is not valid.
+export function nameToSave(host: HostRef, given: string | undefined): string {
+  const name = given ?? host.savedName ?? nameOfTarget(loadHosts(), host.target, defaultHostName());
+  const problem = nameProblem(name);
+  if (problem) throw new Error(`${problem}. Name the host with --name <name>`);
+  return name;
 }
 
 export function saveHost(name: string, target: string): { changed: boolean; isDefault: boolean } {

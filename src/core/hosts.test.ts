@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addHost, nameOfTarget, NO_HOSTS, parseHosts, removeHost, resolveHost, setDefaultHost, type HostRef, type HostsFile } from "./hosts.ts";
+import { addHost, nameOfTarget, nameProblem, NO_HOSTS, parseHosts, removeHost, resolveHost, setDefaultHost, type HostRef, type HostsFile } from "./hosts.ts";
 
 const FILE: HostsFile = { default: "pi", hosts: { pi: { target: "rpi" }, mac: { target: "local" } } };
 
@@ -111,3 +111,23 @@ for (const { name, change, error } of refusals) {
     assert.throws(change, error);
   });
 }
+
+const nameChecks: { name: string; valid: boolean }[] = [
+  { name: "pi", valid: true },
+  { name: "raspberrypi.lan", valid: true },
+  { name: "my_mac-2", valid: true },
+  { name: "local", valid: false },
+  { name: "[fe80::1]", valid: false },
+  { name: "-pi", valid: false },
+  { name: "", valid: false },
+];
+
+for (const { name, valid } of nameChecks) {
+  test(`host name: "${name}" is ${valid ? "valid" : "not valid"}`, () => {
+    assert.equal(nameProblem(name) === undefined, valid);
+  });
+}
+
+test("host name: the name that nameOfTarget derives from an IPv6 target is not valid", () => {
+  assert.ok(nameProblem(nameOfTarget(NO_HOSTS, "user@[fe80::1]", "my-mac")));
+});

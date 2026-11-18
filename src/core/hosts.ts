@@ -18,7 +18,7 @@ const SSH_TARGET = /^[^-\s]\S*$/;
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile<HostsFile>(schema);
 
-function nameProblem(name: string): string | undefined {
+export function nameProblem(name: string): string | undefined {
   return HOST_NAME.test(name) && name !== LOCAL_TARGET ? undefined : `"${name}" is not a host name: use letters, digits, ".", "_" and "-", and not "local"`;
 }
 

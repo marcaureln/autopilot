@@ -7,7 +7,7 @@ import { appCreate } from "./commands/app.ts";
 import { clientClaudeToken, forward, readAppKey, readClaudeToken, selfUpdate, type HostSetupOptions } from "./commands/client.ts";
 import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, startService, stopService, update } from "./commands/host.ts";
-import { findHost, hostName, hostsAdd, hostsDefault, hostsRemove, HOSTS_USAGE, listHosts } from "./commands/hosts.ts";
+import { findHost, hostsAdd, hostsDefault, hostsRemove, HOSTS_USAGE, listHosts, nameToSave } from "./commands/hosts.ts";
 import { run } from "./commands/run.ts";
 import { hostSecrets, parseSecretsCommand, secrets, sendSecrets } from "./commands/secrets.ts";
 import { setup } from "./commands/setup.ts";
@@ -83,6 +83,8 @@ Options:
   --host <name | ssh-target>
                        Host to act on: a name of the hosts file, an SSH target, or "local" for this machine
                        (default: $AUTOPILOT_HOST, else the default host of the hosts file)
+  --name <name>        Name to save the host under, for setup and host setup (default: the host part of
+                       its SSH target, or the short hostname for "local")
   --config <path>      Host file, on the host (default: ${HOST_FILE}). For setup, the setup file
   --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
   --backend env|op     Where secrets go. env (default): files on the host. op: 1Password, with op://
@@ -107,6 +109,7 @@ const { values, positionals } = parseCommandLine({
   allowPositionals: true,
   options: {
     host: { type: "string" },
+    name: { type: "string" },
     config: { type: "string" },
     once: { type: "boolean", default: false },
     foreground: { type: "boolean", default: false },
@@ -247,13 +250,13 @@ async function main(): Promise<void> {
     case "host": {
       const named = positionals[1] === "setup" ? selectedHost() : undefined;
       if (!named) throw new Error("usage: autopilot hosts add <name> <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]");
-      const name = hostName(named);
+      const name = nameToSave(named, values.name);
       console.log(`note: autopilot hosts add ${name} ${named.target} replaces host setup`);
       await hostsAdd(name, named.target, hostSetupOptions());
       break;
     }
     case "setup":
-      await setup({ configFile: values.config, yes: values.yes, host: selectedHost(), version: values.version, fromCheckout: values["from-checkout"], backend: values.backend === undefined ? undefined : secretsBackend(), appKey: values["app-key"] });
+      await setup({ configFile: values.config, yes: values.yes, host: values.host, name: values.name, version: values.version, fromCheckout: values["from-checkout"], backend: values.backend === undefined ? undefined : secretsBackend(), appKey: values["app-key"] });
       break;
     case "app":
       if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path> | --backend op]");

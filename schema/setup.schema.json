@@ -28,6 +28,12 @@
       "type": "string",
       "pattern": "^[^-\\s][^\\s]*$"
     },
+    "name": {
+      "description": "Name to save the host under in the hosts file. Default: --name, else the name of the host if it is in the file, else the host part of its SSH target (for local, the short hostname). A name has letters, digits, \".\", \"_\" and \"-\", starts with a letter or a digit, and is not local.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "not": { "const": "local" }
+    },
     "owner": {
       "description": "GitHub login that may start jobs, written to a new host.json. Default: the login of gh.",
       "type": "string",

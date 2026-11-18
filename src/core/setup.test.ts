@@ -7,7 +7,7 @@ const GIB = 1024 ** 3;
 
 const validConfigs: { name: string; text: string }[] = [
   { name: "an empty file", text: "{}" },
-  { name: "every answer", text: JSON.stringify({ backend: "env", app_id: 42, app_key: "/home/me/keys/app.pem", host: "user@my-host", owner: "octocat", allow: ["octocat", "example-org/app"], init: ["octocat/app"], alias: "ap" }) },
+  { name: "every answer", text: JSON.stringify({ backend: "env", app_id: 42, app_key: "/home/me/keys/app.pem", host: "user@my-host", name: "pi", owner: "octocat", allow: ["octocat", "example-org/app"], init: ["octocat/app"], alias: "ap" }) },
   { name: "the op backend", text: JSON.stringify({ backend: "op", app_id: 42 }) },
   { name: "the local host and no alias", text: JSON.stringify({ host: "local", alias: false }) },
 ];
@@ -22,6 +22,8 @@ const invalidConfigs: { name: string; value: unknown }[] = [
   { name: "an unknown field", value: { claude_token: "sk-secret" } },
   { name: "an App id as text", value: { app_id: "42" } },
   { name: "an SSH option as the host", value: { host: "-oProxyCommand=x" } },
+  { name: "local as the host name", value: { name: "local" } },
+  { name: "a host name that starts with a dash", value: { name: "-pi" } },
   { name: "a bad allow entry", value: { allow: ["a/b/c"] } },
   { name: "an owner instead of a repo in init", value: { init: ["octocat"] } },
   { name: "alias true", value: { alias: true } },
