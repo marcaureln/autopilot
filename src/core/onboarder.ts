@@ -27,7 +27,7 @@ import {
   RESULT_PATH,
   type Onboarding,
   type OnboardingResult,
-  type Request,
+  type OnboardingRequest,
   type ValidateResult,
 } from "./onboarding.ts";
 import type { Repo } from "./repo.ts";
@@ -43,25 +43,26 @@ const AGENT_TIMEOUT_MINUTES = 20;
 const CHECKS_TIMEOUT_MS = 20 * 60 * 1000;
 const BASELINE_CHECKS = ["lint", "types"];
 
-// The repo has no config yet, so the agent is the default planner.
-const AGENT = parseConfig('{ "version": 1 }', "the defaults").agents.planner;
+const DEFAULT_PLANNER = parseConfig('{ "version": 1 }', "the defaults").agents.planner;
 
+// The host commits here itself: the git config of the host user (signing, hooks) must not apply.
 async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await exec("git", args, { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, maxBuffer: 64 * 1024 * 1024 });
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+  const { stdout } = await exec("git", args, { cwd, env, timeout: 5 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 });
   return stdout.trim();
 }
 
 export type OnboardingSetup = {
   repo: Repo;
-  // A clone of the default branch that the agent never touches: the onboarding writes its files there.
+  // init and the host can share one Docker: each removes the containers of its own name.
+  jobName: "init" | "onboarding";
   clone: string;
   jobDir: string;
   skillsDir: string;
   configDir: string | undefined;
-  // Written into the config as skills of the planner and the builder.
   skills: string[];
   notes: string | undefined;
-  request: Request | undefined;
+  request: OnboardingRequest | undefined;
   credentials: Credentials;
   devcontainer: Devcontainer;
   limits: Host["limits"];
@@ -77,13 +78,13 @@ async function onboardingAgent(setup: OnboardingSetup, hasDevcontainer: boolean)
   appendFileSync(join(work, ".git", "info", "exclude"), "/.autopilot/\n");
   const promptFile = join(jobDir, "prompt.md");
   writeFileSync(promptFile, onboardingPrompt({ repo: `${repo.owner}/${repo.name}`, hasDevcontainer, claudeCodeVersion: claudeCodeVersion(), notes: setup.notes, request: setup.request }));
-  setup.say(`==> onboarding agent (${AGENT.model}), up to ${AGENT_TIMEOUT_MINUTES} minutes`);
+  setup.say(`==> onboarding agent (${DEFAULT_PLANNER.model}), up to ${AGENT_TIMEOUT_MINUTES} minutes`);
   await runAgent({
-    harness: HARNESSES[AGENT.harness],
+    harness: HARNESSES[DEFAULT_PLANNER.harness],
     credentials: setup.credentials,
-    name: containerName("onboarding", repo.owner, repo.name),
-    model: AGENT.model,
-    effort: AGENT.effort,
+    name: containerName(setup.jobName, repo.owner, repo.name),
+    model: DEFAULT_PLANNER.model,
+    effort: DEFAULT_PLANNER.effort,
     promptFile,
     skillsDir: setup.skillsDir,
     workdir: work,
@@ -103,11 +104,13 @@ type Validated = { validate: Onboarding["validate"]; baseline: Baseline };
 // The same steps as the checks of a pull request: up (with the install), no network, each command once.
 async function validateEnvironment(setup: OnboardingSetup, config: Config): Promise<Validated> {
   const { jobDir, repo, devcontainer, audit, say } = setup;
-  const dir = join(jobDir, repo.name);
+  // A folder of its own: a repo can be named like the other folders of the job, such as "repo" or "agent".
+  const dir = join(jobDir, "checkout", repo.name);
+  mkdirSync(join(jobDir, "checkout"));
   cpSync(setup.clone, dir, { recursive: true, verbatimSymlinks: true });
   const runDir = join(jobDir, "run");
   mkdirSync(runDir, { mode: 0o700 });
-  const idLabel = `autopilot.job=${containerName("onboarding", repo.owner, repo.name)}`;
+  const idLabel = `autopilot.job=${containerName(setup.jobName, repo.owner, repo.name)}`;
   const deadline = Date.now() + CHECKS_TIMEOUT_MS;
   say("==> devcontainer up (build, then the install)");
   try {
@@ -157,9 +160,6 @@ async function validateEnvironment(setup: OnboardingSetup, config: Config): Prom
   }
 }
 
-// The steps that `autopilot init` and the host share: the agent writes the dev container, the check
-// commands and AGENTS.md, then the dev container and the checks run once on the default branch.
-// The files land in the clone, uncommitted.
 export async function prepareOnboarding(setup: OnboardingSetup): Promise<Omit<Onboarding, "host">> {
   const { clone, repo, say } = setup;
   const files = diskFiles(clone);
@@ -196,7 +196,7 @@ export type OnboardJob = {
   repo: Repo;
   host: Host;
   base: string;
-  request: Request;
+  request: OnboardingRequest;
   identity: Identity;
   credentials: Credentials;
   devcontainer: Devcontainer;
@@ -204,10 +204,12 @@ export type OnboardJob = {
   say: (line: string) => void;
 };
 
-// The host's onboarding for an issue: it pushes ONBOARDING_BRANCH as the App and returns the pull request body.
-export async function runOnboarder(job: OnboardJob): Promise<string> {
+// "taken": an onboarding pull request opened while the job ran, so the job did not push.
+export type Onboarded = { kind: "pushed"; body: string } | { kind: "taken" };
+
+export async function runOnboarder(job: OnboardJob): Promise<Onboarded> {
   const { repoGitHub, repo, host, identity } = job;
-  const missing = HARNESSES[AGENT.harness].missingCredential(job.credentials);
+  const missing = HARNESSES[DEFAULT_PLANNER.harness].missingCredential(job.credentials);
   if (missing) throw new Error(missing);
   const jobDir = mkdtempSync(join(tmpdir(), "autopilot-onboarding-"));
   try {
@@ -217,6 +219,7 @@ export async function runOnboarder(job: OnboardJob): Promise<string> {
     const { skillsDir, claudeConfigDir } = await prepareAgent(host, [], job.github, jobDir);
     const onboarding = await prepareOnboarding({
       repo,
+      jobName: "onboarding",
       clone,
       jobDir,
       skillsDir,
@@ -235,10 +238,11 @@ export async function runOnboarder(job: OnboardJob): Promise<string> {
     await git(clone, ["add", "--", ...onboarding.generated]);
     await git(clone, ["commit", "--quiet", "-m", ONBOARDING_COMMIT]);
     const head = await git(clone, ["rev-parse", "HEAD"]);
+    if ((await repoGitHub.onboardingPull())?.state === "open") return { kind: "taken" };
     // An earlier attempt can have left the branch: this one replaces it.
     await pushBranch(clone, repoUrl(repo), await repoGitHub.token(true), "--force", head, ONBOARDING_BRANCH);
     job.audit({ event: "git.pushed", repo: `${repo.owner}/${repo.name}`, branch: ONBOARDING_BRANCH, head, base: start, commits: 1, force: true });
-    return onboardingBody({ ...onboarding, host: { kind: "issue", issue: job.request.issue.number } });
+    return { kind: "pushed", body: onboardingBody({ ...onboarding, host: { kind: "issue", issue: job.request.issue.number } }) };
   } finally {
     rmSync(jobDir, { recursive: true, force: true });
   }

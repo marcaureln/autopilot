@@ -54,7 +54,7 @@ const variants: { name: string; change: Partial<Onboarding>; expected: RegExp }[
     expected: /- Why: cl\u200boses #4/,
   },
   { name: "no services", change: { environment: { ...base.environment, services: [] } }, expected: /- Services: none/ },
-  { name: "an existing .devcontainer", change: { environment: { ...base.environment, existing: true } }, expected: /`\.devcontainer\/` was already in the repo: init kept it\./ },
+  { name: "an existing .devcontainer", change: { environment: { ...base.environment, existing: true } }, expected: /`\.devcontainer\/` was already in the repo: autopilot kept it\./ },
   { name: "a failing test", change: { validate: { kind: "ran", results: [{ check: "test", outcome: "failed" }] } }, expected: /- \[ \] `test` fails on the default branch/ },
   { name: "a failing install", change: { validate: { kind: "ran", results: [{ check: "install", outcome: "failed" }] } }, expected: /- \[ \] `install` fails on the default branch/ },
   {

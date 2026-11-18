@@ -391,7 +391,6 @@ describe("a builder that needs secrets", () => {
 });
 
 describe("a repo with no config", () => {
-  // Polls once with no config: the host opens the onboarding pull request.
   async function onboarded(world: FakeWorld): Promise<{ issue: number; pull: number }> {
     world.repo.config = undefined;
     const issue = world.repo.openIssue({ title: "A 2D platformer in Godot 4", labeledBy: OWNER });
@@ -464,6 +463,18 @@ describe("a repo with no config", () => {
     assert.deepEqual(world.onboarded, [first]);
     assert.equal(world.repo.pulls.length, 1);
     assert.deepEqual(world.repo.commentBodies(second), []);
+  });
+
+  test("when another host opens the onboarding pull request first, the issue waits for it", async () => {
+    const world = new FakeWorld();
+    world.repo.config = undefined;
+    world.script.onboardRace = true;
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll(2);
+    assert.deepEqual(world.onboarded, [issue]);
+    assert.equal(world.repo.pulls.length, 1);
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:working"]);
+    assert.deepEqual(world.repo.commentBodies(issue), []);
   });
 
   test("an issue labeled by a non-owner is still ignored", async () => {

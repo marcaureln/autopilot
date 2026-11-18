@@ -35,10 +35,9 @@ export function parseOnboardingResult(text: string): OnboardingResult {
   return data;
 }
 
-// The issue that an owner labeled in a repo with no config: it tells what the project is.
-export type Request = { issue: { number: number; title: string; body: string }; thread: Comment[] };
+export type OnboardingRequest = { issue: { number: number; title: string; body: string }; thread: Comment[] };
 
-export type PromptInput = { repo: string; hasDevcontainer: boolean; claudeCodeVersion: string; notes: string | undefined; request: Request | undefined };
+export type PromptInput = { repo: string; hasDevcontainer: boolean; claudeCodeVersion: string; notes: string | undefined; request: OnboardingRequest | undefined };
 
 function devcontainerTask({ hasDevcontainer, claudeCodeVersion }: PromptInput): string {
   if (hasDevcontainer) {
@@ -53,7 +52,7 @@ function devcontainerTask({ hasDevcontainer, claudeCodeVersion }: PromptInput): 
 - Services: when the code or its tests use a database, a cache or another server, add \`compose.yaml\` with a service \`app\` (built from the Dockerfile, \`command: sleep infinity\`, \`volumes: ["..:/workspace"]\`) and one service per server, with an exact image tag and throwaway credentials in \`environment\`. devcontainer.json then has \`dockerComposeFile\`, \`"service": "app"\` and \`"workspaceFolder": "/workspace"\`. Add only what the repo uses.`;
 }
 
-function requestSection({ issue, thread }: Request): string {
+function requestSection({ issue, thread }: OnboardingRequest): string {
   const comments = thread.map((comment) => `**@${comment.author}** (${comment.createdAt}):\n\n${comment.body}`).join("\n\n---\n\n");
   return `
 # The request
@@ -210,7 +209,6 @@ export type Onboarding = {
   notes: string[];
   environment: OnboardingResult["environment"] & { existing: boolean };
   validate: { kind: "ran"; results: ValidateResult[] } | { kind: "refused"; problems: string[] };
-  // "issue": the host onboards the repo for an issue that an owner labeled.
   host: { kind: "watched" } | { kind: "none" } | { kind: "issue"; issue: number };
   readiness: ReadinessItem[];
 };
@@ -259,7 +257,7 @@ ${onboarding.generated.map((path) => `- \`${path}\``).join("\n")}
 - Services: ${services}
 - Install: ${code(environment.install)}
 - Why: ${neutralize(environment.reason)}
-${environment.existing ? "- `.devcontainer/` was already in the repo: init kept it.\n" : ""}
+${environment.existing ? "- `.devcontainer/` was already in the repo: autopilot kept it.\n" : ""}
 ## Checks on the default branch
 
 ${checks}

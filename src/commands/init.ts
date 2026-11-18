@@ -73,6 +73,7 @@ export async function init(options: InitOptions): Promise<void> {
     const base = run("git", ["symbolic-ref", "--short", "HEAD"], clone);
     const onboarding = await prepareOnboarding({
       repo: options.repo,
+      jobName: "init",
       clone,
       jobDir,
       skillsDir: fetchSkills(options.skills, jobDir),

@@ -10,7 +10,7 @@ import { EnvironmentRefused } from "../core/environment.ts";
 import { mergeGate, planGate } from "../core/gate.ts";
 import { hasStatus, type GitHub, type Issue, type RepoGitHub } from "../core/github.ts";
 import { usesOnePassword, type Host } from "../core/host.ts";
-import type { OnboardJob } from "../core/onboarder.ts";
+import type { OnboardJob, Onboarded } from "../core/onboarder.ts";
 import { ONBOARDING_BRANCH } from "../core/onboarding.ts";
 import { ANY_TIME, branchName, fixVerdict, headVerdict, issuePhase, latestPull, type BotPull, type HeadVerdict, type Statuses } from "../core/phase.ts";
 import type { PlannerJob, PlannerResult } from "../core/planner.ts";
@@ -35,8 +35,7 @@ export type Loop = {
   plan: (job: PlannerJob) => Promise<PlannerResult>;
   build: (job: Omit<BuildJob, "credentials" | "devcontainer" | "audit">) => Promise<Built>;
   check: (job: Omit<ChecksJob, "devcontainer" | "audit">) => Promise<CheckResult[]>;
-  // Pushes the onboarding branch and returns the pull request body.
-  onboard: (job: Omit<OnboardJob, "credentials" | "devcontainer" | "audit" | "say">) => Promise<string>;
+  onboard: (job: Omit<OnboardJob, "credentials" | "devcontainer" | "audit" | "say">) => Promise<Onboarded>;
   log: Log;
   audit: Audit;
   // Host work that must not overlap a job, such as a scanner database update. When it is due, the
@@ -49,7 +48,6 @@ export type Idle = { due: () => boolean; run: () => Promise<void> };
 // GitHub statuses do not hold the check output, so it lives in memory. After a restart, a failed
 // check runs again to get its output back.
 // `waitingSince` holds when the host first saw a head wait for the repo's CI (`ci` mode).
-// `onboarding` holds the repos that an issue onboards now.
 type RepoContext = {
   repoGitHub: RepoGitHub;
   repo: Repo;
@@ -57,7 +55,7 @@ type RepoContext = {
   pulls: BotPull[];
   outputs: Map<string, CheckResult[]>;
   waitingSince: Map<string, number>;
-  onboarding: Set<string>;
+  onboardingRepos: Set<string>;
 };
 
 class Blocked extends Error {}
@@ -284,34 +282,49 @@ function buildOrBlock(loop: Loop, job: Parameters<Loop["build"]>[0]): Promise<Bu
   });
 }
 
-// A repo with no config gets an onboarding pull request, and the issue waits for its merge: the config
-// then exists, and the spec starts. The host never merges it, as it changes .github/ and .devcontainer/.
+// The host never merges the onboarding pull request: it changes .github/ and .devcontainer/. botPulls
+// skips it, as its branch names no issue.
 async function onboard(job: Working, retryAt: string): Promise<void> {
   const { loop, ctx, issue, key } = job;
   const { repoGitHub, repo } = ctx;
   const repoKey = `${repo.owner}/${repo.name}`;
-  const pull = await repoGitHub.onboardingPull();
-  if (pull?.state === "open") return loop.log(key, `${key}: waits for the merge of the onboarding pull request #${pull.number}`);
-  if (pull?.closedAt && Date.parse(pull.closedAt) > Date.parse(retryAt)) {
-    // GitHub can list the merge before the file reads show the config.
-    if (pull.state === "merged") return loop.log(key, `${key}: onboarding pull request #${pull.number} is merged, waits for \`${CONFIG_PATH}\` on the default branch`);
-    throw new Blocked(`The onboarding pull request #${pull.number} was closed without a merge, so this repo has no \`${CONFIG_PATH}\`.`);
+  // Before any await, so that two issues of this host never onboard one repo together.
+  if (ctx.onboardingRepos.has(repoKey)) return loop.log(key, `${key}: waits, another issue onboards ${repoKey}`);
+  ctx.onboardingRepos.add(repoKey);
+
+  // Another host or `autopilot init` can open the pull request while this job runs.
+  async function waitForOpenPull(blocked: string): Promise<void> {
+    const pull = await repoGitHub.onboardingPull();
+    if (pull?.state !== "open") throw new Blocked(blocked);
+    loop.log(key, `${key}: waits for the merge of the onboarding pull request #${pull.number}`);
   }
-  // Two issues of a repo with no config must not both onboard it. No await between the check and the add.
-  if (ctx.onboarding.has(repoKey)) return loop.log(key, `${key}: waits, another issue onboards ${repoKey}`);
-  ctx.onboarding.add(repoKey);
+
   try {
+    const pull = await repoGitHub.onboardingPull();
+    if (pull?.state === "open") return loop.log(key, `${key}: waits for the merge of the onboarding pull request #${pull.number}`);
+    if (pull?.closedAt && Date.parse(pull.closedAt) > Date.parse(retryAt)) {
+      // GitHub can list the merge before the file reads show the config.
+      if (pull.state === "merged") return loop.log(key, `${key}: onboarding pull request #${pull.number} is merged, waits for \`${CONFIG_PATH}\` on the default branch`);
+      throw new Blocked(`The onboarding pull request #${pull.number} was closed without a merge, so this repo has no \`${CONFIG_PATH}\`.`);
+    }
     const thread = await vouchedThread(job);
     const base = await repoGitHub.defaultBranch();
     loop.log(key, `${key}: ${repoKey} has no ${CONFIG_PATH}, onboarding on ${ONBOARDING_BRANCH}`);
     const request = { issue: { number: issue.number, title: issue.title, body: issue.body }, thread };
-    const body = await loop.onboard({ github: loop.github, repoGitHub, repo, host: loop.host, base, request, identity: await identityOf(ctx) }).catch((error: unknown) => {
+    let onboarded: Onboarded;
+    try {
+      onboarded = await loop.onboard({ github: loop.github, repoGitHub, repo, host: loop.host, base, request, identity: await identityOf(ctx) });
+    } catch (error) {
       loop.log(key, `${key}: onboarding failed: ${messageOf(error)}${error instanceof Error && error.cause ? `\n${String(error.cause)}` : ""}`);
-      throw new Blocked(`The onboarding failed: ${messageOf(error)}.`);
-    });
-    const number = await repoGitHub.openPull({ head: ONBOARDING_BRANCH, base, title: "Set up autopilot", body }).catch((error: unknown) => {
-      throw new Blocked(`autopilot pushed ${ONBOARDING_BRANCH} but could not open the pull request: ${messageOf(error)}`);
-    });
+      return waitForOpenPull(`The onboarding failed: ${messageOf(error)}.`);
+    }
+    if (onboarded.kind === "taken") return waitForOpenPull(`An onboarding pull request was open before the push, and it is closed now.`);
+    let number: number;
+    try {
+      number = await repoGitHub.openPull({ head: ONBOARDING_BRANCH, base, title: "Set up autopilot", body: onboarded.body });
+    } catch (error) {
+      return waitForOpenPull(`autopilot pushed ${ONBOARDING_BRANCH} but could not open the pull request: ${messageOf(error)}`);
+    }
     loop.audit({ event: "pr.opened", repo: repoKey, pull: number, issue: issue.number, branch: ONBOARDING_BRANCH });
     await repoGitHub.postComment(
       issue.number,
@@ -319,7 +332,7 @@ async function onboard(job: Working, retryAt: string): Promise<void> {
     );
     loop.log(key, `${key}: opened onboarding pull request #${number}`);
   } finally {
-    ctx.onboarding.delete(repoKey);
+    ctx.onboardingRepos.delete(repoKey);
   }
 }
 
@@ -547,10 +560,10 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
 
 // `running` holds one job per issue: an issue never runs twice at once, and at most
 // `host.concurrency` issues run together.
-export type LoopState = { labelsReady: Set<string>; outputs: Map<string, CheckResult[]>; waitingSince: Map<string, number>; running: Map<string, Promise<void>>; onboarding: Set<string> };
+export type LoopState = { labelsReady: Set<string>; outputs: Map<string, CheckResult[]>; waitingSince: Map<string, number>; running: Map<string, Promise<void>>; onboardingRepos: Set<string> };
 
 export function loopState(): LoopState {
-  return { labelsReady: new Set(), outputs: new Map(), waitingSince: new Map(), running: new Map(), onboarding: new Set() };
+  return { labelsReady: new Set(), outputs: new Map(), waitingSince: new Map(), running: new Map(), onboardingRepos: new Set() };
 }
 
 // Starts the jobs and returns without waiting for them: see `drain`. An error on one entry or repo
@@ -600,7 +613,7 @@ async function pollRepo(loop: Loop, state: LoopState, installationId: number, re
     state.labelsReady.add(repoKey);
   }
   const bot = await github.appLogin();
-  const ctx: RepoContext = { repoGitHub, repo, bot, pulls: await repoGitHub.botPulls(bot), outputs: state.outputs, waitingSince: state.waitingSince, onboarding: state.onboarding };
+  const ctx: RepoContext = { repoGitHub, repo, bot, pulls: await repoGitHub.botPulls(bot), outputs: state.outputs, waitingSince: state.waitingSince, onboardingRepos: state.onboardingRepos };
   for (const issue of issues) {
     if (state.running.size >= host.concurrency) break;
     const key = `${repoKey}#${issue.number}`;

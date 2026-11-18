@@ -7,7 +7,7 @@ import type { BuildJob, Built } from "../core/builder.ts";
 import type { CheckResult, ChecksJob } from "../core/checks.ts";
 import type { GitHub, Issue, OnboardingPull, Provenance, RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
-import type { OnboardJob } from "../core/onboarder.ts";
+import type { OnboardJob, Onboarded } from "../core/onboarder.ts";
 import { ONBOARDING_BRANCH } from "../core/onboarding.ts";
 import { issueOfBranch, type BotPull, type CheckState, type Statuses } from "../core/phase.ts";
 import type { PlannerJob, PlannerResult } from "../core/planner.ts";
@@ -33,7 +33,6 @@ type FakePull = BotPull & { files: FileChange[]; title: string; body: string };
 export type FakeConfig = Record<string, unknown>;
 
 export class FakeRepoGitHub implements RepoGitHub {
-  // undefined: the default branch has no config.
   config: FakeConfig | undefined;
   issues = new Map<number, FakeIssue>();
   comments: FakeComment[] = [];
@@ -101,7 +100,6 @@ export class FakeRepoGitHub implements RepoGitHub {
     return number;
   }
 
-  // A merge or a close by a person on GitHub.
   finishPull(pull: number, state: "merged" | "closed"): void {
     const found = this.pulls.find((candidate) => candidate.number === pull);
     if (!found) throw new Error(`no pull request #${pull}`);
@@ -288,11 +286,13 @@ export type Script = {
   // The checks that fail on the 1st, 2nd... run of the checks. A run past the end passes.
   failingRuns: string[][];
   onboardError: Error | undefined;
+  // Another host opens the onboarding pull request while this host's job runs.
+  onboardRace: boolean;
 };
 
 export class FakeWorld {
   repo: FakeRepoGitHub;
-  script: Script = { plan: LOW_RISK_PLAN, planError: undefined, buildError: undefined, failingRuns: [], onboardError: undefined };
+  script: Script = { plan: LOW_RISK_PLAN, planError: undefined, buildError: undefined, failingRuns: [], onboardError: undefined, onboardRace: false };
   planned: number[] = [];
   onboarded: number[] = [];
   builds: BuildJob["mode"][] = [];
@@ -347,11 +347,16 @@ export class FakeWorld {
     return { head, summary: "Did the change." };
   }
 
-  private async onboard(job: Omit<OnboardJob, "credentials" | "devcontainer" | "audit" | "say">): Promise<string> {
+  private async onboard(job: Omit<OnboardJob, "credentials" | "devcontainer" | "audit" | "say">): Promise<Onboarded> {
     this.onboarded.push(job.request.issue.number);
     if (this.script.onboardError) throw this.script.onboardError;
+    if (this.script.onboardRace) {
+      this.repo.pushCommit(ONBOARDING_BRANCH, "sha-other-host");
+      this.repo.openPullFor(ONBOARDING_BRANCH);
+      return { kind: "taken" };
+    }
     this.repo.pushCommit(ONBOARDING_BRANCH, `sha-${++this.commits}`);
-    return `Onboards ${job.repo.owner}/${job.repo.name} to autopilot.`;
+    return { kind: "pushed", body: `Onboards ${job.repo.owner}/${job.repo.name} to autopilot.` };
   }
 
   private async check(job: Omit<ChecksJob, "devcontainer" | "audit">): Promise<CheckResult[]> {

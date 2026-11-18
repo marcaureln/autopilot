@@ -37,7 +37,7 @@ export type RepoGitHub = {
   lastUnlabeled(issue: number, label: string, actors: string[]): Promise<string | undefined>;
   userId(login: string): Promise<number>;
   botPulls(botLogin: string): Promise<BotPull[]>;
-  // The newest pull request from ONBOARDING_BRANCH of the repo itself.
+  // The newest pull request from ONBOARDING_BRANCH of the repo itself, by any author.
   onboardingPull(): Promise<OnboardingPull | undefined>;
   pullFiles(pull: number): Promise<FileChange[]>;
   pullCommits(pull: number): Promise<string[]>;
