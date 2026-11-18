@@ -29,9 +29,10 @@ export type TrustedSpec = { gate: PlanGate["event"]; plannerRisk: Risk | undefin
 export function trustedSpec(body: string, editors: string[], owners: string[]): TrustedSpec | undefined {
   const gate = specGate(body);
   if (!gate) return undefined;
-  const spec = { gate, plannerRisk: specPlannerRisk(body), plannedFiles: plannedPaths(body), forAPerson: forAPerson(body) };
-  if (editors.length === 0) return { ...spec, buildAllowed: gate === "go" };
-  if (gate === "approval_required" && isOwnerTick(body, editors, owners)) return { ...spec, buildAllowed: true };
+  const spec = { gate, plannerRisk: specPlannerRisk(body), forAPerson: forAPerson(body) };
+  // Planned files stay empty unless this spec allows the build, so no caller can push workflow files on an unapproved plan.
+  if (editors.length === 0) return { ...spec, buildAllowed: gate === "go", plannedFiles: gate === "go" ? plannedPaths(body) : [] };
+  if (gate === "approval_required" && isOwnerTick(body, editors, owners)) return { ...spec, buildAllowed: true, plannedFiles: plannedPaths(body) };
   return undefined;
 }
 

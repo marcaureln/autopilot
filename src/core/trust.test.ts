@@ -95,3 +95,11 @@ test("trusted spec: carries the planned files and the For a person section", () 
   assert.deepEqual(trusted?.plannedFiles, [".github/workflows/ci.yml", "a.ts"]);
   assert.equal(trusted?.forAPerson, "Add a job.");
 });
+
+test("trusted spec: planned files are empty unless the spec allows the build", () => {
+  const planned = "\n\n## Assessment\n\n- Planned files: `.github/workflows/ci.yml` (modified)\n- Next: x";
+  const unapproved = spec.replace("\n\n- [ ] Approve and build", planned + "\n\n- [ ] Approve and build");
+  assert.deepEqual(trustedSpec(unapproved, [], OWNERS)?.plannedFiles, []);
+  assert.deepEqual(trustedSpec(unapproved.replace("- [ ]", "- [x]"), ["owner", "autopilot"], OWNERS)?.plannedFiles, [".github/workflows/ci.yml"]);
+  assert.deepEqual(trustedSpec(go + planned, [], OWNERS)?.plannedFiles, [".github/workflows/ci.yml"]);
+});
