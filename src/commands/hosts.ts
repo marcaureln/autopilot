@@ -16,8 +16,9 @@ function loadHosts(repair = false): HostsFile {
 function saveHosts(file: HostsFile): void {
   mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   const text = JSON.stringify({ $schema: HOSTS_SCHEMA, default: file.default, hosts: file.hosts }, null, 2) + "\n";
-  writeFileSync(`${HOSTS_PATH}.tmp`, text);
-  renameSync(`${HOSTS_PATH}.tmp`, HOSTS_PATH);
+  const tmp = `${HOSTS_PATH}.${process.pid}.tmp`;
+  writeFileSync(tmp, text, { flag: "wx" });
+  renameSync(tmp, HOSTS_PATH);
 }
 
 // A forwarded command runs under sudo on a Linux host, which is not where the client keeps its hosts file.
