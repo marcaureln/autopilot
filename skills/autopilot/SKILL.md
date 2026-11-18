@@ -156,7 +156,7 @@ To ask for changes, do not comment on the pull request. autopilot does not read 
    - "GitHub refused the merge of #N": a branch protection rule refused the merge. Merge the pull request yourself, or set `merge` to `manual`.
    - "The `secrets` in `.github/autopilot.json` are 1Password references, and this host has no 1Password": set each secret again with `autopilot secrets set <NAME>`, then remove the references from the config.
    - "the builder made no commit": the spec asked for nothing to change, or the builder failed. Make the issue more precise in a comment, then retry.
-   - "the change touches `.github/workflows/...`": the App has no Workflows permission, so autopilot cannot change workflow files. Make that change yourself, then retry.
+   - "the change touches `.github/workflows/...`": the App has no Workflows permission, so autopilot cannot change workflow files. Make that change yourself, or add the permission (see "Add the Workflows permission" in references/setup.md). Then retry.
    - A check "failed twice in a row", or the checks still fail after `limits.fix_rounds` rounds: the comment shows the output. Fix the code or the check command, or make the issue smaller.
    - "Someone who is not an owner changed the issue title or description": an owner edits the text, or removes the `autopilot` label and adds it again. Then retry.
    - "Pull request #N was closed without a merge": comment on the issue to change the plan, then retry.
@@ -250,6 +250,7 @@ Trust boundary: the host gives the values only to the checks that run a command 
 - Models propose, rules decide. The final risk is the higher of the planner risk and the rule risk. A model can raise the risk, never lower it.
 - The builder has no GitHub token. The host pushes the branch and opens the pull request as the App's bot.
 - The secrets never go to the agents.
+- The agents change GitHub Actions workflows only when the App has the Workflows permission. A change in `.github/` is high risk, so a person reviews each such pull request. But a changed workflow runs on the pull request before the review, with the repo's Actions secrets. Keep important secrets in GitHub Environments with required reviewers.
 
 ### Risk rules
 
