@@ -2,11 +2,9 @@ import { basename } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/setup.schema.json" with { type: "json" };
 import { secretLabel, type HostSecret } from "./host.ts";
-import type { Backend } from "./secrets.ts";
 
 export type SetupConfig = {
   $schema?: string;
-  backend?: Backend;
   app_id?: number;
   app_key?: string;
   host?: string;
@@ -32,18 +30,13 @@ export function parseSetupConfig(text: string, source: string): SetupConfig {
   return data;
 }
 
-export const TOOLS = ["git", "ssh", "mise", "gh", "op"] as const;
+export const TOOLS = ["git", "ssh", "mise", "gh"] as const;
 export type Tool = (typeof TOOLS)[number];
-
-export function requiredTools(backend: Backend): Tool[] {
-  return TOOLS.filter((tool) => tool !== "op" || backend === "op");
-}
 
 const INSTALL: Record<Tool, { darwin: string; linux: string }> = {
   git: { darwin: "xcode-select --install", linux: "sudo apt-get install -y git" },
   ssh: { darwin: "macOS includes ssh: reinstall the command line tools with xcode-select --install", linux: "sudo apt-get install -y openssh-client" },
   mise: { darwin: "curl https://mise.run | sh", linux: "curl https://mise.run | sh" },
-  op: { darwin: "brew install 1password-cli", linux: "see https://developer.1password.com/docs/cli/get-started/" },
   gh: { darwin: "brew install gh", linux: "see https://github.com/cli/cli/blob/trunk/docs/install_linux.md" },
 };
 
@@ -130,13 +123,6 @@ export function planHostSetup(facts: HostFacts, request: { version?: string; fro
     return { kind: "refuse", reason: `${problem}, and the host runs the checkout build ${id}: setup does not replace it with a release. Pass --from-checkout to install it again from this checkout` };
   }
   return { kind: "run", version: id, fromCheckout: false, problem };
-}
-
-// Only op's "isn't an item" answer means the item is absent. Any other failure (locked, offline, no access) says nothing about it.
-export function itemStored(title: string, result: { ok: boolean; stderr: string }): boolean {
-  if (result.ok) return true;
-  if (/isn't an item/.test(result.stderr)) return false;
-  throw new Error(`op item get ${title}: ${result.stderr}`);
 }
 
 // gh api prints "HTTP 404" for a missing file. A 403, a 5xx or no network says nothing about the file.

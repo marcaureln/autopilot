@@ -1,9 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { cancel, confirm, type CANCEL_SYMBOL, intro, isCancel, log, note, outro, password, select, text } from "@clack/prompts";
+import { cancel, confirm, type CANCEL_SYMBOL, intro, isCancel, log, note, outro, select, text } from "@clack/prompts";
 import { WATCH_ENTRY } from "../core/allow.ts";
-import type { Audit } from "../core/audit.ts";
 import { CONFIG_PATH } from "../core/config.ts";
 import type { AppInfo } from "../core/github.ts";
 import { readOptionFile } from "../core/option-file.ts";
@@ -11,18 +10,15 @@ import { hostSecretFiles, parseHost, secretLabel, type Host, type HostSecret } f
 import type { HostRef } from "../core/hosts.ts";
 import { ownPull, type PullListing } from "../core/onboarding.ts";
 import { ONBOARDING_BRANCH } from "../core/repo.ts";
-import { SECRETS_VAULT } from "../core/repo-secrets.ts";
-import { readSecret, type Backend } from "../core/secrets.ts";
-import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, repoFileStored, requiredTools, RESOURCES_PROBE, type HostFacts, type SetupConfig } from "../core/setup.ts";
+import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, repoFileStored, TOOLS, RESOURCES_PROBE, type HostFacts, type SetupConfig } from "../core/setup.ts";
 import { alias, AliasError, aliasFile, aliasNameProblem, shellOf, withoutAlias } from "./alias.ts";
 import { appCreate, githubLogin } from "./app.ts";
-import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, checkAppKey, CLAUDE_TOKEN_ITEM, clientClaudeToken, forward, found, HOST_SECRETS, hostSetup, missingSecrets, OP_TOKEN_ITEM, readApiKey, readAppKey, readKeyFile } from "./client.ts";
+import { APP_KEY_PATH, checkAppKey, forward, found, hostSetup, missingSecrets, readApiKey, readAppKey, readClaudeToken, readKeyFile } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
 import { checkHostName, findHost, HOSTS_PATH, nameToSave, saveHost } from "./hosts.ts";
 import { init } from "./init.ts";
-import { op, opItemExists } from "./secrets.ts";
 
-export type SetupOptions = { configFile?: string; yes: boolean; host?: string; name?: string; version?: string; fromCheckout: boolean; backend?: Backend; appKey?: string };
+export type SetupOptions = { configFile?: string; yes: boolean; host?: string; name?: string; version?: string; fromCheckout: boolean; appKey?: string };
 
 type Cancel = typeof CANCEL_SYMBOL;
 
@@ -32,7 +28,6 @@ type HostState = { host?: Host; missingSecrets: HostSecret[]; release?: string; 
 
 type GitHubApp = { id: number; keyFile?: string };
 
-const noAudit: Audit = () => {};
 
 const results: { step: string; outcome: Outcome; detail: string }[] = [];
 
@@ -58,8 +53,8 @@ function configOrAsk<T>(options: SetupOptions, value: T | undefined, field: stri
   return answer(prompt());
 }
 
-function prerequisites(backend: Backend): void {
-  const tools = requiredTools(backend);
+function prerequisites(): void {
+  const tools = TOOLS;
   const missing = tools.filter((tool) => !found(tool));
   if (missing.length === 0) return record("Prerequisites", "already done", tools.join(", "));
   for (const tool of missing) log.error(`${tool} is missing. Install it: ${installCommand(tool, process.platform)}`);
@@ -80,33 +75,6 @@ function githubSignIn(options: SetupOptions): string {
   return login;
 }
 
-async function onePassword(options: SetupOptions): Promise<void> {
-  let vault = op(["vault", "get", SECRETS_VAULT, "--format", "json"]);
-  if (!vault.ok && /not signed in|no accounts/i.test(vault.stderr)) {
-    if (options.yes) throw new Error(`--yes: op is not signed in: ${vault.stderr}`);
-    spawnSync("op", ["signin"], { stdio: "inherit" });
-    vault = op(["vault", "get", SECRETS_VAULT, "--format", "json"]);
-  }
-  if (vault.ok) record("1Password vault", "already done", SECRETS_VAULT);
-  else if (/isn't a vault/i.test(vault.stderr)) {
-    const create = options.yes || (await answer(confirm({ message: `Create the 1Password vault ${SECRETS_VAULT}? Autopilot keeps its secrets there.` })));
-    if (!create) throw new Error(`autopilot needs the vault ${SECRETS_VAULT}`);
-    const created = op(["vault", "create", SECRETS_VAULT]);
-    if (!created.ok) throw new Error(`op could not create the vault ${SECRETS_VAULT}: ${created.stderr}`);
-    record("1Password vault", "done", `created ${SECRETS_VAULT}`);
-  } else throw new Error(`op cannot open the vault ${SECRETS_VAULT}: ${vault.stderr}`);
-
-  if (opItemExists(OP_TOKEN_ITEM)) return record("1Password service account", "already done", `token in ${SECRETS_VAULT}/${OP_TOKEN_ITEM}`);
-  const account = op(["service-account", "create", "autopilot", "--vault", `${SECRETS_VAULT}:read_items`, "--raw"]);
-  if (!account.ok) throw new Error(`op could not create the service account: ${account.stderr}`);
-  const item = { title: OP_TOKEN_ITEM, category: "PASSWORD", fields: [{ id: "password", type: "CONCEALED", purpose: "PASSWORD", label: "password", value: account.stdout.trim() }] };
-  const saved = op(["item", "create", "--vault", SECRETS_VAULT, "--format", "json", "-"], JSON.stringify(item));
-  if (!saved.ok) {
-    throw new Error(`op created the service account autopilot, but could not save its token: ${saved.stderr}. Revoke the service account autopilot in 1Password (Developer, Directory), then run autopilot setup again. Its token cannot be read again`);
-  }
-  record("1Password service account", "done", `created, token in ${SECRETS_VAULT}/${OP_TOKEN_ITEM}`);
-}
-
 function workflowsWanted(options: SetupOptions, config: SetupConfig): Promise<boolean> {
   if (config.workflows !== undefined) return Promise.resolve(config.workflows);
   if (options.yes) return Promise.resolve(true);
@@ -120,10 +88,9 @@ async function warnMissingWorkflows(options: SetupOptions, config: SetupConfig, 
   );
 }
 
-async function githubApp(options: SetupOptions, config: SetupConfig, backend: Backend, hostAppId: number | undefined): Promise<GitHubApp> {
+async function githubApp(options: SetupOptions, config: SetupConfig, hostAppId: number | undefined): Promise<GitHubApp> {
   const localKey = config.app_key ?? options.appKey ?? (existsSync(APP_KEY_PATH) ? APP_KEY_PATH : undefined);
-  const keyStored = backend === "op" ? opItemExists(APP_KEY_ITEM) : localKey !== undefined;
-  const appExists = keyStored || hostAppId !== undefined;
+  const appExists = localKey !== undefined || hostAppId !== undefined;
   const choice =
     config.app_id !== undefined
       ? "reuse"
@@ -133,57 +100,28 @@ async function githubApp(options: SetupOptions, config: SetupConfig, backend: Ba
             initialValue: appExists ? "reuse" : "create",
             options: [
               { value: "create", label: "Create a new App", hint: "in the browser, one click" },
-              { value: "reuse", label: "Use an App I already have", hint: `its private key goes to ${backend === "op" ? "1Password" : "the host"}` },
+              { value: "reuse", label: "Use an App I already have", hint: "its private key goes to the host" },
             ],
           }),
         );
   if (choice === "create") {
-    const app = await appCreate({ backend, workflows: await workflowsWanted(options, config) });
+    const app = await appCreate({ workflows: await workflowsWanted(options, config) });
     record("GitHub App", "done", `created ${app.slug} (id ${app.id}). Install it on All repositories: ${app.installUrl}`);
-    return { id: app.id, keyFile: backend === "env" ? app.keyLocation : undefined };
+    return { id: app.id, keyFile: app.keyLocation };
   }
 
   const appId = await configOrAsk(options, config.app_id, "app_id", async () => {
     const value = await text({ message: "App ID (on the App's settings page)", initialValue: hostAppId?.toString(), validate: (input) => (/^[1-9]\d*$/.test(input ?? "") ? undefined : "A number") });
     return isCancel(value) ? value : Number(value);
   });
-  if (backend === "env") {
-    if (!localKey) {
-      record("GitHub App", "already done", `id ${appId}. Host setup asks for its private key if the host has none`);
-      return { id: appId };
-    }
-    const app = await checkAppKey(appId, readKeyFile(localKey), localKey);
-    record("GitHub App", "already done", `${app.slug} (id ${appId}), key in ${localKey}`);
-    await warnMissingWorkflows(options, config, app);
-    return { id: appId, keyFile: localKey };
+  if (!localKey) {
+    record("GitHub App", "already done", `id ${appId}. Host setup asks for its private key if the host has none`);
+    return { id: appId };
   }
-  if (!keyStored) {
-    if (options.yes) throw new Error(`--yes: the private key of App ${appId} is not in 1Password. Save it as the document ${APP_KEY_ITEM} (file name ${APP_KEY_FILE}) in the vault ${SECRETS_VAULT}`);
-    const path = await answer(text({ message: "Path of the App's private key file (.pem)", validate: (input) => (existsSync(input ?? "") ? undefined : "No file at this path") }));
-    const saved = op(["document", "create", path, "--vault", SECRETS_VAULT, "--title", APP_KEY_ITEM, "--file-name", APP_KEY_FILE]);
-    if (!saved.ok) throw new Error(`op could not save the private key: ${saved.stderr}`);
-  }
-  const privateKey = readSecret(HOST_SECRETS.op.app_key, "setup: check the App key", noAudit);
-  const app = await checkAppKey(appId, privateKey, "1Password");
-  record("GitHub App", keyStored ? "already done" : "done", `${app.slug} (id ${appId}), key in 1Password`);
+  const app = await checkAppKey(appId, readKeyFile(localKey), localKey);
+  record("GitHub App", "already done", `${app.slug} (id ${appId}), key in ${localKey}`);
   await warnMissingWorkflows(options, config, app);
-  return { id: appId };
-}
-
-async function claudeToken(options: SetupOptions): Promise<void> {
-  if (opItemExists(CLAUDE_TOKEN_ITEM)) return record("Claude token", "already done", `in ${SECRETS_VAULT}/${CLAUDE_TOKEN_ITEM}`);
-  let token = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-  if (!token) {
-    if (options.yes) throw new Error("--yes: no Claude token in 1Password. Run claude setup-token and pass its token in CLAUDE_CODE_OAUTH_TOKEN");
-    if (found("claude") && (await answer(confirm({ message: "Run claude setup-token now? It signs in to Claude in the browser and prints a token." })))) {
-      spawnSync("claude", ["setup-token"], { stdio: "inherit" });
-    }
-    token = await answer(password({ message: "Paste the Claude token (hidden)", validate: (input) => (input?.trim() ? undefined : "The token is empty") }));
-  }
-  const item = { title: CLAUDE_TOKEN_ITEM, category: "API_CREDENTIAL", fields: [{ id: "credential", type: "CONCEALED", label: "credential", value: token.trim() }] };
-  const saved = op(["item", "create", "--vault", SECRETS_VAULT, "--format", "json", "-"], JSON.stringify(item));
-  if (!saved.ok) throw new Error(`op could not save the Claude token: ${saved.stderr}`);
-  record("Claude token", "done", `saved in ${SECRETS_VAULT}/${CLAUDE_TOKEN_ITEM}`);
+  return { id: appId, keyFile: localKey };
 }
 
 async function chooseHost(options: SetupOptions, config: SetupConfig, requested: HostRef | undefined): Promise<{ host: HostRef; name: string; remote: Connection }> {
@@ -237,9 +175,9 @@ function factsOf(state: HostState): HostFacts {
   return { hasHost: state.host !== undefined, missingSecrets: state.missingSecrets, release: state.release, service: state.service };
 }
 
-type HostRequest = { target: string; remote: Connection; app: GitHubApp; login: string; backend: Backend; claudeToken: () => Promise<string> };
+type HostRequest = { target: string; remote: Connection; app: GitHubApp; login: string; claudeToken: () => Promise<string> };
 
-async function setUpHost(options: SetupOptions, config: SetupConfig, { target, remote, app, login, backend, claudeToken }: HostRequest): Promise<Host> {
+async function setUpHost(options: SetupOptions, config: SetupConfig, { target, remote, app, login, claudeToken }: HostRequest): Promise<Host> {
   let state = await hostState(remote);
   const plan = planHostSetup(factsOf(state), options);
   if (plan.kind === "refuse") throw new Error(`${target}: ${plan.reason}`);
@@ -257,7 +195,7 @@ async function setUpHost(options: SetupOptions, config: SetupConfig, { target, r
           text({ message: "GitHub login that may start jobs (the owner)", initialValue: login, validate: (input) => (/^[A-Za-z0-9-]+$/.test(input ?? "") ? undefined : "A GitHub login") }),
         );
     const sources = { app_key: () => readAppKey(app.keyFile, !options.yes), claude_token: claudeToken, api_key: (name: string) => readApiKey(name, !options.yes) };
-    const pushed = await hostSetup(target, { owner, appId: app.id, version: plan.version, fromCheckout: plan.fromCheckout, backend, apiKeys: [], sources });
+    const pushed = await hostSetup(target, { owner, appId: app.id, version: plan.version, fromCheckout: plan.fromCheckout, apiKeys: [], sources });
     state = await hostState(remote);
     const after = planHostSetup(factsOf(state), options);
     if (after.kind !== "ready") throw new Error(`host setup ran, but the host is not ready: service ${state.service}`);
@@ -377,17 +315,14 @@ export async function setup(options: SetupOptions): Promise<void> {
   if (requested) checkHostName(requested, options.name ?? config.name);
   intro("autopilot setup");
   log.info("Each step checks what is in place and does only what is missing.");
-  const backend = options.backend ?? config.backend ?? "env";
-  prerequisites(backend);
+  prerequisites();
   const login = githubSignIn(options);
-  if (backend === "op") await onePassword(options);
   const { host: chosen, name, remote } = await chooseHost(options, config, requested);
   const { target } = chosen;
-  const app = await githubApp(options, config, backend, (await readHost(remote))?.app_id);
-  if (backend === "op") await claudeToken(options);
+  const app = await githubApp(options, config, (await readHost(remote))?.app_id);
   let token: string | undefined;
-  const claudeTokenOnce = async () => (token ??= await clientClaudeToken(backend, !options.yes));
-  const host = await setUpHost(options, config, { target, remote, app, login, backend, claudeToken: claudeTokenOnce });
+  const claudeTokenOnce = async () => (token ??= await readClaudeToken(!options.yes));
+  const host = await setUpHost(options, config, { target, remote, app, login, claudeToken: claudeTokenOnce });
   const saved = saveToHosts(chosen, name);
   await allowEntries(options, config, target, host, login);
   await onboard(options, config, target, login, claudeTokenOnce);

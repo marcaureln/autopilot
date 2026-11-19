@@ -275,7 +275,7 @@ export const LOW_RISK_PLAN: PlannerResult = {
 export const HOST: Host = {
   name: HOST_NAME,
   app_id: 1,
-  secrets: { app_key: "op://v/k/f", claude_token: "op://v/c/f" },
+  secrets: { app_key: "file:k", claude_token: "file:c" },
   owners: [OWNER],
   allow: [`${REPO.owner}/${REPO.name}`],
   docker: "rootless",

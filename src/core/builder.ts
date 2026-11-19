@@ -315,7 +315,7 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     if (up.kind === "failed") throw new BuildStopped(`the dev container did not start:\n\n${up.result.output.slice(-MAX_FAILURE_CHARS)}`);
 
     const failures = mode.kind === "fix" ? mode.failures : undefined;
-    const prompt = builderPrompt({ repo: `${repo.owner}/${repo.name}`, workdir: up.workspaceFolder, issue, thread, secrets: [...new Set([...repoSecretNames(repo), ...Object.keys(config.secrets)])], canChangeWorkflows, failures });
+    const prompt = builderPrompt({ repo: `${repo.owner}/${repo.name}`, workdir: up.workspaceFolder, issue, thread, secrets: repoSecretNames(repo), canChangeWorkflows, failures });
     await runAgentInDevcontainer({
       harness,
       credentials: job.credentials,

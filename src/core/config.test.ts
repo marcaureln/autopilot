@@ -26,7 +26,6 @@ const FULL_CONFIG = `{
   "preview": { "command": "npm run dev", "url": "http://localhost:3000" },
   "merge": "auto",
   "risk": { "high_paths": ["src/auth/**"], "max_diff_lines": 500 },
-  "secrets": { "STRIPE_KEY": "op://autopilot/example-org_app-a/STRIPE_KEY" },
   "limits": { "fix_rounds": 3, "run_timeout_minutes": 45 }
 }`;
 
@@ -54,7 +53,6 @@ test("fills every default in a minimal config", () => {
     },
     merge: "manual",
     risk: { high_paths: [], max_diff_lines: 500 },
-    secrets: {},
     limits: { fix_rounds: 3, run_timeout_minutes: 45 },
   });
 });
@@ -63,9 +61,16 @@ test("rejects an invalid config and names the bad field", () => {
   assert.throws(() => parseConfig(`{ "version": 1, "merge": "yolo" }`, "test"), /merge/);
 });
 
-test("rejects a secret value that is not an op:// reference", () => {
-  assert.throws(() => parseConfig(`{ "version": 1, "secrets": { "STRIPE_KEY": "sk_live_123" } }`, "test"), /secrets/);
+test("refuses 1Password references and says how to set the secrets again", () => {
+  const text = `{ "version": 1, "secrets": { "K": "op://autopilot/o_r/K" } }`;
+  assert.throws(() => parseConfig(text, "test"), /1Password is no longer supported.*autopilot secrets set/s);
 });
+
+for (const secrets of [`{}`, `{ "K": "sk_live_123" }`]) {
+  test(`rejects a secrets key that is ${secrets}`, () => {
+    assert.throws(() => parseConfig(`{ "version": 1, "secrets": ${secrets} }`, "test"), /Invalid config test.*additional properties/);
+  });
+}
 
 test("rejects a config that is not JSON and names the source", () => {
   assert.throws(() => parseConfig(`{ "version": 1, }`, ".github/autopilot.json"), /Invalid config \.github\/autopilot\.json: /);

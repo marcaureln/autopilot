@@ -9,13 +9,12 @@ import { CONFIG_PATH, parseConfig, type Config } from "../core/config.ts";
 import { EnvironmentRefused } from "../core/environment.ts";
 import { mergeGate, planGate } from "../core/gate.ts";
 import { hasStatus, RateLimited, type GitHub, type Issue, type RepoGitHub } from "../core/github.ts";
-import { usesOnePassword, type Host } from "../core/host.ts";
+import type { Host } from "../core/host.ts";
 import type { OnboardJob, Onboarded } from "../core/onboarder.ts";
 import { ANY_TIME, branchName, fixVerdict, headVerdict, issuePhase, latestPull, type BotPull, type HeadVerdict, type Statuses } from "../core/phase.ts";
 import type { PlannerJob } from "../core/planner.ts";
 import type { PlannerResult } from "../core/planner-result.ts";
 import { ONBOARDING_BRANCH, type Repo } from "../core/repo.ts";
-import { refusedSecrets } from "../core/repo-secrets.ts";
 import { isApproved, latestSpec, type Comment, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
 import { isOwnerTick, isVouched, trustedSpec, trustedThread, type TrustedSpec } from "../core/trust.ts";
 import { doneLabels, LABELS, labelsFor, migrateLabels, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
@@ -194,7 +193,7 @@ async function reconcile(loop: Loop, ctx: RepoContext, issue: Issue): Promise<vo
       const names = error.names.map((name) => `\`${name}\``).join(", ");
       await repoGitHub.postComment(
         issue.number,
-        `The builder needs secrets that the checks do not get: ${names}. In a checkout of this repo, run \`autopilot secrets set <NAME>\` for each one, then reply here. With the 1Password backend, also merge the change to \`.github/autopilot.json\`.`,
+        `The builder needs secrets that the checks do not get: ${names}. In a checkout of this repo, run \`autopilot secrets set <NAME>\` for each one, then reply here.`,
       );
       return;
     }
@@ -484,16 +483,6 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
   const { repoGitHub } = ctx;
   const required = config.verify.required;
   const verify = verifySource(job, config, pull, retryAt);
-  const refused = refusedSecrets(ctx.repo, config.secrets);
-  if (refused.length > 0) {
-    const names = refused.map((name) => `\`${name}\``).join(", ");
-    throw new Blocked(`The \`secrets\` in \`${CONFIG_PATH}\` for ${names} do not point to this repo's own 1Password item. Set each one again with \`autopilot secrets set --backend op <NAME>\`.`);
-  }
-  if (config.verify.mode === "host" && Object.keys(config.secrets).length > 0 && !usesOnePassword(loop.host.secrets)) {
-    throw new Blocked(
-      `The \`secrets\` in \`${CONFIG_PATH}\` are 1Password references, and this host has no 1Password. Set each one again with \`autopilot secrets set <NAME>\` (the env backend), or set up the host with 1Password.`,
-    );
-  }
   const sha = pull.head.sha;
   // Someone with write access can push to the bot's branch. Only a head the host pushed for this
   // issue is fixed or merged; its ancestors are then the host's commits too.

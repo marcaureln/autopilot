@@ -77,7 +77,10 @@ Models propose and rules decide. The risk rules are deterministic, and a model c
 
 - **Environment.** The repo's own `.devcontainer/` runs the install, the checks and the agent, so any language works. The host refuses a dev container that reaches outside its container, and it cuts the network during the checks.
 - **Checks.** The repo's commands and three scanners (Semgrep, Grype, TruffleHog) run on the host. With `"verify": { "mode": "ci" }`, the host waits for the repo's GitHub Actions jobs instead. [marcaureln/actions](https://github.com/marcaureln/actions) has the scanners as actions.
-- **Secrets.** `autopilot secrets set <NAME>` keeps a value in a file on the host. Only the check commands get it, never the agent.
+- **Secrets.** Files are the only place a host keeps its secrets. `autopilot secrets set <NAME>` keeps a repo secret in a file on the host. Only the check commands get it, never the agent.
+  - **Where.** The host secrets (`app-key.pem`, `claude-token`, and any API key) are in `/etc/autopilot/secrets` (Linux) or `~/.autopilot/secrets` (macOS). The repo secrets are in `secrets/repos/<owner>_<repo>.env` in that folder.
+  - **How to set one.** `autopilot setup` or `autopilot hosts add <name> <target>` pushes the host secrets. `autopilot secrets set <NAME>` sets a repo secret, with a hidden prompt or on stdin, never as an argument.
+  - **Who can read it.** On Linux, root owns the files and the `autopilot` group (the service) reads them: mode 640 in a 750 folder. On macOS, only your user can read them: mode 600.
 - **Hosts.** A host is a systemd service (Linux) or a launchd agent (macOS). The client keeps their names in a hosts file. Several hosts can watch the same repos.
 
 Each repo is configured in `.github/autopilot.json` ([schema](schema/autopilot.schema.json)). Onboarding sets `"merge": "manual"`. Set `"merge": "auto"` to let the merge gate merge low-risk pull requests.
@@ -89,7 +92,7 @@ Each repo is configured in `.github/autopilot.json` ([schema](schema/autopilot.s
 | Environment   | [The repo's dev container](src/core/environment.ts), with [guardrails](src/core/devcontainer.ts)       | -              |
 | Checks        | [Commands and scanners](src/core/checks.ts), on the host or in CI                                      | -              |
 | Risk          | [Rules](src/core/risk.ts) and [gates](src/core/gate.ts)                                                | -              |
-| Secrets       | [Files on the host](src/core/secrets.ts), or the [1Password CLI](src/commands/secrets.ts)              | -              |
+| Secrets       | [Files on the host](src/core/secrets.ts)                                                                 | -              |
 
 ## Out of scope
 

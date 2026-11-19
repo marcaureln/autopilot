@@ -14,7 +14,7 @@ Before any command, run `autopilot --help` and use only the commands that it lis
 ## Rules for the agent
 
 - Never read, print, or put a secret value in a command argument, an issue, a comment, or a file. Let the user type secret values at a hidden prompt.
-- Interactive commands (`autopilot setup`, `autopilot hosts add` and `autopilot init` when they ask for the Claude token, `autopilot secrets set <NAME>` with a hidden prompt, `op signin`) need a terminal. Ask the user to run them in their own terminal, then continue.
+- Interactive commands (`autopilot setup`, `autopilot hosts add` and `autopilot init` when they ask for the Claude token, `autopilot secrets set <NAME>` with a hidden prompt) need a terminal. Ask the user to run them in their own terminal, then continue.
 - Approve a spec or merge a pull request only when the user asked for it, or after you show the user the spec or the diff and they agree.
 - The user's `gh` account must be an owner on the host (`owners` in `host.json`). autopilot ignores labels, replies and ticks from other accounts.
 
@@ -23,7 +23,7 @@ Before any command, run `autopilot --help` and use only the commands that it lis
 To set up from nothing, read `references/setup.md` and follow it. In short:
 
 1. Install the client: `curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh`. It needs `mise`, `curl` and `tar`.
-2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the host with its secrets, the watched entries and the first onboarding PR. By default, the host keeps its secrets in files. With `--backend op`, they go to 1Password.
+2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the host with its secrets, the watched entries and the first onboarding PR. The host keeps its secrets in files.
 3. If `setup` is not available, or it stops, do the steps one by one: `autopilot app create`, `autopilot hosts add`, `autopilot watch`, `autopilot init`. `references/setup.md` gives each step.
 4. Check the host with `autopilot status`. The service must be `active` (Linux) or `running` (macOS), and the watched entries must show the repo.
 5. Merge the onboarding pull request. Before the merge, each issue in the repo waits.
@@ -107,7 +107,7 @@ A pull request that waits for a review has no label. The issue keeps `autopilot:
 2. Answer each question in one new comment, from an owner account: `gh issue comment <n> --repo example-org/app --body-file answers.md`.
 3. The host hides the old spec as Outdated and writes a new spec. Do not edit the issue body to answer. Only a new owner comment starts a new spec.
 
-When the builder needs a secret that the checks do not get, the host also uses `autopilot:needs-info`. Its comment names the secrets. Add each one with `autopilot secrets set <NAME>` (see "Secrets"), then reply in a comment. With `--backend op`, also merge the change to `.github/autopilot.json` before you reply.
+When the builder needs a secret that the checks do not get, the host also uses `autopilot:needs-info`. Its comment names the secrets. Add each one with `autopilot secrets set <NAME>` (see "Secrets"), then reply in a comment.
 
 ### The issue has `autopilot:awaiting-approval`
 
@@ -155,14 +155,13 @@ To ask for changes, do not comment on the pull request. autopilot does not read 
    - "the dev container did not start", or the `install` check fails: fix the image or `postCreateCommand` in `.devcontainer/`.
    - "The planner failed" or "The build failed": the comment gives the reason. Read `autopilot logs` for the agent's output. If it says the token is invalid or expired, replace the Claude token on the host (references/setup.md, section "6. Host"). Then retry.
    - "GitHub refused the merge of #N": a branch protection rule refused the merge. Merge the pull request yourself, or set `merge` to `manual`.
-   - "The `secrets` in `.github/autopilot.json` are 1Password references, and this host has no 1Password": set each secret again with `autopilot secrets set <NAME>`, then remove the references from the config.
+   - "`secrets` holds 1Password references ... no longer supported": the repo config still has `op://` secrets. Run `autopilot secrets set <NAME>` for each one, then remove `secrets` from `.github/autopilot.json`.
    - "the builder made no commit": the spec asked for nothing to change, or the builder failed. Make the issue more precise in a comment, then retry.
    - "the change touches `.github/workflows/...`": the App has no Workflows permission, so autopilot cannot change workflow files. Make that change yourself, or add the permission (see "Add the Workflows permission" in references/setup.md). Then retry.
    - "the change touches `.github/workflows/...`, which the approved plan does not list": the App has the Workflows permission, but the plan did not name that file. Add the file to the plan, approve the plan again, or make the change yourself. A plan that lists a workflow file always needs a person's approval.
    - A check "failed twice in a row", or the checks still fail after `limits.fix_rounds` rounds: the comment shows the output. Fix the code or the check command, or make the issue smaller.
    - "Someone who is not an owner changed the issue title or description": an owner edits the text, or removes the `autopilot` label and adds it again. Then retry.
    - "Pull request #N was closed without a merge": comment on the issue to change the plan, then retry.
-   - The `secrets` "do not point to this repo's own 1Password item": run `autopilot secrets set --backend op <NAME>` again for each one.
    Errors that reach the user on the command line or in `autopilot logs`, not in a comment:
    - "GitHub refused the App key (401)": the host has the key of another App, or the App was deleted. Replace `app-key.pem` on the host.
    - "rate limit reached, waiting until HH:MM" or "GitHub rate limit reached": the host made too many GitHub requests. It sends no request until that time, then continues. If this occurs frequently, raise `poll_interval_seconds` in its `host.json`, or lower `concurrency`.
@@ -232,7 +231,7 @@ autopilot update [--version vX.Y.Z]
 
 ## Secrets
 
-A test that needs a key gets it from the repo's secrets. By default, the host keeps them in one env file per repo. In a checkout of the repo:
+A test that needs a key gets it from the repo's secrets. The host keeps them in files, the only backend. In a checkout of the repo:
 
 ```sh
 autopilot secrets set STRIPE_KEY        # hidden prompt, or the value on stdin
@@ -243,7 +242,7 @@ autopilot secrets rm STRIPE_KEY
 
 Pass `--repo <owner>/<repo>` when the checkout is not the repo. A value is never an argument, so ask the user to type it at the prompt. Do not read the `.env` file.
 
-With `--backend op`, the values go to 1Password, with the user's own sign-in. Each value goes to the `autopilot` vault, in the item `<owner>_<repo>`. The command adds the `op://` reference to `.github/autopilot.json`. Commit it and merge it. A reference in the config wins over a value of the same name in the host's file.
+Where the files are: the host secrets (`app-key.pem`, `claude-token`, and any API key) are in `/etc/autopilot/secrets` (Linux) or `~/.autopilot/secrets` (macOS), and the repo secrets are in `secrets/repos/<owner>_<repo>.env` in that folder. `autopilot setup` and `autopilot hosts add` push the host secrets. On Linux, root owns the files and the `autopilot` group (the service) reads them: mode 640 in a 750 folder. On macOS, only the user can read them: mode 600.
 
 Trust boundary: the host gives the values only to the checks that run a command from `verify.commands` (such as `lint`, `types`, `test`). The agents, the scanners and the install step never get them. But a person who can change the code of the repo can read its secrets, for example from a test. Give a repo only test-mode or low-value keys.
 

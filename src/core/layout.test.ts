@@ -21,14 +21,12 @@ for (const value of ["FreeBSD", "win32", "MINGW64_NT-10.0", ""]) {
   });
 }
 
-const layoutCases: { os: HostOS; home: string; field: "hostFile" | "opToken" | "skillsDir" | "current" | "tools"; expected: string }[] = [
+const layoutCases: { os: HostOS; home: string; field: "hostFile" | "skillsDir" | "current" | "tools"; expected: string }[] = [
   { os: "linux", home: "/home/me", field: "hostFile", expected: "/etc/autopilot/host.json" },
-  { os: "linux", home: "/home/me", field: "opToken", expected: "/etc/autopilot/op-token" },
   { os: "linux", home: "/home/me", field: "skillsDir", expected: "/etc/autopilot/skills" },
   { os: "linux", home: "/home/me", field: "current", expected: "/opt/autopilot" },
   { os: "linux", home: "/home/me", field: "tools", expected: "/opt/autopilot-tools" },
   { os: "darwin", home: "/Users/me", field: "hostFile", expected: "/Users/me/.autopilot/host.json" },
-  { os: "darwin", home: "/Users/me", field: "opToken", expected: "/Users/me/.autopilot/op-token" },
   { os: "darwin", home: "/Users/me", field: "skillsDir", expected: "/Users/me/.autopilot/skills" },
   { os: "darwin", home: "/Users/me", field: "current", expected: "/Users/me/.autopilot/current" },
   { os: "darwin", home: "/Users/me", field: "tools", expected: "/Users/me/.autopilot/tools" },

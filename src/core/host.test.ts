@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { addApiKeys, defaultHostName, hostSecretFiles, loadHost, parseSource, type Host, type HostSecretFile, type Source } from "./host.ts";
 import { hostLayout, type Layout } from "./layout.ts";
 
-const SECRETS = `"secrets": { "app_key": "op://v/key/app.pem", "claude_token": "op://v/claude/credential" }`;
+const SECRETS = `"secrets": { "app_key": "file:app-key.pem", "claude_token": "file:claude-token" }`;
 
 function writeHost(content: string): string {
   const path = join(mkdtempSync(join(tmpdir(), "autopilot-")), "host.json");
@@ -27,8 +27,8 @@ test("names the host after its short hostname unless the file names it", () => {
   assert.equal(named.name, "pi");
 });
 
-test("rejects a secret that is not a 1Password reference", () => {
-  const path = writeHost(`{ "app_id": 1, "secrets": { "app_key": "/etc/autopilot/app-key", "claude_token": "op://v/c/f" }, "owners": ["me"], "allow": [] }`);
+test("rejects a secret that is not file:<name>", () => {
+  const path = writeHost(`{ "app_id": 1, "secrets": { "app_key": "/etc/autopilot/app-key", "claude_token": "file:c" }, "owners": ["me"], "allow": [] }`);
   assert.throws(() => loadHost(path), /app_key/);
 });
 
@@ -64,8 +64,6 @@ for (const value of ["claude", "https://github.com/me/dotfiles", "github.com/me"
 
 const LINUX = hostLayout("linux", "/home/me");
 const MAC = hostLayout("darwin", "/Users/me");
-const OP_APP_KEY = "op://autopilot/github-app-private-key/app.pem";
-const OP_CLAUDE = "op://autopilot/claude-token/credential";
 
 const secretFileCases: { name: string; secrets: Host["secrets"]; layout: Layout; expected: HostSecretFile[] }[] = [
   {
@@ -86,39 +84,18 @@ const secretFileCases: { name: string; secrets: Host["secrets"]; layout: Layout;
       { secret: "claude_token", path: "/Users/me/.autopilot/secrets/claude-token" },
     ],
   },
-  { name: "1Password only", secrets: { app_key: OP_APP_KEY, claude_token: OP_CLAUDE }, layout: LINUX, expected: [{ secret: "op_token", path: "/etc/autopilot/op-token" }] },
   {
-    name: "a file and a 1Password reference",
-    secrets: { app_key: OP_APP_KEY, claude_token: "file:claude-token" },
-    layout: MAC,
-    expected: [
-      { secret: "op_token", path: "/Users/me/.autopilot/op-token" },
-      { secret: "claude_token", path: "/Users/me/.autopilot/secrets/claude-token" },
-    ],
-  },
-  {
-    name: "an API key in 1Password",
-    secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token", api_keys: { OPENAI_API_KEY: "op://v/openai/credential" } },
+    name: "API keys: files",
+    secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token", api_keys: { OPENAI_API_KEY: "file:openai_api_key" } },
     layout: LINUX,
     expected: [
-      { secret: "op_token", path: "/etc/autopilot/op-token" },
-      { secret: "app_key", path: "/etc/autopilot/secrets/app-key.pem" },
-      { secret: "claude_token", path: "/etc/autopilot/secrets/claude-token" },
-    ],
-  },
-  {
-    name: "API keys: files only",
-    secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token", api_keys: { OPENAI_API_KEY: "file:openai_api_key", GEMINI_API_KEY: "op://v/gemini/credential" } },
-    layout: LINUX,
-    expected: [
-      { secret: "op_token", path: "/etc/autopilot/op-token" },
       { secret: "app_key", path: "/etc/autopilot/secrets/app-key.pem" },
       { secret: "claude_token", path: "/etc/autopilot/secrets/claude-token" },
       { secret: "api_key:OPENAI_API_KEY", path: "/etc/autopilot/secrets/openai_api_key" },
     ],
   },
   {
-    name: "an API key file with no 1Password",
+    name: "an API key file",
     secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token", api_keys: { OPENAI_API_KEY: "file:openai_api_key" } },
     layout: MAC,
     expected: [
@@ -137,17 +114,32 @@ for (const { name, secrets, layout, expected } of secretFileCases) {
 
 const apiKeyCases: { name: string; apiKeys: Record<string, string>; valid: boolean }[] = [
   { name: "a file reference", apiKeys: { ANTHROPIC_API_KEY: "file:anthropic-api-key" }, valid: true },
-  { name: "a 1Password reference", apiKeys: { OPENAI_API_KEY: "op://v/openai/credential" }, valid: true },
   { name: "a value instead of a reference", apiKeys: { ANTHROPIC_API_KEY: "sk-ant-secret" }, valid: false },
   { name: "a name that is not an env var", apiKeys: { "anthropic-key": "file:anthropic-api-key" }, valid: false },
 ];
 
 for (const { name, apiKeys, valid } of apiKeyCases) {
   test(`api_keys: ${name}`, () => {
-    const secrets = { app_key: "op://v/key/app.pem", claude_token: "op://v/claude/credential", api_keys: apiKeys };
+    const secrets = { app_key: "file:app-key.pem", claude_token: "file:claude-token", api_keys: apiKeys };
     const path = writeHost(JSON.stringify({ app_id: 1, secrets, owners: ["me"], allow: [] }));
     if (valid) assert.deepEqual(loadHost(path).secrets.api_keys, apiKeys);
     else assert.throws(() => loadHost(path), /api_keys/);
+  });
+}
+
+const refusalCases: { name: string; secrets: Record<string, unknown>; field: string }[] = [
+  { name: "the App key", secrets: { app_key: "op://v/key/app.pem", claude_token: "file:claude-token" }, field: "secrets.app_key" },
+  { name: "the Claude token", secrets: { app_key: "file:app-key.pem", claude_token: "op://v/claude/credential" }, field: "secrets.claude_token" },
+  { name: "an API key", secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token", api_keys: { OPENAI_API_KEY: "op://v/openai/credential" } }, field: "secrets.api_keys.OPENAI_API_KEY" },
+];
+
+for (const { name, secrets, field } of refusalCases) {
+  test(`refuses a 1Password reference for ${name}, and names the field and not the value`, () => {
+    const path = writeHost(JSON.stringify({ app_id: 1, secrets, owners: ["me"], allow: [] }));
+    assert.throws(
+      () => loadHost(path),
+      (error: unknown) => error instanceof Error && /1Password is no longer supported/.test(error.message) && error.message.includes(field) && !error.message.includes("op://v/"),
+    );
   });
 }
 
@@ -163,7 +155,7 @@ const addApiKeysCases: { name: string; apiKeys?: Record<string, string>; names: 
     expected: { ANTHROPIC_API_KEY: "file:anthropic-api-key", OPENAI_API_KEY: "file:openai_api_key" },
   },
   { name: "adds several keys", names: ["A_KEY", "B_KEY"], changed: true, expected: { A_KEY: "file:a_key", B_KEY: "file:b_key" } },
-  { name: "keeps a reference that exists", apiKeys: { OPENAI_API_KEY: "op://v/openai/credential" }, names: ["OPENAI_API_KEY"], changed: false, expected: { OPENAI_API_KEY: "op://v/openai/credential" } },
+  { name: "keeps a reference that exists", apiKeys: { OPENAI_API_KEY: "file:my-openai" }, names: ["OPENAI_API_KEY"], changed: false, expected: { OPENAI_API_KEY: "file:my-openai" } },
   { name: "no name changes nothing", names: [], changed: false, expected: undefined },
 ];
 

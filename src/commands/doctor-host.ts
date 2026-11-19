@@ -82,7 +82,7 @@ function hostChecks(hostFile: string, repo: Repo | undefined, actionsSecrets: nu
         const stored = (path: string) => existsSync(path) && statSync(path).size > 0;
         const labels = (list: typeof files) => list.map((file) => secretLabel(file.secret)).join(", ");
         const missing = files.filter((file) => !stored(file.path));
-        if (missing.length === 0) return ok(`present: ${labels(files) || "none to check, the secrets are in 1Password"}`);
+        if (missing.length === 0) return ok(`present: ${labels(files)}`);
         return fail(`missing on the host: ${labels(missing)}`, `autopilot hosts add ${host.name} <ssh-target>, which pushes what the host lacks`);
       }),
     },
@@ -90,7 +90,6 @@ function hostChecks(hostFile: string, repo: Repo | undefined, actionsSecrets: nu
       name: "GitHub App key",
       run: withHost(async (host) => {
         try {
-          if (host.secrets.app_key.startsWith("op://")) return skipped("the key is in 1Password, and doctor does not call op");
           const privateKey = readSecret(host.secrets.app_key, "doctor: check the App key", noAudit);
           const { slug } = await checkAppKey(host.app_id, privateKey, "the host");
           state.github = createGitHub({ appId: host.app_id, privateKey }, noAudit);

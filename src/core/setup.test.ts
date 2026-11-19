@@ -1,14 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { checkResources, isRepoEntry, itemStored, repoFileStored, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, requiredTools, RESOURCES_PROBE, TOOLS, type HostFacts, type HostPlan } from "./setup.ts";
+import { checkResources, isRepoEntry, repoFileStored, installCommand, parseList, parseResources, parseSetupConfig, planHostSetup, RESOURCES_PROBE, TOOLS, type HostFacts, type HostPlan } from "./setup.ts";
 
 const GIB = 1024 ** 3;
 
 const validConfigs: { name: string; text: string }[] = [
   { name: "an empty file", text: "{}" },
-  { name: "every answer", text: JSON.stringify({ backend: "env", app_id: 42, app_key: "/home/me/keys/app.pem", host: "user@my-host", name: "pi", owner: "octocat", allow: ["octocat", "example-org/app"], init: ["octocat/app"], alias: "ap" }) },
-  { name: "the op backend", text: JSON.stringify({ backend: "op", app_id: 42 }) },
+  { name: "every answer", text: JSON.stringify({ app_id: 42, app_key: "/home/me/keys/app.pem", host: "user@my-host", name: "pi", owner: "octocat", allow: ["octocat", "example-org/app"], init: ["octocat/app"], alias: "ap" }) },
   { name: "the local host and no alias", text: JSON.stringify({ host: "local", alias: false }) },
 ];
 
@@ -28,7 +27,7 @@ const invalidConfigs: { name: string; value: unknown }[] = [
   { name: "an owner instead of a repo in init", value: { init: ["octocat"] } },
   { name: "alias true", value: { alias: true } },
   { name: "a bad alias name", value: { alias: "a b" } },
-  { name: "an unknown backend", value: { backend: "vault" } },
+  { name: "a backend", value: { backend: "env" } },
   { name: "an empty App key path", value: { app_key: "" } },
 ];
 
@@ -38,16 +37,9 @@ for (const { name, value } of invalidConfigs) {
   });
 }
 
-const toolCases: { backend: "env" | "op"; expected: string[] }[] = [
-  { backend: "env", expected: ["git", "ssh", "mise", "gh"] },
-  { backend: "op", expected: ["git", "ssh", "mise", "gh", "op"] },
-];
-
-for (const { backend, expected } of toolCases) {
-  test(`the ${backend} backend needs ${expected.join(", ")} on the client`, () => {
-    assert.deepEqual(requiredTools(backend), expected);
-  });
-}
+test("the client needs git, ssh, mise and gh", () => {
+  assert.deepEqual([...TOOLS], ["git", "ssh", "mise", "gh"]);
+});
 
 for (const tool of TOOLS) {
   test(`gives an install command for ${tool} on macOS and Linux`, () => {
@@ -115,9 +107,9 @@ const hostPlans: { name: string; facts: HostFacts; request?: { version?: string;
   { name: "a stopped host keeps its release", facts: { ...running, service: "inactive" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is inactive" } },
   { name: "a host in RestartSec keeps its release", facts: { ...running, service: "activating" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is activating" } },
   { name: "a macOS host that is not loaded keeps its release", facts: { ...running, release: "/Users/me/.autopilot/releases/v1.2.0", service: "not loaded" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is not loaded" } },
-  { name: "a missing token on a running host keeps its release", facts: { ...running, missingSecrets: ["op_token"] }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "missing on the host: 1Password service account token" } },
+  { name: "a missing token on a running host keeps its release", facts: { ...running, missingSecrets: ["claude_token"] }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "missing on the host: Claude token" } },
   { name: "missing secret files are all named", facts: { ...running, missingSecrets: ["app_key", "claude_token"] }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "missing on the host: GitHub App key, Claude token" } },
-  { name: "two problems are both named", facts: { ...running, missingSecrets: ["op_token"], service: "failed" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is failed; missing on the host: 1Password service account token" } },
+  { name: "two problems are both named", facts: { ...running, missingSecrets: ["claude_token"], service: "failed" }, expected: { kind: "run", version: "v1.2.0", fromCheckout: false, problem: "service is failed; missing on the host: Claude token" } },
   { name: "a stopped host moves to the version asked", facts: { ...running, service: "inactive" }, request: { version: "v2.0.0", fromCheckout: false }, expected: { kind: "run", version: "v2.0.0", fromCheckout: false, problem: "service is inactive" } },
   { name: "a stopped checkout host is not replaced by a release", facts: { ...running, release: "/opt/autopilot-0123456789ab", service: "inactive" }, expected: /checkout build 0123456789ab.*--from-checkout/ },
   { name: "a stopped checkout host is installed again from the checkout", facts: { ...running, release: "/opt/autopilot-0123456789ab", service: "inactive" }, request: { fromCheckout: true }, expected: { kind: "run", fromCheckout: true, problem: "service is inactive" } },
@@ -151,22 +143,6 @@ const repoEntries: { value: string; valid: boolean }[] = [
 for (const { value, valid } of repoEntries) {
   test(`repo entry ${JSON.stringify(value)} is ${valid ? "valid" : "invalid"}`, () => {
     assert.equal(isRepoEntry(value), valid);
-  });
-}
-
-const itemAnswers: { name: string; result: { ok: boolean; stderr: string }; stored: boolean | RegExp }[] = [
-  { name: "op finds the item", result: { ok: true, stderr: "" }, stored: true },
-  { name: "op says the item does not exist", result: { ok: false, stderr: `[ERROR] 2026/01/01 00:00:00 "github-app-private-key" isn't an item in the "autopilot" vault.` }, stored: false },
-  { name: "op is locked", result: { ok: false, stderr: "[ERROR] 2026/01/01 00:00:00 authorization prompt dismissed" }, stored: /authorization prompt dismissed/ },
-  { name: "op has no network", result: { ok: false, stderr: "[ERROR] dial tcp: lookup my.1password.com: no such host" }, stored: /no such host/ },
-  { name: "op cannot find the vault", result: { ok: false, stderr: `[ERROR] "autopilot" isn't a vault in this account.` }, stored: /isn't a vault/ },
-  { name: "op fails without a message", result: { ok: false, stderr: "" }, stored: /op item get github-app-private-key/ },
-];
-
-for (const { name, result, stored } of itemAnswers) {
-  test(`item stored: ${name}`, () => {
-    if (stored instanceof RegExp) assert.throws(() => itemStored("github-app-private-key", result), stored);
-    else assert.equal(itemStored("github-app-private-key", result), stored);
   });
 }
 

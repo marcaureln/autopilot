@@ -6,15 +6,10 @@ import type { AddressInfo } from "node:net";
 import { dirname, resolve } from "node:path";
 import { isCancel, text } from "@clack/prompts";
 import { appInstallUrl, appManifest, type CreatedApp, keyFileProblem, parseConversion, stateMatches, suggestAppName, writeFallbackKey } from "../core/app.ts";
-import { SECRETS_VAULT } from "../core/repo-secrets.ts";
-import type { Backend } from "../core/secrets.ts";
 import { appCreatedPage, appFailedPage, appStartPage } from "../web/pages.ts";
-import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, HOST_SECRETS, openInBrowser } from "./client.ts";
-import { op, opItemExists } from "./secrets.ts";
+import { APP_KEY_PATH, openInBrowser } from "./client.ts";
 
 const REPO_URL = "https://github.com/marcaureln/autopilot";
-
-export type KeyDestination = { kind: "op" } | { kind: "file"; path: string };
 
 export type CreatedAppSummary = { id: number; slug: string; keyLocation: string; installUrl: string };
 
@@ -47,31 +42,18 @@ async function freeAppName(login: string): Promise<string> {
 }
 
 // GitHub shows the private key only once, so the place for it must be ready before the App exists.
-function checkKeyDestination(destination: KeyDestination): void {
-  if (destination.kind === "file") {
-    if (destination.path === APP_KEY_PATH) {
-      if (existsSync(APP_KEY_PATH)) throw new Error(`${APP_KEY_PATH} already exists: it is the key of an App that you created before. Push it to a host with autopilot hosts add, or move it away to create another App`);
-      mkdirSync(dirname(APP_KEY_PATH), { recursive: true, mode: 0o700 });
-    }
-    const problem = keyFileProblem(destination.path);
-    if (problem) throw new Error(problem);
-    return;
+function checkKeyDestination(path: string): void {
+  if (path === APP_KEY_PATH) {
+    if (existsSync(APP_KEY_PATH)) throw new Error(`${APP_KEY_PATH} already exists: it is the key of an App that you created before. Push it to a host with autopilot hosts add, or move it away to create another App`);
+    mkdirSync(dirname(APP_KEY_PATH), { recursive: true, mode: 0o700 });
   }
-  const vault = op(["vault", "get", SECRETS_VAULT, "--format", "json"]);
-  if (!vault.ok) throw new Error(`op cannot open the vault ${SECRETS_VAULT}: ${vault.stderr}. Run autopilot setup, or pass --key-out <path>`);
-  if (opItemExists(APP_KEY_ITEM)) {
-    throw new Error(`the vault ${SECRETS_VAULT} already has ${APP_KEY_ITEM}, the key of an App: to replace that App, rename the item in 1Password first, or pass --key-out <path>`);
-  }
+  const problem = keyFileProblem(path);
+  if (problem) throw new Error(problem);
 }
 
-function storeKey(destination: KeyDestination, pem: string): string {
-  if (destination.kind === "file") {
-    writeFileSync(destination.path, pem, { mode: 0o600, flag: "wx" });
-    return destination.path;
-  }
-  const result = op(["document", "create", "-", "--vault", SECRETS_VAULT, "--title", APP_KEY_ITEM, "--file-name", APP_KEY_FILE], pem);
-  if (!result.ok) throw new Error(`op could not save the private key: ${result.stderr}`);
-  return HOST_SECRETS.op.app_key;
+function storeKey(path: string, pem: string): string {
+  writeFileSync(path, pem, { mode: 0o600, flag: "wx" });
+  return path;
 }
 
 function keepKeyAfterFailure(app: CreatedApp, reason: string): string {
@@ -88,8 +70,8 @@ function send(response: ServerResponse, status: number, html: string, then?: () 
   response.end(html, then);
 }
 
-export async function appCreate(options: { keyOut?: string; backend: Backend; workflows: boolean }): Promise<CreatedAppSummary> {
-  const destination: KeyDestination = options.keyOut ? { kind: "file", path: resolve(options.keyOut) } : options.backend === "op" ? { kind: "op" } : { kind: "file", path: APP_KEY_PATH };
+export async function appCreate(options: { keyOut?: string; workflows: boolean }): Promise<CreatedAppSummary> {
+  const destination = options.keyOut ? resolve(options.keyOut) : APP_KEY_PATH;
   checkKeyDestination(destination);
   const name = await freeAppName(await askLogin());
   const state = randomBytes(16).toString("hex");

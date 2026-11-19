@@ -8,7 +8,7 @@ import { CHECKS_FAILED, checkCommandsVerdict, ciJobsVerdict, fail, formatResult,
 import { EnvironmentRefused, inspectEnvironment } from "../core/environment.ts";
 import type { HostRef } from "../core/hosts.ts";
 import type { Repo } from "../core/repo.ts";
-import { installCommand, releaseId, RELEASE_TAG, requiredTools } from "../core/setup.ts";
+import { installCommand, releaseId, RELEASE_TAG, TOOLS } from "../core/setup.ts";
 import { found, forward } from "./client.ts";
 import { doctorHost } from "./doctor-host.ts";
 import { reach, type Connection } from "./host.ts";
@@ -27,7 +27,7 @@ const message = (error: unknown): string => (error instanceof Error ? error.mess
 
 function clientChecks(): Check[] {
   return [
-    ...requiredTools("env").map((tool): Check => ({ name: tool, run: async () => (found(tool) ? ok() : fail(`${tool} is not installed`, installCommand(tool, process.platform))) })),
+    ...TOOLS.map((tool): Check => ({ name: tool, run: async () => (found(tool) ? ok() : fail(`${tool} is not installed`, installCommand(tool, process.platform))) })),
     {
       name: "gh login",
       run: async () => {

@@ -21,10 +21,6 @@ label=autopilot
 plist="$HOME/Library/LaunchAgents/$label.plist"
 job="gui/$(id -u)/$label"
 
-# Host setup writes the op token only for a host.json with op:// references.
-install_op=false
-if [ -f "$base/op-token" ] && ! command -v op >/dev/null; then install_op=true; fi
-
 step "prerequisites ($(sw_vers -productName) $(sw_vers -productVersion))"
 missing=()
 if ! command -v docker >/dev/null; then
@@ -37,7 +33,6 @@ elif ! docker compose version >/dev/null 2>&1; then
 fi
 if ! command -v brew >/dev/null; then
   command -v mise >/dev/null || missing+=("mise: https://mise.jdx.dev/installing-mise.html (or Homebrew, https://brew.sh, and setup installs it)")
-  ! $install_op || missing+=("1Password CLI: https://developer.1password.com/docs/cli/get-started/ (or Homebrew, https://brew.sh, and setup installs it)")
   git lfs version >/dev/null 2>&1 || missing+=("Git LFS: https://git-lfs.com (or Homebrew, https://brew.sh, and setup installs it)")
 fi
 if [ "${#missing[@]}" -gt 0 ]; then
@@ -49,11 +44,6 @@ if ! command -v mise >/dev/null; then
   step "mise"
   echo "INFO: mise is missing, installing it with Homebrew (https://mise.jdx.dev/installing-mise.html#homebrew)"
   brew install --quiet mise
-fi
-if $install_op; then
-  step "1password cli"
-  echo "INFO: op is missing, installing it with Homebrew (https://developer.1password.com/docs/cli/get-started/)"
-  brew install --quiet --cask 1password-cli
 fi
 if ! git lfs version >/dev/null 2>&1; then
   step "git-lfs"
@@ -77,9 +67,7 @@ node=$(tool_mise "$release" "$tools" which node)
 ln -sfn "$release" "$base/current"
 
 step "launchd agent $plist"
-op_dir=
-if command -v op >/dev/null; then op_dir="$(dirname "$(command -v op)"):"; fi
-path="$(dirname "$node"):$(dirname "$(command -v docker)"):$op_dir/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+path="$(dirname "$node"):$(dirname "$(command -v docker)"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 agent=$(cat <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
