@@ -27,7 +27,7 @@
       "minimum": 1
     },
     "secrets": {
-      "description": "Where the host reads its secrets when the service starts: file:<name> for a file in the host's secrets folder (/etc/autopilot/secrets, or ~/.autopilot/secrets on macOS), or an op:// reference that it reads with 1Password.",
+      "description": "Where the host reads its secrets when the service starts: file:<name> for a file in the host's secrets folder (/etc/autopilot/secrets, or ~/.autopilot/secrets on macOS).",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -38,12 +38,12 @@
         "app_key": {
           "description": "GitHub App private key (PEM).",
           "type": "string",
-          "pattern": "^(op://|file:[A-Za-z0-9][A-Za-z0-9._-]*$)"
+          "pattern": "^file:[A-Za-z0-9][A-Za-z0-9._-]*$"
         },
         "claude_token": {
           "description": "Claude Code OAuth token for the agent containers.",
           "type": "string",
-          "pattern": "^(op://|file:[A-Za-z0-9][A-Za-z0-9._-]*$)"
+          "pattern": "^file:[A-Za-z0-9][A-Za-z0-9._-]*$"
         },
         "api_keys": {
           "description": "Provider API keys for the OpenCode harness: env var name to reference, for example { \"ANTHROPIC_API_KEY\": \"file:anthropic-api-key\" }. Only OpenCode gets them.",
@@ -51,7 +51,7 @@
           "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]*$" },
           "additionalProperties": {
             "type": "string",
-            "pattern": "^(op://|file:[A-Za-z0-9][A-Za-z0-9._-]*$)"
+            "pattern": "^file:[A-Za-z0-9][A-Za-z0-9._-]*$"
           }
         }
       }

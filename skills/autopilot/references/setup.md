@@ -18,13 +18,12 @@ On the user's machine (the client):
 - `mise`, `curl`, `tar` for the install. `git` and `ssh`.
 - `gh`, signed in as the owner (`gh auth status`).
 - Claude Code (`claude`), on this machine or on any other, for `claude setup-token`.
-- Only to keep the secrets in 1Password (`--backend op`): the 1Password CLI `op`, signed in to the user's account (`op whoami`). If it fails, the user runs `op signin`.
 - Docker with the Compose plugin, for the agent and the checks of `autopilot init`.
 
 On the host:
 
-- Linux: systemd, [Docker Engine](https://docs.docker.com/engine/install/) with its [Compose plugin](https://docs.docker.com/compose/install/linux/), and for [rootless Docker](https://docs.docker.com/engine/security/rootless/) (the default) the rootless extras, `newuidmap` (package `uidmap`) and a systemd user session (package `dbus-user-session`). On Debian and Ubuntu, setup installs `mise` from its apt repository. It installs `op` only on a host that uses 1Password.
-- macOS: OrbStack, Colima or Docker Desktop, running (`docker info` works), with Docker Compose (Colima: `brew install docker-compose`). With Homebrew, setup installs `mise`, and `op` only on a host that uses 1Password. The Mac must not sleep, and the user must stay logged in.
+- Linux: systemd, [Docker Engine](https://docs.docker.com/engine/install/) with its [Compose plugin](https://docs.docker.com/compose/install/linux/), and for [rootless Docker](https://docs.docker.com/engine/security/rootless/) (the default) the rootless extras, `newuidmap` (package `uidmap`) and a systemd user session (package `dbus-user-session`). On Debian and Ubuntu, setup installs `mise` from its apt repository.
+- macOS: OrbStack, Colima or Docker Desktop, running (`docker info` works), with Docker Compose (Colima: `brew install docker-compose`). With Homebrew, setup installs `mise`. The Mac must not sleep, and the user must stay logged in.
 - The SSH user can run `sudo` with no password prompt (Linux). The client uses `ssh <target> <command>` with no terminal.
 
 Setup checks these and prints an install link for each missing one. It does not install Docker.
@@ -41,7 +40,7 @@ The command goes to `~/.local/bin/autopilot`. If the install prints that `~/.loc
 
 ## 3. Run the wizard
 
-If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their own terminal (user). It is interactive. It uses the default host of the hosts file if there is one, and else asks for the host. It saves the host under the host part of its SSH target. If that name is not valid (for example for `user@[fe80::1]`), it stops before it changes anything: ask the user to pass `--name <name>`. It asks for the owner, the repo and the Claude token. It asks if the agents can change GitHub Actions workflows (default: yes; see step 4). It does steps 4 to 8. With `--backend op`, it keeps the secrets in 1Password. You can run it again safely, because it fixes only what is missing. Then go to step 9 and check each result there.
+If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their own terminal (user). It is interactive. It uses the default host of the hosts file if there is one, and else asks for the host. It saves the host under the host part of its SSH target. If that name is not valid (for example for `user@[fe80::1]`), it stops before it changes anything: ask the user to pass `--name <name>`. It asks for the owner, the repo and the Claude token. It asks if the agents can change GitHub Actions workflows (default: yes; see step 4). It does steps 4 to 8. You can run it again safely, because it fixes only what is missing. Then go to step 9 and check each result there.
 
 If `setup` is not listed, or it stops on a step, do steps 4 to 8.
 
@@ -63,7 +62,7 @@ GitHub needs a click in the browser to create an App, so run `autopilot app crea
 
 ## 4. GitHub App
 
-If `autopilot --help` lists `app create`, ask the user to run `autopilot app create` (user). It creates the App through GitHub's manifest flow and saves its key in `~/.config/autopilot/app-key.pem` (mode 600). `autopilot hosts add` pushes the key from there. With `--backend op`, it saves the key in 1Password. The App gets the Workflows permission, so the agents can change files in `.github/workflows/`. A person still reviews each such pull request. To create the App without this permission, add `--no-workflows`.
+If `autopilot --help` lists `app create`, ask the user to run `autopilot app create` (user). It creates the App through GitHub's manifest flow and saves its key in `~/.config/autopilot/app-key.pem` (mode 600). `autopilot hosts add` pushes the key from there. The App gets the Workflows permission, so the agents can change files in `.github/workflows/`. A person still reviews each such pull request. To create the App without this permission, add `--no-workflows`.
 
 Otherwise, the user creates it by hand at GitHub > Settings > Developer settings > GitHub Apps > New GitHub App:
 
@@ -85,25 +84,9 @@ The host sees the permission at the next job.
 
 ## 5. Host secrets
 
-The host reads two secrets when it starts: the App key and the Claude token. By default, they are files on the host, and `autopilot hosts add` writes them in step 6. Before step 6, the user runs `claude setup-token` (user) on any machine with Claude Code. It prints a token. The user pastes it at the hidden prompt of step 6, or sets it in `CLAUDE_CODE_OAUTH_TOKEN`. Then go to step 6.
+The host reads two secrets when it starts: the App key and the Claude token. They are files on the host, and `autopilot hosts add` writes them in step 6. Before step 6, the user runs `claude setup-token` (user) on any machine with Claude Code. It prints a token. The user pastes it at the hidden prompt of step 6, or sets it in `CLAUDE_CODE_OAUTH_TOKEN`. Then go to step 6.
 
-### With 1Password (`--backend op`)
-
-The host reads its secrets from a vault named `autopilot`. The names below are fixed. The CLI reads these exact references.
-
-| Item title | Type | Field | Value |
-| --- | --- | --- | --- |
-| `github-app-private-key` | Document | file `app.pem` | The App private key |
-| `claude-token` | API Credential | `credential` | The output of `claude setup-token` |
-| `op-service-account-token` | Password | `password` | The token of the service account below |
-
-1. If `op vault get autopilot` fails, create the vault: `op vault create autopilot`.
-2. Store the App key (user): `op document create <path-to-key>.pem --vault autopilot --title github-app-private-key --file-name app.pem`. When `op item get github-app-private-key --vault autopilot` finds it, the user removes the downloaded file.
-3. The user runs `claude setup-token` (user) and saves the token in a new `claude-token` item, in the 1Password app.
-4. The user creates a service account with read access to the vault (user): `op service-account create autopilot-host --vault autopilot:read_items`. 1Password shows the token once. The user saves it in a new `op-service-account-token` item.
-5. Check the three items, with no values: `op item list --vault autopilot`.
-
-Do not read or print any of these values. By default, `autopilot secrets set` writes repo secrets to a file on the host. With `--backend op`, it writes them to the same vault, in one item per repo.
+Where the files are: `app-key.pem` and `claude-token` (and any API key) are in `/etc/autopilot/secrets` (Linux) or `~/.autopilot/secrets` (macOS), and the repo secrets are in `secrets/repos/<owner>_<repo>.env` in that folder. On Linux, root owns them and the `autopilot` group (the service) reads them: mode 640 in a 750 folder. On macOS, only the user can read them: mode 600. `autopilot secrets set` writes repo secrets to a file on the host. Do not read or print any of these values.
 
 ## 6. Host
 
@@ -121,7 +104,6 @@ It writes `host.json` if the host has none, installs the latest release and star
 
 The files are `app-key.pem` and `claude-token` in `/etc/autopilot/secrets` (Linux: owner root, group `autopilot`, mode 640) or in `~/.autopilot/secrets` (macOS: mode 600). `--owner` and `--app-id` are needed only the first time. Run it again to repair a host. Each step checks before it acts, and it does not ask again for a secret that the host has. A re-run keeps a file that exists, so a wrong secret stays on the host. To replace one, for example a wrong Claude token, remove its file (`/etc/autopilot/secrets/claude-token` on Linux, `~/.autopilot/secrets/claude-token` on macOS), then run the same `autopilot hosts add` command again. It asks only for the missing secret, writes it and restarts the service. The host name in claim comments is the short `hostname` of the host.
 
-With `--backend op`, a new `host.json` has `op://` references, and `hosts add` pushes the service account token instead. To change that token, remove `/etc/autopilot/op-token` (Linux) or `~/.autopilot/op-token` (macOS) on the host first. The references in `host.json` decide, so a host keeps its backend when you run `hosts add` again.
 
 `host.json` has one owner. To add an owner, edit `owners` in `host.json` on the host (`/etc/autopilot/host.json` on Linux, `~/.autopilot/host.json` on macOS), then run `autopilot hosts add` again.
 
@@ -147,7 +129,7 @@ If the App is not installed on that account, the command prints the install page
 
 ## 8. Onboard the repo
 
-`init` clones the repo itself, so no checkout is necessary. Its agent runs in Docker on the user's machine, so it needs the Claude token: from `CLAUDE_CODE_OAUTH_TOKEN`, else from a hidden prompt (user). With `--backend op`, it reads the `claude-token` item from step 5.
+`init` clones the repo itself, so no checkout is necessary. Its agent runs in Docker on the user's machine, so it needs the Claude token: from `CLAUDE_CODE_OAUTH_TOKEN`, else from a hidden prompt (user).
 
 ```sh
 autopilot init --repo example-org/app
@@ -169,7 +151,7 @@ Read the pull request with the user, then merge it. Its "Environment" section na
 autopilot status
 ```
 
-The service is `active` (Linux) or `running` (macOS), and `watch` lists the repo. If a log line shows `the secret file ... is missing or empty`, run `autopilot hosts add` again. If a log line shows `op read ... failed`, a 1Password item or the service account is wrong. Then create a small first issue with the `autopilot` label (see SKILL.md), and follow it with `autopilot logs`.
+The service is `active` (Linux) or `running` (macOS), and `watch` lists the repo. If a log line shows `the secret file ... is missing or empty`, run `autopilot hosts add` again. Then create a small first issue with the `autopilot` label (see SKILL.md), and follow it with `autopilot logs`.
 
 ## Use OpenCode for a role
 

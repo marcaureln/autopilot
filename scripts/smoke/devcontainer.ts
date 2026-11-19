@@ -1,4 +1,4 @@
-// Starts real dev containers the way the checks and the builder do, with no GitHub, App or 1Password.
+// Starts real dev containers the way the checks and the builder do, with no GitHub or App.
 // CI runs it on a host that `scripts/setup.sh` prepared. Usage: node scripts/smoke/devcontainer.ts
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

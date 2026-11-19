@@ -74,7 +74,7 @@ const github: GitHub = {
 const host = {
   name: "pi",
   app_id: 1,
-  secrets: { app_key: "op://v/k/f", claude_token: "op://v/c/f" },
+  secrets: { app_key: "file:k", claude_token: "file:c" },
   owners: ["owner"],
   allow: [],
   docker: "rootless" as const,

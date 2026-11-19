@@ -162,12 +162,10 @@ test("config: an existing config keeps its fields, commands and skills, drops `s
     merge: "auto",
     skills: { builder: ["/etc/autopilot/skills/a"] },
     verify: { required: ["lint", "sast"], commands: { lint: "test -s README.md" } },
-    secrets: { A: "op://autopilot/o_r/A" },
   };
   const config = JSON.parse(renderConfig(JSON.stringify(existing), { lint: "npm run lint", test: "npm test" }, ["/etc/autopilot/skills/a", "/etc/autopilot/skills/b"]));
   assert.equal(config.merge, "auto");
   assert.equal(config.stack, undefined);
-  assert.deepEqual(config.secrets, existing.secrets);
   assert.deepEqual(config.skills, { planner: ["/etc/autopilot/skills/a", "/etc/autopilot/skills/b"], builder: ["/etc/autopilot/skills/a", "/etc/autopilot/skills/b"] });
   assert.deepEqual(config.verify, { required: ["lint", "sast", "test", "deps-scan", "secrets-scan"], commands: { lint: "test -s README.md", test: "npm test" } });
 });

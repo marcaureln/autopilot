@@ -116,16 +116,6 @@
       },
       "default": {}
     },
-    "secrets": {
-      "description": "1Password references to runtime secrets, written by `autopilot secrets set --backend op`. Each one must be op://autopilot/<owner>_<repo>/<NAME> (lowercase owner and repo). The host reads the values for the verify.commands checks only. A reference here wins over a value of the same name in the repo's env file on the host.",
-      "type": "object",
-      "propertyNames": { "pattern": "^[A-Z_][A-Z0-9_]*$" },
-      "additionalProperties": {
-        "type": "string",
-        "pattern": "^op://[^/]+/[^/]+/[^/]+$"
-      },
-      "default": {}
-    },
     "limits": {
       "type": "object",
       "additionalProperties": false,

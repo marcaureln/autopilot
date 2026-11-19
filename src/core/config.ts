@@ -26,7 +26,6 @@ export type Config = {
   preview?: { command: string; url: string };
   merge: "auto" | "manual";
   risk: { high_paths: string[]; max_diff_lines: number };
-  secrets: Record<string, string>;
   limits: { fix_rounds: number; run_timeout_minutes: number };
 };
 
@@ -42,6 +41,13 @@ export function parseConfig(text: string, source: string): Config {
   }
   if (typeof data === "object" && data !== null && "stack" in data) {
     throw new Error(`Invalid config ${source}: \`stack\` is from an older autopilot. The repo's .devcontainer/ is now the environment. Run \`autopilot init\` again.`);
+  }
+  const secrets = typeof data === "object" && data !== null && "secrets" in data ? data.secrets : undefined;
+  if (typeof secrets === "object" && secrets !== null && Object.values(secrets).some((value) => typeof value === "string" && value.startsWith("op://"))) {
+    throw new Error(
+      `Invalid config ${source}: \`secrets\` holds 1Password references, and 1Password is no longer supported. ` +
+        `Set each secret again with the file backend: run \`autopilot secrets set <NAME>\` in a checkout of the repo, then remove \`secrets\` from .github/autopilot.json.`,
+    );
   }
   if (!validate(data)) {
     throw new Error(`Invalid config ${source}: ${ajv.errorsText(validate.errors, { dataVar: "config" })}`);

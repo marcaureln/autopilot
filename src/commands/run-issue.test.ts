@@ -281,25 +281,15 @@ describe("failing checks", () => {
   });
 });
 
-describe("a repo with 1Password references", () => {
-  const withSecrets = { ...HOST_CONFIG, secrets: { API_KEY: "op://autopilot/owner_app/API_KEY" } };
-  const fileHost = { ...HOST, secrets: { app_key: "file:app-key", claude_token: "file:claude-token" } };
-  const rows = [
-    { name: "a host with 1Password runs the checks", host: HOST, config: withSecrets, blocked: false },
-    { name: "a host without 1Password blocks the issue before the checks", host: fileHost, config: withSecrets, blocked: true },
-    { name: "a host without 1Password runs a repo that has no secrets", host: fileHost, config: HOST_CONFIG, blocked: false },
-  ];
-  for (const row of rows) {
-    test(row.name, async () => {
-      const world = new FakeWorld(row.config, row.host);
-      const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
-      await buildPull(world, issue);
-      await world.poll();
-      assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", row.blocked ? "autopilot:blocked" : "autopilot:working"]);
-      assert.equal(world.checkRuns, row.blocked ? 0 : 1);
-      if (row.blocked) assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^autopilot stopped: .*no 1Password.*autopilot secrets set/s);
-    });
-  }
+describe("a repo config with an op:// secret", () => {
+  test("blocks the issue before the checks, and says to set the secret again", async () => {
+    const world = new FakeWorld({ ...HOST_CONFIG, secrets: { API_KEY: "op://autopilot/owner_app/API_KEY" } });
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll();
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
+    assert.equal(world.checkRuns, 0);
+    assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^autopilot stopped: .*1Password is no longer supported.*autopilot secrets set/s);
+  });
 });
 
 describe("verify.mode ci", () => {

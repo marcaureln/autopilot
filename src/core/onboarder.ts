@@ -12,7 +12,7 @@ import { planChecks } from "./checks.ts";
 import { CONFIG_PATH, parseConfig, type Config } from "./config.ts";
 import type { Devcontainer } from "./devcontainer-cli.ts";
 import { containerName } from "./docker.ts";
-import { checkCommand, EnvironmentRefused, RUN_DIR, SECRETS_NAME, shellEnvFile, startEnvironment, stopEnvironment } from "./environment.ts";
+import { checkCommand, EnvironmentRefused, RUN_DIR, startEnvironment, stopEnvironment } from "./environment.ts";
 import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
 import {
@@ -30,8 +30,6 @@ import {
   type ValidateResult,
 } from "./onboarding.ts";
 import { ONBOARDING_BRANCH, type Repo } from "./repo.ts";
-import { refusedSecrets } from "./repo-secrets.ts";
-import { readSecret } from "./secrets.ts";
 import { prepareAgent } from "./skills.ts";
 import { pushBranch, readAgentFile, repoUrl, shallowClone, writeRepoFile } from "./workspace.ts";
 
@@ -130,18 +128,10 @@ async function validateEnvironment(setup: OnboardingSetup, config: Config): Prom
     await devcontainer.cutNetwork(up.containerId);
     const results: ValidateResult[] = [{ check: "install", outcome: "passed" }];
     const baseline: Baseline = {};
-    const refused = refusedSecrets(repo, config.secrets);
-    const own = Object.entries(config.secrets).filter(([name]) => !refused.includes(name));
-    // Lint output can go into the committed baseline, so only the test check gets the secrets, and it runs last.
     const plans = planChecks(config.verify.required, config.verify.commands).flatMap((plan) => (plan.kind === "command" ? [plan] : []));
     for (const plan of plans.toSorted((a, b) => Number(a.check === "test") - Number(b.check === "test"))) {
       say(`==> ${plan.check}: ${plan.command}`);
-      const withSecrets = plan.check === "test" && own.length > 0;
-      if (withSecrets) {
-        const secrets = Object.fromEntries(own.map(([name, reference]) => [name, readSecret(reference, "onboarding: test check", audit)]));
-        writeFileSync(join(runDir, SECRETS_NAME), shellEnvFile(secrets), { mode: 0o600, flag: "wx" });
-      }
-      const result = await devcontainer.exec(up.containerId, checkCommand(plan.command, up.workspaceFolder, withSecrets), { timeoutMs: deadline - Date.now() });
+      const result = await devcontainer.exec(up.containerId, checkCommand(plan.command, up.workspaceFolder, false), { timeoutMs: deadline - Date.now() });
       const lines = BASELINE_CHECKS.includes(plan.check) && !result.timedOut && !result.truncated ? knownFailureLines(result.output) : [];
       if (result.exit === 0 && !result.timedOut) results.push({ check: plan.check, outcome: "passed" });
       else if (lines.length > 0) {

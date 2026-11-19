@@ -1,5 +1,5 @@
 {
   "entry": ["src/cli.ts", "scripts/smoke/**"],
   "ignore": [".dependency-cruiser.cjs"],
-  "ignoreBinaries": ["op", "journalctl", "systemd-cat", "mkfifo"]
+  "ignoreBinaries": ["journalctl", "systemd-cat", "mkfifo"]
 }

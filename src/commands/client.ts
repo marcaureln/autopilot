@@ -8,21 +8,11 @@ import { CONFIG_DIR } from "../core/config-dir.ts";
 import { createGitHub, type AppInfo } from "../core/github.ts";
 import { addApiKeys, API_KEY_PREFIX, hostSecretFiles, parseHost, secretLabel, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
 import { LOCAL_TARGET, RUN_HERE } from "../core/hosts.ts";
-import { SECRETS_VAULT } from "../core/repo-secrets.ts";
-import { OP_UNAVAILABLE, readSecret, type Backend } from "../core/secrets.ts";
 import { connect, installRelease, latestRelease, must, parseTag, SERVICE, type Release, type Connection } from "./host.ts";
 
 const CLI_ROOT = new URL("../../", import.meta.url).pathname;
 const HOST_SCHEMA = "https://raw.githubusercontent.com/marcaureln/autopilot/main/schema/host.schema.json";
-export const APP_KEY_ITEM = "github-app-private-key";
-export const APP_KEY_FILE = "app.pem";
-export const CLAUDE_TOKEN_ITEM = "claude-token";
-export const OP_TOKEN_ITEM = "op-service-account-token";
-const OP_TOKEN_REFERENCE = `op://${SECRETS_VAULT}/${OP_TOKEN_ITEM}/password`;
-export const HOST_SECRETS: Record<Backend, Host["secrets"]> = {
-  env: { app_key: "file:app-key.pem", claude_token: "file:claude-token" },
-  op: { app_key: `op://${SECRETS_VAULT}/${APP_KEY_ITEM}/${APP_KEY_FILE}`, claude_token: `op://${SECRETS_VAULT}/${CLAUDE_TOKEN_ITEM}/credential` },
-};
+export const HOST_SECRETS: Host["secrets"] = { app_key: "file:app-key.pem", claude_token: "file:claude-token" };
 export const APP_KEY_PATH = join(CONFIG_DIR, "app-key.pem");
 
 export function shellQuote(arg: string): string {
@@ -111,10 +101,6 @@ export async function readClaudeToken(interactive: boolean): Promise<string> {
   return token.trim();
 }
 
-export async function clientClaudeToken(backend: Backend, interactive: boolean): Promise<string> {
-  return backend === "op" ? readSecret(HOST_SECRETS.op.claude_token, "init: token for the onboarding agent", noAudit) : readClaudeToken(interactive);
-}
-
 export async function readApiKey(name: string, interactive: boolean): Promise<string> {
   const fromEnv = process.env[name]?.trim();
   if (fromEnv) return fromEnv;
@@ -140,12 +126,12 @@ export async function missingSecrets(remote: Connection, files: HostSecretFile[]
   return missing;
 }
 
-function initialHostFile({ name, owner, appId, backend }: { name: string; owner: string; appId: number; backend: Backend }): Host {
+function initialHostFile({ name, owner, appId }: { name: string; owner: string; appId: number }): Host {
   return {
     $schema: HOST_SCHEMA,
     name,
     app_id: appId,
-    secrets: HOST_SECRETS[backend],
+    secrets: HOST_SECRETS,
     owners: [owner],
     allow: [],
     docker: "rootless",
@@ -169,7 +155,7 @@ function checkoutRelease(): Release {
 // An exit code the shell script uses for "no such file", so that other failures stay visible.
 const NOT_FOUND = 3;
 
-async function hostFile(remote: Connection, options: { owner?: string; appId?: number; backend: Backend; apiKeys: string[] }): Promise<Host> {
+async function hostFile(remote: Connection, options: { owner?: string; appId?: number; apiKeys: string[] }): Promise<Host> {
   const path = remote.layout.hostFile;
   const { code, stdout } = await remote.shell.capture(`${remote.sudo}sh -c 'test -e ${path} || exit ${NOT_FOUND}; cat ${path}'`);
   if (code === 0) {
@@ -183,14 +169,14 @@ async function hostFile(remote: Connection, options: { owner?: string; appId?: n
   }
   if (code !== NOT_FOUND) throw new Error(`autopilot could not read ${path} on the host (exit ${code}). See the message above.`);
   if (!options.owner || !options.appId) throw new Error("the host has no host.json yet: pass --owner <login> --app-id <id>");
-  const text = addApiKeys(JSON.stringify(initialHostFile({ name: remote.name, owner: options.owner, appId: options.appId, backend: options.backend }), null, 2) + "\n", options.apiKeys);
+  const text = addApiKeys(JSON.stringify(initialHostFile({ name: remote.name, owner: options.owner, appId: options.appId }), null, 2) + "\n", options.apiKeys);
   const host = parseHost(text, "the new host.json");
   console.log(`==> host.json (new, host name ${host.name})`);
   await must(remote.shell, "host.json", writeHostFile(remote, path, "644"), Buffer.from(text));
   return host;
 }
 
-export type HostSetupOptions = { owner?: string; appId?: number; version?: string; fromCheckout: boolean; backend: Backend; apiKeys: string[]; sources: SecretSources };
+export type HostSetupOptions = { owner?: string; appId?: number; version?: string; fromCheckout: boolean; apiKeys: string[]; sources: SecretSources };
 
 export async function hostSetup(target: string, options: HostSetupOptions): Promise<HostSecret[]> {
   const release: Release = options.fromCheckout ? checkoutRelease() : { kind: "github", tag: options.version ? parseTag(options.version) : await latestRelease() };
@@ -204,22 +190,9 @@ export async function hostSetup(target: string, options: HostSetupOptions): Prom
   const values: { file: HostSecretFile; value: string }[] = [];
   for (const file of missing) {
     const { secret } = file;
-    if (secret === "op_token") continue;
     const value = await (secret === "app_key" || secret === "claude_token" ? options.sources[secret]() : options.sources.api_key(secret.slice(API_KEY_PREFIX.length)));
     if (secret === "app_key") await checkAppKey(host.app_id, value, "the App key file");
     values.push({ file, value });
-  }
-
-  // setup.sh installs op and loads this token into the service only when the file exists.
-  if (missing.some((file) => file.secret === "op_token")) {
-    console.log(`==> ${secretLabel("op_token")}`);
-    let token: Buffer;
-    try {
-      token = execFileSync("op", ["read", "--no-newline", OP_TOKEN_REFERENCE], { stdio: ["ignore", "pipe", "inherit"] });
-    } catch (error) {
-      throw new Error(OP_UNAVAILABLE, { cause: error });
-    }
-    await must(remote.shell, "op token", writeHostFile(remote, remote.layout.opToken, "600"), token);
   }
 
   await installRelease(remote, release, host.docker);

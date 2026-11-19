@@ -5,8 +5,7 @@ export type HostOS = "linux" | "darwin";
 export type Layout = {
   os: HostOS;
   hostFile: string;
-  opToken: string;
-  // The env backend: one file per host secret, and repos/<owner>_<repo>.env per repo.
+  // One file per host secret, and repos/<owner>_<repo>.env per repo.
   secretsDir: string;
   skillsDir: string;
   release: (id: string) => string;
@@ -27,7 +26,6 @@ export function hostLayout(os: HostOS, home: string): Layout {
     return {
       os,
       hostFile: "/etc/autopilot/host.json",
-      opToken: "/etc/autopilot/op-token",
       secretsDir: "/etc/autopilot/secrets",
       skillsDir: "/etc/autopilot/skills",
       release: (id) => `/opt/autopilot-${id}`,
@@ -44,7 +42,6 @@ export function hostLayout(os: HostOS, home: string): Layout {
   return {
     os,
     hostFile: `${dir}/host.json`,
-    opToken: `${dir}/op-token`,
     secretsDir: `${dir}/secrets`,
     skillsDir: `${dir}/skills`,
     release: (id) => `${dir}/releases/${id}`,

@@ -4,7 +4,7 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { unwatch, watch, watched } from "./commands/watch.ts";
 import { alias } from "./commands/alias.ts";
 import { appCreate } from "./commands/app.ts";
-import { clientClaudeToken, forward, readApiKey, readAppKey, readClaudeToken, selfUpdate, type HostSetupOptions } from "./commands/client.ts";
+import { forward, readApiKey, readAppKey, readClaudeToken, selfUpdate, type HostSetupOptions } from "./commands/client.ts";
 import { doctor } from "./commands/doctor.ts";
 import { CHECKS_FAILED } from "./core/doctor.ts";
 import { doctorHost } from "./commands/doctor-host.ts";
@@ -12,7 +12,7 @@ import { init } from "./commands/init.ts";
 import { showAudit, showLogs, showStatus, startService, stopService, update } from "./commands/host.ts";
 import { findHost, hostsAdd, hostsDefault, hostsRemove, HOSTS_USAGE, listHosts, nameToSave } from "./commands/hosts.ts";
 import { run } from "./commands/run.ts";
-import { hostSecrets, parseSecretsCommand, secrets, sendSecrets } from "./commands/secrets.ts";
+import { hostSecrets, parseSecretsCommand, sendSecrets } from "./commands/secrets.ts";
 import { setup } from "./commands/setup.ts";
 import { auditLog, serviceLog } from "./core/audit.ts";
 import { runBuilder } from "./core/builder.ts";
@@ -24,7 +24,7 @@ import { API_KEY_NAME, HOST_FILE, loadHost } from "./core/host.ts";
 import type { HostRef } from "./core/hosts.ts";
 import { runPlanner } from "./core/planner.ts";
 import { detectRepo, type Repo } from "./core/repo.ts";
-import { readSecret, type Backend } from "./core/secrets.ts";
+import { readSecret } from "./core/secrets.ts";
 
 const USAGE = `Usage: autopilot <command> [options]
 
@@ -43,16 +43,15 @@ AUTOPILOT_HOST, else to the default host of the hosts file. For the target "loca
   update [--version <tag>]    Install a release from GitHub (default: the latest) and restart
 
 Commands that run on the client:
-  setup [--config <file> --yes] [--backend op]
+  setup [--config <file> --yes]
                               Set up everything in one wizard: prerequisites, the GitHub App, a host and its
                               secrets, the watched entries, a first repo and the alias. With no --host, it
                               uses the default host. It saves the host in the hosts file, under --name. Run it again to fix what is missing. --config gives the answers
-                              (schema/setup.schema.json). With --yes, setup asks nothing. With --backend op,
-                              the secrets go to 1Password
-  app create [--key-out <path> | --backend op] [--no-workflows]
+                              (schema/setup.schema.json). With --yes, setup asks nothing
+  app create [--key-out <path>] [--no-workflows]
                               Create your GitHub App in the browser (GitHub's App manifest flow). The private
                               key goes to a 0600 file: ~/.config/autopilot/app-key.pem, where hosts add finds
-                              it, or the --key-out path. With --backend op, it goes to 1Password (vault autopilot).
+                              it, or the --key-out path.
                               The App can change GitHub Actions workflows. --no-workflows leaves out that permission
   hosts                       Show the hosts of the hosts file and which one is the default
   hosts add <name> <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]
@@ -75,7 +74,6 @@ Commands that run on the client:
                               path) for the agent and for skills.planner and skills.builder. --notes adds
                               your own instructions to the prompt. With a host, also watch the repo there.
                               The agent uses the Claude token in $CLAUDE_CODE_OAUTH_TOKEN, else asks for it
-                              (with --backend op, it reads it from 1Password)
   secrets set <NAME>          Save a secret of the repo on the host (hidden prompt, or stdin). The checks
                               that run a command get it
   secrets set --from-env <file>
@@ -97,8 +95,6 @@ Options:
                        its SSH target, or the short hostname for "local")
   --config <path>      Host file, on the host (default: ${HOST_FILE}). For setup, the setup file
   --repo <owner>/<repo>  Repo of a repo command (default: the origin remote of this checkout)
-  --backend env|op     Where secrets go. env (default): files on the host. op: 1Password, with op://
-                       references in host.json and .github/autopilot.json
 
 The hosts file is ~/.config/autopilot/hosts.json ($XDG_CONFIG_HOME/autopilot/hosts.json). It holds no secret.`;
 
@@ -130,7 +126,6 @@ const { values, positionals } = parseCommandLine({
     "app-id": { type: "string" },
     "from-checkout": { type: "boolean", default: false },
     repo: { type: "string" },
-    backend: { type: "string" },
     "from-env": { type: "string" },
     "actions-secrets": { type: "string" },
     skill: { type: "string", multiple: true, default: [] },
@@ -161,13 +156,7 @@ function hostSetupOptions(): HostSetupOptions {
     claude_token: () => readClaudeToken(interactive),
     api_key: (name: string) => readApiKey(name, interactive),
   };
-  return { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"], backend: secretsBackend(), apiKeys: values["api-key"], sources };
-}
-
-function secretsBackend(): Backend {
-  const backend = values.backend ?? "env";
-  if (backend !== "env" && backend !== "op") throw new Error(`--backend ${backend} is not a backend: env (the default) or op`);
-  return backend;
+  return { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"], apiKeys: values["api-key"], sources };
 }
 
 function optionalRepo(): Repo | undefined {
@@ -254,20 +243,15 @@ async function main(): Promise<void> {
       await update(hostFile, values.version);
       break;
     case "init": {
-      const backend = secretsBackend();
-      await init({ repo: targetRepo(), host: selectedHost()?.target, skills: values.skill, notesFile: values.notes, claudeToken: () => clientClaudeToken(backend, process.stdin.isTTY) });
+      await init({ repo: targetRepo(), host: selectedHost()?.target, skills: values.skill, notesFile: values.notes, claudeToken: () => readClaudeToken(process.stdin.isTTY) });
       break;
     }
     case "secrets": {
       const command = parseSecretsCommand(positionals.slice(1), values["from-env"]);
-      if (secretsBackend() === "op") {
-        await secrets(command, targetRepo());
-        break;
-      }
       const target = selectedHost()?.target;
       // `import` is what the client sends: it always runs here, on the host.
       if (target && command.action !== "import") process.exitCode = await sendSecrets(target, command, targetRepo());
-      else if (!existsSync(hostFile)) throw new Error("the env backend keeps the secrets on a host: add a host with autopilot hosts add, or pass --host");
+      else if (!existsSync(hostFile)) throw new Error("autopilot keeps the secrets on a host: add a host with autopilot hosts add, or pass --host");
       else await hostSecrets(command, targetRepo(), auditLog);
       break;
     }
@@ -289,7 +273,7 @@ async function main(): Promise<void> {
       break;
     }
     case "setup":
-      await setup({ configFile: values.config, yes: values.yes, host: values.host, name: values.name, version: values.version, fromCheckout: values["from-checkout"], backend: values.backend === undefined ? undefined : secretsBackend(), appKey: values["app-key"] });
+      await setup({ configFile: values.config, yes: values.yes, host: values.host, name: values.name, version: values.version, fromCheckout: values["from-checkout"], appKey: values["app-key"] });
       break;
     case "doctor":
       process.exitCode = await doctor({ hostFile, host: selectedHost, repo: optionalRepo() });
@@ -301,8 +285,8 @@ async function main(): Promise<void> {
       break;
     }
     case "app":
-      if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path> | --backend op] [--no-workflows]");
-      await appCreate({ keyOut: values["key-out"], backend: secretsBackend(), workflows: !values["no-workflows"] });
+      if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path>] [--no-workflows]");
+      await appCreate({ keyOut: values["key-out"], workflows: !values["no-workflows"] });
       break;
     case "self-update":
       await selfUpdate(values.version);
