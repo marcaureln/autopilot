@@ -72,7 +72,7 @@ export function found(tool: string): boolean {
   return spawnSync("sh", ["-c", `command -v ${tool}`], { stdio: "ignore" }).status === 0;
 }
 
-const noAudit: Audit = () => {};
+export const noAudit: Audit = () => {};
 
 export async function checkAppKey(appId: number, privateKey: string, where: string): Promise<string> {
   return createGitHub({ appId, privateKey }, noAudit)

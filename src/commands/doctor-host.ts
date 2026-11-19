@@ -1,16 +1,15 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { auditLog } from "../core/audit.ts";
 import { parseWatchEntry } from "../core/allow.ts";
-import { grypeDbFresh, grypeDbStatus, GRYPE_DB_UPDATE_COMMAND, GRYPE_DB_VOLUME, GRYPE_IMAGE } from "../core/checks.ts";
+import { GRYPE_DB_VOLUME, GRYPE_IMAGE } from "../core/checks.ts";
 import { diskVerdict, fail, memoryVerdict, ok, quotaVerdict, runDoctor, skipped, warn, workflowSecretsVerdict, type Check, type Verdict } from "../core/doctor.ts";
 import { createGitHub, type GitHub } from "../core/github.ts";
-import { hostSecretFiles, loadHost, SECRET_LABELS, type Host } from "../core/host.ts";
+import { hostSecretFiles, loadHost, secretLabel, type Host } from "../core/host.ts";
 import { LOCAL_LAYOUT } from "../core/layout.ts";
 import type { Repo } from "../core/repo.ts";
 import { readSecret } from "../core/secrets.ts";
 import { parseResources, RESOURCES_PROBE } from "../core/setup.ts";
-import { checkAppKey } from "./client.ts";
+import { checkAppKey, noAudit } from "./client.ts";
 import { serviceState } from "./host.ts";
 
 type State = { host?: Host; github?: GitHub; installation?: number; repoInstallation?: number };
@@ -34,7 +33,7 @@ function dockerAnswers(args: string[]): { ok: boolean; output: string } {
 
 const probeResources = () => parseResources(execFileSync("sh", ["-c", RESOURCES_PROBE], { encoding: "utf8" }));
 
-export function hostChecks(hostFile: string, repo: Repo | undefined, actionsSecrets: number | undefined): Check[] {
+function hostChecks(hostFile: string, repo: Repo | undefined, actionsSecrets: number | undefined): Check[] {
   const state: State = {};
   const withHost = (run: (host: Host) => Promise<Verdict>) => async (): Promise<Verdict> => (state.host ? run(state.host) : skipped("no valid host file"));
   const withApp = (run: (host: Host, github: GitHub) => Promise<Verdict>) => async (): Promise<Verdict> => (state.host && state.github ? run(state.host, state.github) : skipped("no working App key"));
@@ -81,7 +80,7 @@ export function hostChecks(hostFile: string, repo: Repo | undefined, actionsSecr
       run: withHost(async (host) => {
         const files = hostSecretFiles(host.secrets, LOCAL_LAYOUT);
         const stored = (path: string) => existsSync(path) && statSync(path).size > 0;
-        const labels = (list: typeof files) => list.map((file) => SECRET_LABELS[file.secret]).join(", ");
+        const labels = (list: typeof files) => list.map((file) => secretLabel(file.secret)).join(", ");
         const missing = files.filter((file) => !stored(file.path));
         if (missing.length === 0) return ok(`present: ${labels(files) || "none to check, the secrets are in 1Password"}`);
         return fail(`missing on the host: ${labels(missing)}`, `autopilot hosts add ${host.name} <ssh-target>, which pushes what the host lacks`);
@@ -91,9 +90,10 @@ export function hostChecks(hostFile: string, repo: Repo | undefined, actionsSecr
       name: "GitHub App key",
       run: withHost(async (host) => {
         try {
-          const privateKey = readSecret(host.secrets.app_key, "doctor: check the App key", auditLog);
+          if (host.secrets.app_key.startsWith("op://")) return skipped("the key is in 1Password, and doctor does not call op");
+          const privateKey = readSecret(host.secrets.app_key, "doctor: check the App key", noAudit);
           const slug = await checkAppKey(host.app_id, privateKey, "the host");
-          state.github = createGitHub({ appId: host.app_id, privateKey }, auditLog);
+          state.github = createGitHub({ appId: host.app_id, privateKey }, noAudit);
           return ok(`App ${slug}`);
         } catch (error) {
           return fail(error instanceof Error ? error.message : String(error), `autopilot hosts add ${host.name} <ssh-target> --app-key <pem file>`);
@@ -139,12 +139,11 @@ export function hostChecks(hostFile: string, repo: Repo | undefined, actionsSecr
   checks.push(
     {
       name: "Grype database",
-      run: withHost(async (host) => {
-        // docker run would create a missing volume, and doctor changes nothing.
-        if (!dockerAnswers(["image", "inspect", GRYPE_IMAGE]).ok || !dockerAnswers(["volume", "inspect", GRYPE_DB_VOLUME]).ok) return skipped("the host has no Grype image or database yet: the first dependency scan fetches them");
-        const status = await grypeDbStatus(host.limits, auditLog);
-        return grypeDbFresh(status, Date.now()) ? ok() : warn("the Grype database is missing or older than 48 hours", GRYPE_DB_UPDATE_COMMAND);
-      }),
+      run: async () => {
+        // docker run would create a missing volume, and the status command needs a container: doctor changes nothing.
+        const present = dockerAnswers(["image", "inspect", GRYPE_IMAGE]).ok && dockerAnswers(["volume", "inspect", GRYPE_DB_VOLUME]).ok;
+        return present ? ok("image and database volume present, freshness not checked") : skipped("the host has no Grype image or database yet: the first dependency scan fetches them");
+      },
     },
     {
       name: "GitHub rate limit",

@@ -172,12 +172,14 @@ async function repoSection(repo: Repo): Promise<number> {
       name: ".devcontainer",
       run: withDir(async (dir) => {
         if (!existsSync(join(dir, ".devcontainer")) && !existsSync(join(dir, ".devcontainer.json"))) return fail(`${name} has no .devcontainer/`, `autopilot init --repo ${name}`);
+        const guardrailsFix = "change .devcontainer/ so that it passes the guardrails above, then commit it";
+        const refused = (problems: string[]) => fail(problems.map((problem) => `- ${problem}`).join("\n"), guardrailsFix);
         try {
           const { problems } = await inspectEnvironment(cliDevcontainer, realpathSync(dir), "autopilot-doctor");
-          return problems.length === 0 ? ok() : fail(problems.map((problem) => `- ${problem}`).join("\n"), "change .devcontainer/ so that it passes the guardrails above, then commit it");
+          return problems.length === 0 ? ok() : refused(problems);
         } catch (error) {
           if (!(error instanceof EnvironmentRefused)) throw error;
-          return fail(error.problems.map((problem) => `- ${problem}`).join("\n"), "change .devcontainer/ so that it passes the guardrails above, then commit it");
+          return refused(error.problems);
         }
       }),
     },
