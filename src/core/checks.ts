@@ -30,7 +30,7 @@ const GRYPE_ENV = { GRYPE_DB_CACHE_DIR: "/cache", GRYPE_CHECK_FOR_APP_UPDATE: "f
 // Anchore builds a new Grype database each day. On a Raspberry Pi its download and import take about
 // 4.5 minutes, so the host updates it between jobs, and a job updates it only when it is missing or old.
 const GRYPE_DB_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const GRYPE_DB_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+export const GRYPE_DB_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 
 // The containers run as root on files the host user owns.
 const GIT_SAFE_DIRECTORY = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.directory", GIT_CONFIG_VALUE_0: "*" };

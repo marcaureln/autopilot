@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Config } from "./config.ts";
-import { checkCommandsVerdict, ciJobsVerdict, diskVerdict, fail, formatResult, labelsVerdict, memoryBytes, memoryVerdict, missingCiJobs, ok, quotaVerdict, releaseVerdict, runDoctor, skipped, warn, workflowJobNames, workflowSecretsVerdict, type Check, type Verdict } from "./doctor.ts";
+import { checkCommandsVerdict, ciJobsVerdict, diskVerdict, fail, formatResult, grypeDbVerdict, labelsVerdict, memoryBytes, memoryVerdict, missingCiJobs, ok, quotaVerdict, releaseVerdict, runDoctor, skipped, warn, workflowJobNames, workflowSecretsVerdict, type Check, type Verdict } from "./doctor.ts";
 import { LABELS } from "./state.ts";
 
 const GIB = 1024 ** 3;
@@ -151,4 +151,21 @@ for (const { name, canChange, secrets, status } of secretsCases) {
   test(`workflow secrets verdict: ${name}`, () => {
     assert.equal(workflowSecretsVerdict(canChange, secrets).status, status);
   });
+}
+
+const grypeNow = Date.parse("2026-11-16T12:00:00Z");
+const ended = (at: string, name: string, exit: number) => `{"at":"${at}","event":"container.ended","name":"${name}","exit":${exit},"timed_out":false,"duration_seconds":270}`;
+const noUpdate = warn("the audit trail has no successful Grype database update", "autopilot start: the service updates the database when it is idle");
+const grypeCases: { name: string; lines: string[]; verdict: Verdict }[] = [
+  { name: "an update 3 h ago", lines: [ended("2026-11-16T09:00:00Z", "autopilot-grype-db", 0)], verdict: ok("updated 3 h ago") },
+  { name: "an update 20 min ago", lines: [ended("2026-11-16T11:40:00Z", "autopilot-grype-db", 0)], verdict: ok("updated less than 1 h ago") },
+  { name: "the latest of two updates counts", lines: [ended("2026-11-14T09:00:00Z", "autopilot-grype-db", 0), ended("2026-11-16T07:00:00Z", "autopilot-grype-db", 0)], verdict: ok("updated 5 h ago") },
+  { name: "a failed update does not count", lines: [ended("2026-11-16T09:00:00Z", "autopilot-grype-db", 1), ended("2026-11-16T01:00:00Z", "autopilot-grype-db", 0)], verdict: ok("updated 11 h ago") },
+  { name: "other events do not count", lines: [ended("2026-11-16T09:00:00Z", "autopilot-grype-db-status", 0), '{"at":"2026-11-16T09:00:00Z","event":"pr.merged"}'], verdict: noUpdate },
+  { name: "no event", lines: [], verdict: noUpdate },
+  { name: "an update 50 h ago", lines: [ended("2026-11-14T10:00:00Z", "autopilot-grype-db", 0)], verdict: fail("the Grype database was last updated 50 h ago, and the limit is 48 h", "autopilot start, then read autopilot logs if the update fails") },
+];
+
+for (const { name, lines, verdict } of grypeCases) {
+  test(`grype database verdict: ${name}`, () => assert.deepEqual(grypeDbVerdict(lines, grypeNow), verdict));
 }

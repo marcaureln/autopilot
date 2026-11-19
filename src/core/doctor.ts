@@ -1,5 +1,6 @@
 import type { Config } from "./config.ts";
-import { planChecks } from "./checks.ts";
+import { GRYPE_DB_MAX_AGE_MS, planChecks } from "./checks.ts";
+import { containerName } from "./docker.ts";
 import type { Quota } from "./github.ts";
 import { GIB, MIN_DISK, RELEASE_TAG } from "./setup.ts";
 import { LABELS } from "./state.ts";
@@ -156,4 +157,23 @@ export function workflowSecretsVerdict(canChangeWorkflows: boolean, actionsSecre
     `the App can change workflows and the repo has ${actionsSecrets} Actions secrets: a changed workflow runs with them before review`,
     "move the secrets to a GitHub Environment with required reviewers (Settings, Environments), and name that environment in the jobs that need them",
   );
+}
+
+// The host and the jobs both update the database in a container of this name. They write its exit to the audit trail.
+const HOUR_MS = 60 * 60 * 1000;
+const GRYPE_DB_UPDATE_CONTAINER = containerName("grype-db");
+
+export function grypeDbVerdict(auditLines: string[], now: number): Verdict {
+  const updates = auditLines
+    .filter((line) => line.startsWith("{"))
+    .map((line): { at?: string; event?: string; name?: string; exit?: number } => JSON.parse(line))
+    .filter((entry) => entry.event === "container.ended" && entry.name === GRYPE_DB_UPDATE_CONTAINER && entry.exit === 0)
+    .map((entry) => Date.parse(entry.at ?? ""))
+    .filter((time) => !Number.isNaN(time));
+  if (updates.length === 0) return warn("the audit trail has no successful Grype database update", "autopilot start: the service updates the database when it is idle");
+  const ageMs = now - Math.max(...updates);
+  const hours = Math.floor(ageMs / HOUR_MS);
+  const age = hours < 1 ? "less than 1 h" : `${hours} h`;
+  if (ageMs >= GRYPE_DB_MAX_AGE_MS) return fail(`the Grype database was last updated ${age} ago, and the limit is ${GRYPE_DB_MAX_AGE_MS / HOUR_MS} h`, "autopilot start, then read autopilot logs if the update fails");
+  return ok(`updated ${age} ago`);
 }
