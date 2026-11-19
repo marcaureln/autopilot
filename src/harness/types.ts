@@ -5,7 +5,7 @@ export type Credentials = { claudeToken: string; apiKeys: Record<string, string>
 
 export type Harness = {
   // docker/<name>/: the Dockerfile of the agent image, its managed config, and feature/ for the dev container.
-  dir: string;
+  dockerDir: string;
   // Hashed into the image tag: list every file the build reads.
   imageFiles: string[];
   // Must match the id in feature/devcontainer-feature.json.

@@ -15,9 +15,9 @@ export const HARNESSES: Record<Agent["harness"], Harness> = { claude, opencode }
 
 export async function agentImage(harness: Harness): Promise<string> {
   const hash = createHash("sha256");
-  for (const file of harness.imageFiles) hash.update(readFileSync(join(harness.dir, file)));
-  const tag = `autopilot-${basename(harness.dir)}:${hash.digest("hex").slice(0, 12)}`;
-  await ensureImage(tag, harness.dir);
+  for (const file of harness.imageFiles) hash.update(readFileSync(join(harness.dockerDir, file)));
+  const tag = `autopilot-${basename(harness.dockerDir)}:${hash.digest("hex").slice(0, 12)}`;
+  await ensureImage(tag, harness.dockerDir);
   return tag;
 }
 
@@ -68,7 +68,7 @@ export async function runAgent(job: ImageRun): Promise<void> {
 export function devcontainerSetup(harness: Harness, jobDir: string, runDir: string, skillsDir: string, configDir: string | undefined): { mounts: Mount[]; feature: AgentFeature } {
   return {
     mounts: [{ source: runDir, target: RUN_DIR, readonly: true }, harness.managedConfig, ...harness.mounts(skillsDir, configDir, jobDir)],
-    feature: { id: harness.featureId, source: join(harness.dir, "feature"), version: harness.version() },
+    feature: { id: harness.featureId, source: join(harness.dockerDir, "feature"), version: harness.version() },
   };
 }
 

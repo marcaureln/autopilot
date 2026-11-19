@@ -6,7 +6,7 @@ import type { Harness } from "./types.ts";
 const DIR = new URL("../../docker/opencode/", import.meta.url).pathname;
 
 export const opencode: Harness = {
-  dir: DIR,
+  dockerDir: DIR,
   imageFiles: ["Dockerfile", "opencode.json", "feature/install.sh"],
   featureId: "autopilot-opencode",
   version() {
