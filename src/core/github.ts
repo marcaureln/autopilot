@@ -95,7 +95,6 @@ export type GitHub = {
   appLogin(): Promise<string>;
   findInstallation(entry: WatchEntry): Promise<number | undefined>;
   listRepos(installationId: number, owner: string): Promise<Repo[]>;
-  // The issues and pull requests that match a search query, in every repo the installation can read.
   // GitHub allows 30 searches per minute.
   searchIssues(installationId: number, query: string): Promise<FoundIssue[]>;
   repo(installationId: number, repo: Repo): RepoGitHub;

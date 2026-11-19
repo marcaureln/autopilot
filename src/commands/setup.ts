@@ -261,7 +261,7 @@ async function setUpHost(options: SetupOptions, config: SetupConfig, { target, r
     state = await hostState(remote);
     const after = planHostSetup(factsOf(state), options);
     if (after.kind !== "ready") throw new Error(`host setup ran, but the host is not ready: service ${state.service}`);
-    const secrets = pushed.length > 0 ? `, pushed ${pushed.map((secret) => secretLabel(secret)).join(", ")}` : "";
+    const secrets = pushed.length > 0 ? `, pushed ${pushed.map(secretLabel).join(", ")}` : "";
     record("Host setup", "done", `${state.release}, service ${state.service}${secrets}`);
   }
   const host = state.host;

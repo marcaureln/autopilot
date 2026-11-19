@@ -119,7 +119,7 @@ function releaseId(link: string): string {
 export function planHostSetup(facts: HostFacts, request: { version?: string; fromCheckout: boolean }): HostPlan {
   const problems = [
     ...(["active", "running"].includes(facts.service) ? [] : [`service is ${facts.service}`]),
-    ...(facts.missingSecrets.length > 0 ? [`missing on the host: ${facts.missingSecrets.map((secret) => secretLabel(secret)).join(", ")}`] : []),
+    ...(facts.missingSecrets.length > 0 ? [`missing on the host: ${facts.missingSecrets.map(secretLabel).join(", ")}`] : []),
   ];
   if (facts.hasHost && facts.release !== undefined && problems.length === 0) return { kind: "ready" };
   if (!facts.hasHost || facts.release === undefined) return { kind: "run", ...request };

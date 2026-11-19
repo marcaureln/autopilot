@@ -23,7 +23,7 @@ const validate = ajv.compile<PlannerResult>(schema);
 
 // A planned path ends up in a backtick span of the spec comment, where plannedPaths reads it back. A
 // backtick or a line break in a path would let it show a different path there than the gate judged.
-export function isCleanPath(path: string): boolean {
+function isCleanPath(path: string): boolean {
   return !/[`\p{Cc}]/u.test(path) && !path.startsWith("/") && !path.split("/").includes("..");
 }
 

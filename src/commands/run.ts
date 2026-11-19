@@ -635,7 +635,6 @@ async function watchedInstallations(loop: Loop, state: LoopState): Promise<Insta
   return state.watched.installations;
 }
 
-// Starts the jobs and returns without waiting for them: see `drain`.
 export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
   if (rateLimited(state)) return;
   const { github, host, log } = loop;

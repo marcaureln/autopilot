@@ -38,7 +38,7 @@ export function secretLabel(secret: HostSecret): string {
 // Same pattern as the property names of secrets.api_keys in the host schema.
 export const API_KEY_NAME = /^[A-Z][A-Z0-9_]*$/;
 
-// Adds each name that api_keys lacks, with a file reference. Returns the text itself when nothing changes.
+// Returns the text itself when nothing changes.
 export function addApiKeys(text: string, names: string[]): string {
   const data: { secrets: { api_keys?: Record<string, string> } } = JSON.parse(text);
   const missing = names.filter((name) => !Object.hasOwn(data.secrets.api_keys ?? {}, name));

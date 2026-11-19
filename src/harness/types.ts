@@ -15,7 +15,6 @@ export type Harness = {
   managedConfig: Mount;
   // The agent runs as root in both places. jobDir is a host folder of this job, for files to mount.
   mounts(skillsDir: string, configDir: string | undefined, jobDir: string): Mount[];
-  // The jobs check it before they clone the repo or build its dev container.
   missingCredential(credentials: Credentials): string | undefined;
   secretEnv(credentials: Credentials): Record<string, string>;
   // Not secret: docker run passes it as arguments, which the process list shows.
