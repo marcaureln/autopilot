@@ -41,7 +41,7 @@ The command goes to `~/.local/bin/autopilot`. If the install prints that `~/.loc
 
 ## 3. Run the wizard
 
-If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their own terminal (user). It is interactive. It uses the default host of the hosts file if there is one, and else asks for the host. It saves the host under the host part of its SSH target. If that name is not valid (for example for `user@[fe80::1]`), it stops before it changes anything: ask the user to pass `--name <name>`. It asks for the owner, the repo and the Claude token. It does steps 4 to 8. With `--backend op`, it keeps the secrets in 1Password. You can run it again safely, because it fixes only what is missing. Then go to step 9 and check each result there.
+If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their own terminal (user). It is interactive. It uses the default host of the hosts file if there is one, and else asks for the host. It saves the host under the host part of its SSH target. If that name is not valid (for example for `user@[fe80::1]`), it stops before it changes anything: ask the user to pass `--name <name>`. It asks for the owner, the repo and the Claude token. It asks if the agents can change GitHub Actions workflows (default: yes; see step 4). It does steps 4 to 8. With `--backend op`, it keeps the secrets in 1Password. You can run it again safely, because it fixes only what is missing. Then go to step 9 and check each result there.
 
 If `setup` is not listed, or it stops on a step, do steps 4 to 8.
 
@@ -59,19 +59,29 @@ Put the answers in a file ([schema](../../../schema/setup.schema.json)), then ru
 }
 ```
 
-GitHub needs a click in the browser to create an App, so run `autopilot app create` first. For an App that you already have, set `app_key` to the path of its `.pem` file. Give the Claude token in `CLAUDE_CODE_OAUTH_TOKEN`. The file never holds a secret value.
+GitHub needs a click in the browser to create an App, so run `autopilot app create` first. For an App that you already have, set `app_key` to the path of its `.pem` file. Set `workflows` to `false` if the agents must not change GitHub Actions workflows. Give the Claude token in `CLAUDE_CODE_OAUTH_TOKEN`. The file never holds a secret value.
 
 ## 4. GitHub App
 
-If `autopilot --help` lists `app create`, ask the user to run `autopilot app create` (user). It creates the App through GitHub's manifest flow and saves its key in `~/.config/autopilot/app-key.pem` (mode 600). `autopilot hosts add` pushes the key from there. With `--backend op`, it saves the key in 1Password.
+If `autopilot --help` lists `app create`, ask the user to run `autopilot app create` (user). It creates the App through GitHub's manifest flow and saves its key in `~/.config/autopilot/app-key.pem` (mode 600). `autopilot hosts add` pushes the key from there. With `--backend op`, it saves the key in 1Password. The App gets the Workflows permission, so the agents can change files in `.github/workflows/`. A person still reviews each such pull request. To create the App without this permission, add `--no-workflows`.
 
 Otherwise, the user creates it by hand at GitHub > Settings > Developer settings > GitHub Apps > New GitHub App:
 
 - Name: `<login>-autopilot`.
 - Webhook: off (clear "Active"). autopilot polls GitHub.
-- Repository permissions: Contents read and write, Issues read and write, Pull requests read and write, Commit statuses read and write, Metadata read.
+- Repository permissions: Contents read and write, Issues read and write, Pull requests read and write, Commit statuses read and write, Metadata read. Add Workflows read and write to let the agents change GitHub Actions workflows.
 - Where it can be installed: "Only on this account", or "Any account" to allow organizations.
 - After the creation: note the App ID, then generate a private key (a `.pem` file).
+
+### Add the Workflows permission
+
+Without the Workflows permission, autopilot does not change files in `.github/workflows/`. `autopilot setup` does not change an existing App. When the answer to its question is yes and the App does not have the permission, it shows these steps:
+
+1. Open the App settings (GitHub > Settings > Developer settings > GitHub Apps > the App), then "Permissions & events" (user).
+2. Set "Workflows" (Repository permissions) to "Read and write", then save (user).
+3. Accept the new permission on the installation page of each account where the App is installed (user). GitHub sends an email with the link.
+
+The host sees the permission at the next job.
 
 ## 5. Host secrets
 

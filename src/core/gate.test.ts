@@ -25,6 +25,16 @@ const cases: { name: string; result: Partial<PlannerResult>; expected: PlanGate 
     result: { risk: "low", planned_files: [{ path: ".github/workflows/ci.yml", status: "modified" }] },
     expected: { event: "approval_required", risk: "high", rulesRisk: "high" },
   },
+  ...(["added", "modified", "deleted"] as const).map((status) => ({
+    name: `a planned workflow that is ${status} needs approval`,
+    result: { risk: "low" as const, planned_files: [{ path: ".github/workflows/deploy.yml", status }] },
+    expected: { event: "approval_required" as const, risk: "high" as const, rulesRisk: "high" as const },
+  })),
+  {
+    name: "a planned rename out of workflows needs approval",
+    result: { risk: "low", planned_files: [{ path: "ci.yml", status: "renamed", previous_path: ".github/workflows/ci.yml" }] },
+    expected: { event: "approval_required", risk: "high", rulesRisk: "high" },
+  },
   {
     name: "the repo's own high paths count",
     result: { planned_files: [{ path: "src/billing-v2/plan.ts", status: "modified" }] },

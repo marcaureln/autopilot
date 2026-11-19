@@ -88,7 +88,7 @@ function send(response: ServerResponse, status: number, html: string, then?: () 
   response.end(html, then);
 }
 
-export async function appCreate(options: { keyOut?: string; backend: Backend }): Promise<CreatedAppSummary> {
+export async function appCreate(options: { keyOut?: string; backend: Backend; workflows: boolean }): Promise<CreatedAppSummary> {
   const destination: KeyDestination = options.keyOut ? { kind: "file", path: resolve(options.keyOut) } : options.backend === "op" ? { kind: "op" } : { kind: "file", path: APP_KEY_PATH };
   checkKeyDestination(destination);
   const name = await freeAppName(await askLogin());
@@ -106,7 +106,7 @@ export async function appCreate(options: { keyOut?: string; backend: Backend }):
       // The page carries the state, so only the first request gets it.
       if (startServed) return send(response, 404, "");
       startServed = true;
-      const manifest = appManifest(name, REPO_URL, `${origin}/callback`);
+      const manifest = appManifest(name, REPO_URL, `${origin}/callback`, options.workflows);
       return send(response, 200, appStartPage({ action: `https://github.com/settings/apps/new?state=${state}`, manifest }));
     }
     const code = url.searchParams.get("code");

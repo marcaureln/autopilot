@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import { confirm, isCancel, log, password, text } from "@clack/prompts";
 import type { Audit } from "../core/audit.ts";
 import { CONFIG_DIR } from "../core/config-dir.ts";
-import { createGitHub } from "../core/github.ts";
+import { createGitHub, type AppInfo } from "../core/github.ts";
 import { addApiKeys, API_KEY_PREFIX, hostSecretFiles, parseHost, secretLabel, type Host, type HostSecret, type HostSecretFile } from "../core/host.ts";
 import { LOCAL_TARGET, RUN_HERE } from "../core/hosts.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
@@ -74,9 +74,9 @@ export function found(tool: string): boolean {
 
 const noAudit: Audit = () => {};
 
-export async function checkAppKey(appId: number, privateKey: string, where: string): Promise<string> {
+export async function checkAppKey(appId: number, privateKey: string, where: string): Promise<AppInfo> {
   return createGitHub({ appId, privateKey }, noAudit)
-    .appSlug()
+    .app()
     .catch((error: unknown) => {
       throw new Error(`the key in ${where} does not open App ${appId}: ${error instanceof Error ? error.message : String(error)}`);
     });

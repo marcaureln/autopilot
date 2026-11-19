@@ -18,6 +18,11 @@
       "type": "integer",
       "minimum": 1
     },
+    "workflows": {
+      "description": "Let the agents change GitHub Actions workflows (.github/workflows/). A person still reviews each such pull request. Setup gives a new App the Workflows permission. For an existing App without it, setup tells you how to add it. Default: true.",
+      "type": "boolean",
+      "default": true
+    },
     "app_key": {
       "description": "Absolute path of the private key file (.pem) of the App in app_id, for the env backend. Host setup pushes it to a host that has no key. Default: ~/.config/autopilot/app-key.pem, where autopilot app create saves it.",
       "type": "string",

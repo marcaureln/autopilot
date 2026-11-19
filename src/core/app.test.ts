@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appInstallUrl, appManifest, keyFileProblem, parseConversion, stateMatches, suggestAppName, writeFallbackKey } from "./app.ts";
+import { appInstallUrl, appManifest, appSettingsUrl, keyFileProblem, parseConversion, stateMatches, suggestAppName, writeFallbackKey } from "./app.ts";
 
 const names: { login: string; attempt: number; expected: string }[] = [
   { login: "octocat", attempt: 1, expected: "octocat-autopilot" },
@@ -21,18 +21,39 @@ for (const { login, attempt, expected } of names) {
   });
 }
 
-test("the manifest makes a public App with the autopilot permissions and no webhook", () => {
-  const manifest = appManifest("octocat-autopilot", "https://example.com/autopilot", "http://127.0.0.1:4321/callback");
-  assert.deepEqual(manifest, {
-    name: "octocat-autopilot",
-    url: "https://example.com/autopilot",
-    public: true,
-    redirect_url: "http://127.0.0.1:4321/callback",
-    hook_attributes: { url: "https://example.com/autopilot", active: false },
-    default_permissions: { metadata: "read", contents: "write", issues: "write", pull_requests: "write", statuses: "write", checks: "read" },
-    default_events: [],
+const basePermissions = { metadata: "read", contents: "write", issues: "write", pull_requests: "write", statuses: "write", checks: "read" };
+
+const manifestCases: { workflows: boolean; permissions: Record<string, string> }[] = [
+  { workflows: true, permissions: { ...basePermissions, workflows: "write" } },
+  { workflows: false, permissions: basePermissions },
+];
+
+for (const { workflows, permissions } of manifestCases) {
+  test(`the manifest makes a public App with no webhook, workflows ${workflows ? "allowed" : "not allowed"}`, () => {
+    const manifest = appManifest("octocat-autopilot", "https://example.com/autopilot", "http://127.0.0.1:4321/callback", workflows);
+    assert.deepEqual(manifest, {
+      name: "octocat-autopilot",
+      url: "https://example.com/autopilot",
+      public: true,
+      redirect_url: "http://127.0.0.1:4321/callback",
+      hook_attributes: { url: "https://example.com/autopilot", active: false },
+      default_permissions: permissions,
+      default_events: [],
+    });
   });
-});
+}
+
+const settingsCases: { owner: { login: string; type: string } | undefined; expected: string }[] = [
+  { owner: { login: "octocat", type: "User" }, expected: "https://github.com/settings/apps/octocat-autopilot" },
+  { owner: { login: "octo-org", type: "Organization" }, expected: "https://github.com/organizations/octo-org/settings/apps/octocat-autopilot" },
+  { owner: undefined, expected: "https://github.com/settings/apps/octocat-autopilot" },
+];
+
+for (const { owner, expected } of settingsCases) {
+  test(`the settings page of an App owned by ${owner?.type ?? "nobody known"}`, () => {
+    assert.equal(appSettingsUrl("octocat-autopilot", owner), expected);
+  });
+}
 
 const states: { received: string | null; expected: boolean }[] = [
   { received: "0123456789abcdef", expected: true },

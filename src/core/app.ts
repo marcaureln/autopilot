@@ -18,7 +18,7 @@ export type AppManifest = {
   public: true;
   redirect_url: string;
   hook_attributes: { url: string; active: false };
-  default_permissions: typeof APP_PERMISSIONS;
+  default_permissions: typeof APP_PERMISSIONS & { workflows?: "write" };
   default_events: [];
 };
 
@@ -35,14 +35,14 @@ export function suggestAppName(login: string, attempt: number): string {
 }
 
 // GitHub wants a hook URL in the manifest, also for an inactive hook.
-export function appManifest(name: string, homepage: string, redirectUrl: string): AppManifest {
+export function appManifest(name: string, homepage: string, redirectUrl: string, canChangeWorkflows: boolean): AppManifest {
   return {
     name,
     url: homepage,
     public: true,
     redirect_url: redirectUrl,
     hook_attributes: { url: homepage, active: false },
-    default_permissions: APP_PERMISSIONS,
+    default_permissions: canChangeWorkflows ? { ...APP_PERMISSIONS, workflows: "write" } : APP_PERMISSIONS,
     default_events: [],
   };
 }
@@ -66,6 +66,10 @@ export function parseConversion(data: unknown): CreatedApp {
     throw new Error("GitHub returned an App without id, slug, html_url or private key");
   }
   return { id: data.id, slug: data.slug, htmlUrl: data.html_url, pem: data.pem };
+}
+
+export function appSettingsUrl(slug: string, owner: { login: string; type: string } | undefined): string {
+  return owner?.type === "Organization" ? `https://github.com/organizations/${owner.login}/settings/apps/${slug}` : `https://github.com/settings/apps/${slug}`;
 }
 
 export function appInstallUrl(slug: string): string {

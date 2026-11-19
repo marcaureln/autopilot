@@ -181,6 +181,9 @@ export class FakeRepoGitHub implements RepoGitHub {
   async token(): Promise<string> {
     return "token";
   }
+  async canChangeWorkflows(): Promise<boolean> {
+    return true;
+  }
   async defaultBranch(): Promise<string> {
     return "main";
   }
@@ -319,6 +322,7 @@ export class FakeWorld {
   constructor(config: FakeConfig = HOST_CONFIG, host: Host = HOST) {
     this.repo = this.addRepo(REPO, { config });
     this.github = {
+      app: async () => ({ slug: "autopilot", settingsUrl: "https://github.com/settings/apps/autopilot", workflows: true }),
       appSlug: async () => "autopilot",
       appLogin: async () => BOT,
       findInstallation: async () => 1,
