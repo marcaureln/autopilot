@@ -5,6 +5,7 @@ import { cancel, confirm, type CANCEL_SYMBOL, intro, isCancel, log, note, outro,
 import { WATCH_ENTRY } from "../core/allow.ts";
 import type { Audit } from "../core/audit.ts";
 import { CONFIG_PATH } from "../core/config.ts";
+import type { AppInfo } from "../core/github.ts";
 import { readOptionFile } from "../core/option-file.ts";
 import { hostSecretFiles, parseHost, secretLabel, type Host, type HostSecret } from "../core/host.ts";
 import type { HostRef } from "../core/hosts.ts";
@@ -106,6 +107,19 @@ async function onePassword(options: SetupOptions): Promise<void> {
   record("1Password service account", "done", `created, token in ${SECRETS_VAULT}/${OP_TOKEN_ITEM}`);
 }
 
+function workflowsWanted(options: SetupOptions, config: SetupConfig): Promise<boolean> {
+  if (config.workflows !== undefined) return Promise.resolve(config.workflows);
+  if (options.yes) return Promise.resolve(true);
+  return answer(confirm({ message: "Let the agents change GitHub Actions workflows? A person still reviews each such pull request.", initialValue: true }));
+}
+
+async function warnMissingWorkflows(options: SetupOptions, config: SetupConfig, app: AppInfo): Promise<void> {
+  if (app.workflows || !(await workflowsWanted(options, config))) return;
+  log.warn(
+    `The App ${app.slug} cannot change GitHub Actions workflows. To allow it: open ${app.settingsUrl}/permissions, set "Workflows" to "Read and write" and save. Then accept the new permission on the installation page (GitHub sends an email with the link).`,
+  );
+}
+
 async function githubApp(options: SetupOptions, config: SetupConfig, backend: Backend, hostAppId: number | undefined): Promise<GitHubApp> {
   const localKey = config.app_key ?? options.appKey ?? (existsSync(APP_KEY_PATH) ? APP_KEY_PATH : undefined);
   const keyStored = backend === "op" ? opItemExists(APP_KEY_ITEM) : localKey !== undefined;
@@ -124,7 +138,7 @@ async function githubApp(options: SetupOptions, config: SetupConfig, backend: Ba
           }),
         );
   if (choice === "create") {
-    const app = await appCreate({ backend });
+    const app = await appCreate({ backend, workflows: await workflowsWanted(options, config) });
     record("GitHub App", "done", `created ${app.slug} (id ${app.id}). Install it on All repositories: ${app.installUrl}`);
     return { id: app.id, keyFile: backend === "env" ? app.keyLocation : undefined };
   }
@@ -138,8 +152,9 @@ async function githubApp(options: SetupOptions, config: SetupConfig, backend: Ba
       record("GitHub App", "already done", `id ${appId}. Host setup asks for its private key if the host has none`);
       return { id: appId };
     }
-    const slug = await checkAppKey(appId, readKeyFile(localKey), localKey);
-    record("GitHub App", "already done", `${slug} (id ${appId}), key in ${localKey}`);
+    const app = await checkAppKey(appId, readKeyFile(localKey), localKey);
+    record("GitHub App", "already done", `${app.slug} (id ${appId}), key in ${localKey}`);
+    await warnMissingWorkflows(options, config, app);
     return { id: appId, keyFile: localKey };
   }
   if (!keyStored) {
@@ -149,8 +164,9 @@ async function githubApp(options: SetupOptions, config: SetupConfig, backend: Ba
     if (!saved.ok) throw new Error(`op could not save the private key: ${saved.stderr}`);
   }
   const privateKey = readSecret(HOST_SECRETS.op.app_key, "setup: check the App key", noAudit);
-  const slug = await checkAppKey(appId, privateKey, "1Password");
-  record("GitHub App", keyStored ? "already done" : "done", `${slug} (id ${appId}), key in 1Password`);
+  const app = await checkAppKey(appId, privateKey, "1Password");
+  record("GitHub App", keyStored ? "already done" : "done", `${app.slug} (id ${appId}), key in 1Password`);
+  await warnMissingWorkflows(options, config, app);
   return { id: appId };
 }
 

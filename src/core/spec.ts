@@ -73,3 +73,25 @@ export function specMissingLabel(comments: Comment[], botLogin: string, owners: 
   if (!spec || !after(spec.createdAt, labeledAt) || ownerReplyAfter(comments, owners, spec)) return undefined;
   return spec;
 }
+
+const ASSESSMENT = "\n## Assessment\n";
+
+// The assessment is the last part of a spec comment, so text in the spec cannot replace it.
+export function plannedPaths(body: string): string[] {
+  const start = body.lastIndexOf(ASSESSMENT);
+  if (start === -1) return [];
+  const line = body.slice(start).split("\n").find((candidate) => candidate.startsWith("- Planned files: "));
+  return [...(line ?? "").matchAll(/`([^`]+)`/g)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
+}
+
+// The planner's `## For a person` section: the changes that autopilot cannot push.
+export function forAPerson(body: string): string | undefined {
+  const end = body.lastIndexOf(ASSESSMENT);
+  const lines = (end === -1 ? body : body.slice(0, end)).split("\n");
+  const start = lines.indexOf("## For a person");
+  if (start === -1) return undefined;
+  const rest = lines.slice(start + 1);
+  const next = rest.findIndex((line) => line.startsWith("## "));
+  const section = (next === -1 ? rest : rest.slice(0, next)).join("\n").trim();
+  return section === "" ? undefined : section;
+}

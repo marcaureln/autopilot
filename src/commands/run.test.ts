@@ -21,6 +21,7 @@ function repoWith(issues: Issue[]): RepoGitHub {
     commentEditors: unused,
     provenance: unused,
     token: unused,
+    canChangeWorkflows: unused,
     defaultBranch: unused,
     isEmpty: unused,
     lastUnlabeled: unused,
@@ -56,6 +57,7 @@ function searchFindsAppA(query: string): FoundIssue[] {
 }
 
 const github: GitHub = {
+  app: unused,
   appSlug: async () => "autopilot",
   appLogin: async () => "autopilot[bot]",
   findInstallation: async (entry) => (entry.owner === "owner" || entry.owner === "org" ? 1 : undefined),

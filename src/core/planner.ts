@@ -21,6 +21,12 @@ const RESULT_PATH = ".autopilot/result.json";
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile<PlannerResult>(schema);
 
+// A planned path ends up in a backtick span of the spec comment, where plannedPaths reads it back. A
+// backtick or a line break in a path would let it show a different path there than the gate judged.
+export function isCleanPath(path: string): boolean {
+  return !/[`\p{Cc}]/u.test(path) && !path.startsWith("/") && !path.split("/").includes("..");
+}
+
 export function parsePlannerResult(text: string): PlannerResult {
   let data: unknown;
   try {
@@ -29,6 +35,8 @@ export function parsePlannerResult(text: string): PlannerResult {
     throw new Error(`${RESULT_PATH} is not valid JSON`);
   }
   if (!validate(data)) throw new Error(`invalid ${RESULT_PATH}: ${ajv.errorsText(validate.errors, { dataVar: "result" })}`);
+  const unclean = data.planned_files.flatMap((file) => (file.status === "renamed" ? [file.path, file.previous_path] : [file.path])).find((path) => !isCleanPath(path));
+  if (unclean !== undefined) throw new Error(`invalid ${RESULT_PATH}: planned path ${JSON.stringify(unclean)} is not a clean relative path`);
   return data;
 }
 
@@ -37,10 +45,14 @@ type PlannerInput = {
   issue: { number: number; title: string; body: string };
   thread: Comment[];
   risk: Config["risk"];
+  canChangeWorkflows: boolean;
 };
 
-function plannerPrompt({ repo, issue, thread, risk }: PlannerInput): string {
+export function plannerPrompt({ repo, issue, thread, risk, canChangeWorkflows }: PlannerInput): string {
   const comments = thread.map((comment) => `**@${comment.author}** (${comment.createdAt}):\n\n${comment.body}`).join("\n\n---\n\n");
+  const forAPerson = canChangeWorkflows
+    ? ""
+    : `   - \`## For a person\`: only when the request needs a change under \`.github/workflows/\`. autopilot cannot push these files. List each such change here, and keep it out of \`## Plan\`, \`## Files\` and \`planned_files\`.\n`;
   const highPaths = risk.high_paths.length > 0 ? `\n- These repo paths: ${risk.high_paths.map((glob) => `\`${glob}\``).join(", ")}` : "";
   return `You are the planner of autopilot, a tool that turns issues into features. Another agent, the builder, implements your spec later. You plan; you do not change code.
 
@@ -64,7 +76,7 @@ ${comments || "(no comments)"}
    - \`## Plan\`: numbered steps for the builder.
    - \`## Files\`: each file to add, change, delete or rename, with one line on why.
    - A Mermaid diagram only when it makes the flow clearer.
-   When \`needs_info\` is true, the spec says what you understood and what is missing.
+${forAPerson}   When \`needs_info\` is true, the spec says what you understood and what is missing.
 3. Assess the work:
    - \`scope\`: \`too_broad\` when the work is more than one focused pull request (about ${risk.max_diff_lines} changed lines) or mixes unrelated changes; otherwise \`ok\`.
    - \`risk\`: \`high\` when the change can break security, data, money, deployments or the build; otherwise \`low\`. When unsure, say \`high\`. Deterministic rules run after you and can only raise the risk. They always rate these paths high: \`.github/**\`, \`.devcontainer/**\`, \`AGENTS.md\`, \`CLAUDE.md\`, lockfiles, package manifests, migrations, Dockerfiles, compose files, Terraform, \`.env*\`, config files, any deleted file, and paths with words such as auth, login, session, token, password, secret, security, permission, payment, billing, checkout or stripe.${highPaths}
@@ -108,7 +120,7 @@ export async function runPlanner({ github, repoGitHub, repo, host, config, issue
     const { skillsDir, claudeConfigDir } = await prepareAgent(host, config.skills[role], github, job);
 
     const promptFile = join(job, "prompt.md");
-    writeFileSync(promptFile, plannerPrompt({ repo: `${repo.owner}/${repo.name}`, issue, thread, risk: config.risk }));
+    writeFileSync(promptFile, plannerPrompt({ repo: `${repo.owner}/${repo.name}`, issue, thread, risk: config.risk, canChangeWorkflows: await repoGitHub.canChangeWorkflows() }));
 
     await runAgent({
       harness,

@@ -49,10 +49,11 @@ Commands that run on the client:
                               uses the default host. It saves the host in the hosts file, under --name. Run it again to fix what is missing. --config gives the answers
                               (schema/setup.schema.json). With --yes, setup asks nothing. With --backend op,
                               the secrets go to 1Password
-  app create [--key-out <path> | --backend op]
+  app create [--key-out <path> | --backend op] [--no-workflows]
                               Create your GitHub App in the browser (GitHub's App manifest flow). The private
                               key goes to a 0600 file: ~/.config/autopilot/app-key.pem, where hosts add finds
-                              it, or the --key-out path. With --backend op, it goes to 1Password (vault autopilot)
+                              it, or the --key-out path. With --backend op, it goes to 1Password (vault autopilot).
+                              The App can change GitHub Actions workflows. --no-workflows leaves out that permission
   hosts                       Show the hosts of the hosts file and which one is the default
   hosts add <name> <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]
             [--api-key <NAME>]... [--version <tag> | --from-checkout]
@@ -136,6 +137,7 @@ const { values, positionals } = parseCommandLine({
     notes: { type: "string" },
     remove: { type: "boolean", default: false },
     "key-out": { type: "string" },
+    "no-workflows": { type: "boolean", default: false },
     "app-key": { type: "string" },
     "api-key": { type: "string", multiple: true, default: [] },
     yes: { type: "boolean", default: false },
@@ -299,8 +301,8 @@ async function main(): Promise<void> {
       break;
     }
     case "app":
-      if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path> | --backend op]");
-      await appCreate({ keyOut: values["key-out"], backend: secretsBackend() });
+      if (positionals[1] !== "create" || positionals.length > 2) throw new Error("usage: autopilot app create [--key-out <path> | --backend op] [--no-workflows]");
+      await appCreate({ keyOut: values["key-out"], backend: secretsBackend(), workflows: !values["no-workflows"] });
       break;
     case "self-update":
       await selfUpdate(values.version);
