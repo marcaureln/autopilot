@@ -92,7 +92,7 @@ function hostChecks(hostFile: string, repo: Repo | undefined, actionsSecrets: nu
         try {
           if (host.secrets.app_key.startsWith("op://")) return skipped("the key is in 1Password, and doctor does not call op");
           const privateKey = readSecret(host.secrets.app_key, "doctor: check the App key", noAudit);
-          const slug = await checkAppKey(host.app_id, privateKey, "the host");
+          const { slug } = await checkAppKey(host.app_id, privateKey, "the host");
           state.github = createGitHub({ appId: host.app_id, privateKey }, noAudit);
           return ok(`App ${slug}`);
         } catch (error) {
