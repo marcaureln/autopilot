@@ -635,7 +635,7 @@ async function watchedInstallations(loop: Loop, state: LoopState): Promise<Insta
   return state.watched.installations;
 }
 
-export async function runOnce(loop: Loop, state: LoopState): Promise<void> {
+export async function pollOnce(loop: Loop, state: LoopState): Promise<void> {
   if (rateLimited(state)) return;
   const { github, host, log } = loop;
   let openIssues = 0;
@@ -717,7 +717,7 @@ export function changesOnly(print: (line: string) => void): Log {
 export async function run(loop: Omit<Loop, "log">, options: { once: boolean }): Promise<void> {
   const full: Loop = { ...loop, log: changesOnly(serviceLog) };
   const state = loopState();
-  await runOnce(full, state);
+  await pollOnce(full, state);
   if (options.once) return drain(state);
   for (;;) {
     if (loop.idle.due()) {
@@ -725,6 +725,6 @@ export async function run(loop: Omit<Loop, "log">, options: { once: boolean }): 
       await loop.idle.run();
     }
     await sleep(loop.host.poll_interval_seconds * 1000);
-    await runOnce(full, state);
+    await pollOnce(full, state);
   }
 }

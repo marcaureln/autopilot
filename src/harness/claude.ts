@@ -19,7 +19,7 @@ export function claudeCodeVersion(): string {
 }
 
 export const claude: Harness = {
-  dir: DIR,
+  dockerDir: DIR,
   imageFiles: ["Dockerfile", "managed-settings.json"],
   featureId: "autopilot-claude-code",
   version: claudeCodeVersion,

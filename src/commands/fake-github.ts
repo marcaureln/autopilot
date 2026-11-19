@@ -16,7 +16,7 @@ import type { FileChange } from "../core/risk.ts";
 import type { Comment } from "../core/spec.ts";
 import type { CommentEdit } from "../core/trust.ts";
 import { TRIGGER_LABEL } from "../core/state.ts";
-import { loopState, runOnce, drain, type Loop, type LoopState } from "./run.ts";
+import { loopState, pollOnce, drain, type Loop, type LoopState } from "./run.ts";
 
 export const BOT = "autopilot[bot]";
 export const OWNER = "owner";
@@ -371,7 +371,7 @@ export class FakeWorld {
   // One poll of the host: every labeled issue gets one step.
   async poll(times = 1): Promise<void> {
     for (let index = 0; index < times; index++) {
-      await runOnce(this.loop, this.state);
+      await pollOnce(this.loop, this.state);
       await drain(this.state);
     }
   }
