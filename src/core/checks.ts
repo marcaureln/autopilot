@@ -120,6 +120,9 @@ export function grypeDbUpdater(limits: Host["limits"], audit: Audit): { due: () 
   };
 }
 
+export const GRYPE_IMAGE = IMAGES["deps-scan"];
+export const GRYPE_DB_VOLUME = GRYPE_DB_CACHE.source;
+
 // Jobs that run together share the database volume: one checks and updates it at a time.
 let grypeDbLock: Promise<unknown> = Promise.resolve();
 

@@ -3,7 +3,7 @@ import { cpSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Audit } from "./audit.ts";
 import { composeProblems, devcontainerProblems, dockerfileProblems, type Resolve } from "./devcontainer.ts";
-import type { Devcontainer, Features } from "./devcontainer-cli.ts";
+import type { Configuration, Devcontainer, Features } from "./devcontainer-cli.ts";
 import type { ContainerResult, Mount } from "./docker.ts";
 import type { Host } from "./host.ts";
 import { readAgentFile, writeRepoFile } from "./workspace.ts";
@@ -142,14 +142,19 @@ export type EnvironmentOptions = {
 
 export type Started = { kind: "up"; containerId: string; workspaceFolder: string } | { kind: "failed"; result: ContainerResult };
 
-export async function startEnvironment(options: EnvironmentOptions): Promise<Started> {
-  const { devcontainer, idLabel, limits, mounts, agentFeature, audit } = options;
-  const workspace = realpathSync(options.workspace);
+export type Inspected = {
+  read: Configuration;
+  configDir: string;
+  configRel: string;
+  composeServices: Record<string, Record<string, unknown>> | undefined;
+  problems: string[];
+};
+
+// The static guardrails on the repo's .devcontainer/. Nothing starts. `workspace` is a real path.
+export async function inspectEnvironment(devcontainer: Devcontainer, workspace: string, projectName: string): Promise<Inspected> {
   const read = await devcontainer.readConfiguration(workspace, {});
   const configDir = dirname(realpathSync(read.configFile));
   const configRel = inside(configDir, workspace);
-  // The host names the compose project, so its volumes and networks never match those of another project.
-  const projectName = `autopilot-${createHash("sha256").update(idLabel).digest("hex").slice(0, 12)}`;
   if (configRel === undefined) throw new EnvironmentRefused([`devcontainer.json is outside the repo (${read.configFile})`]);
 
   const problems = devcontainerProblems(read.merged);
@@ -182,6 +187,15 @@ export async function startEnvironment(options: EnvironmentOptions): Promise<Sta
   if (context !== undefined && inside(resolvePath(context) ?? "/", workspace) === undefined) problems.push(`devcontainer.json: the build context ${context} is outside the repo`);
   const dockerfile = typeof build === "object" && build !== null && "dockerfile" in build ? build.dockerfile : read.configuration.dockerFile;
   if (typeof dockerfile === "string") readDockerfile(workspace, resolve(configDir, dockerfile), problems);
+  return { read, configDir, configRel, composeServices, problems };
+}
+
+export async function startEnvironment(options: EnvironmentOptions): Promise<Started> {
+  const { devcontainer, idLabel, limits, mounts, agentFeature, audit } = options;
+  const workspace = realpathSync(options.workspace);
+  // The host names the compose project, so its volumes and networks never match those of another project.
+  const projectName = `autopilot-${createHash("sha256").update(idLabel).digest("hex").slice(0, 12)}`;
+  const { read, configDir, configRel, composeServices, problems } = await inspectEnvironment(devcontainer, workspace, projectName);
   if (problems.length > 0) throw new EnvironmentRefused(problems);
 
   const features: Features = agentFeature === undefined ? {} : { [`./${agentFeature.id}`]: { version: agentFeature.version } };

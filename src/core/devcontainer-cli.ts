@@ -13,7 +13,7 @@ const CLI = fileURLToPath(import.meta.resolve("@devcontainers/cli/devcontainer.j
 const OUTPUT_TAIL = 16_000;
 const MAX_BUFFER = 64 * 1024 * 1024;
 
-type Configuration = {
+export type Configuration = {
   // devcontainer.json as the repo wrote it, comments removed.
   configuration: Record<string, unknown>;
   // With what the features add, such as mounts or privileges.

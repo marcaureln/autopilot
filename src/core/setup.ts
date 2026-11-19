@@ -70,9 +70,9 @@ export function parseResources(stdout: string): HostResources {
 }
 
 const ARCHES = ["x86_64", "amd64", "aarch64", "arm64"];
-const GIB = 1024 ** 3;
+export const GIB = 1024 ** 3;
 const MIN_MEMORY = 6 * GIB;
-const MIN_DISK = 20 * GIB;
+export const MIN_DISK = 20 * GIB;
 
 export type HostCheck = { errors: string[]; warnings: string[] };
 
@@ -111,7 +111,7 @@ export type HostPlan =
   | { kind: "run"; version?: string; fromCheckout: boolean; problem?: string };
 
 // A release folder is /opt/autopilot-<tag or commit> on Linux and <dir>/releases/<tag or commit> on macOS.
-function releaseId(link: string): string {
+export function releaseId(link: string): string {
   return basename(link).replace(/^autopilot-/, "");
 }
 

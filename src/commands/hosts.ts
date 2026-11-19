@@ -9,7 +9,7 @@ export const HOSTS_PATH = join(CONFIG_DIR, "hosts.json");
 
 export const HOSTS_USAGE = "usage: autopilot hosts [add <name> <ssh-target | local> | rm <name> | default <name>]";
 
-function loadHosts(dropUnknownDefault = false): HostsFile {
+export function loadHosts(dropUnknownDefault = false): HostsFile {
   return existsSync(HOSTS_PATH) ? parseHosts(readFileSync(HOSTS_PATH, "utf8"), HOSTS_PATH, dropUnknownDefault) : NO_HOSTS;
 }
 

@@ -22,6 +22,7 @@ export const BOT = "autopilot[bot]";
 export const OWNER = "owner";
 export const HOST_NAME = "pi";
 const REPO: Repo = { owner: "owner", name: "app" };
+const FULL_QUOTA = { limit: 5000, remaining: 5000, resetAt: new Date("2026-01-01T01:00:00Z") };
 
 type FakeIssue = { number: number; title: string; body: string; labels: string[]; open: boolean; author: string; createdAt: string; labeledBy: string; labeledAt: string };
 
@@ -326,6 +327,8 @@ export class FakeWorld {
       appSlug: async () => "autopilot",
       appLogin: async () => BOT,
       findInstallation: async () => 1,
+      canChangeWorkflows: async () => false,
+      rateLimit: async () => ({ core: FULL_QUOTA, search: FULL_QUOTA }),
       listRepos: async (_, owner) => this.repos.filter((candidate) => candidate.installed && candidate.repo.owner === owner).map((candidate) => candidate.repo),
       searchIssues: async (_, query) => this.search(query),
       repo: (_, repo) => {

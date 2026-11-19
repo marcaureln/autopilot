@@ -55,6 +55,8 @@ Write an issue that asks for one small change, with acceptance criteria. Add the
 
 A repo with no `.github/autopilot.json` is onboarded first: the host opens a "Set up autopilot" pull request with a dev container, the check commands and an `AGENTS.md`. Review it and merge it, then the issue continues. For an empty repo, write in the issue what to build, for example "A 2D platformer in Godot 4". `autopilot init` does the same from a checkout.
 
+If something does not work, run `autopilot doctor`. It checks your machine, the host and the repo, and prints the command that fixes each problem. It changes nothing.
+
 ## How it works
 
 ```mermaid
