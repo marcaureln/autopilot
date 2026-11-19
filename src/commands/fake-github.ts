@@ -8,10 +8,10 @@ import type { CheckResult, ChecksJob } from "../core/checks.ts";
 import { RateLimited, type FoundIssue, type GitHub, type Issue, type OnboardingPull, type Provenance, type RepoGitHub } from "../core/github.ts";
 import type { Host } from "../core/host.ts";
 import type { OnboardJob, Onboarded } from "../core/onboarder.ts";
-import { ONBOARDING_BRANCH } from "../core/onboarding.ts";
 import { issueOfBranch, type BotPull, type CheckState, type Statuses } from "../core/phase.ts";
-import type { PlannerJob, PlannerResult } from "../core/planner.ts";
-import type { Repo } from "../core/repo.ts";
+import type { PlannerJob } from "../core/planner.ts";
+import type { PlannerResult } from "../core/planner-result.ts";
+import { ONBOARDING_BRANCH, type Repo } from "../core/repo.ts";
 import type { FileChange } from "../core/risk.ts";
 import type { Comment } from "../core/spec.ts";
 import type { CommentEdit } from "../core/trust.ts";
@@ -21,7 +21,7 @@ import { loopState, runOnce, drain, type Loop, type LoopState } from "./run.ts";
 export const BOT = "autopilot[bot]";
 export const OWNER = "owner";
 export const HOST_NAME = "pi";
-export const REPO: Repo = { owner: "owner", name: "app" };
+const REPO: Repo = { owner: "owner", name: "app" };
 const FULL_QUOTA = { limit: 5000, remaining: 5000, resetAt: new Date("2026-01-01T01:00:00Z") };
 
 type FakeIssue = { number: number; title: string; body: string; labels: string[]; open: boolean; author: string; createdAt: string; labeledBy: string; labeledAt: string };
@@ -35,6 +35,7 @@ export type FakeConfig = Record<string, unknown>;
 
 export class FakeRepoGitHub implements RepoGitHub {
   config: FakeConfig | undefined;
+  empty = false;
   issues = new Map<number, FakeIssue>();
   comments: FakeComment[] = [];
   pulls: FakePull[] = [];
@@ -183,6 +184,9 @@ export class FakeRepoGitHub implements RepoGitHub {
   }
   async defaultBranch(): Promise<string> {
     return "main";
+  }
+  async isEmpty(): Promise<boolean> {
+    return this.empty;
   }
   async lastUnlabeled(): Promise<string | undefined> {
     return undefined;

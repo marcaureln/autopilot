@@ -11,8 +11,6 @@ import { readAgentFile } from "./workspace.ts";
 
 export const RESULT_PATH = ".autopilot/result.json";
 
-export const ONBOARDING_BRANCH = "autopilot/onboarding";
-
 export type OnboardingResult = {
   commands: Partial<Record<"lint" | "types" | "test", string>>;
   agents_md: string;

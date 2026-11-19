@@ -53,7 +53,7 @@ export function latestPull(pulls: BotPull[], issue: number): BotPull | undefined
 
 export type CheckState = "success" | "failure" | "error" | "pending";
 
-export type Status = { state: CheckState; description: string; at: string };
+type Status = { state: CheckState; description: string; at: string };
 
 export type Statuses = Record<string, Status>;
 

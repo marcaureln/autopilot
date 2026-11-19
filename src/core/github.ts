@@ -3,8 +3,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import type { WatchEntry } from "./allow.ts";
 import type { Audit } from "./audit.ts";
 import { checkRunState, issueOfBranch, type BotPull, type CheckState, type Statuses } from "./phase.ts";
-import type { Repo } from "./repo.ts";
-import { ONBOARDING_BRANCH } from "./onboarding.ts";
+import { ONBOARDING_BRANCH, type Repo } from "./repo.ts";
 import type { FileChange } from "./risk.ts";
 import type { Comment } from "./spec.ts";
 import type { Change, CommentEdit } from "./trust.ts";
@@ -15,9 +14,9 @@ export type FoundIssue = { repo: Repo; issue: Issue };
 
 export type Provenance = { body: Change; title?: Change; commentEdits: Map<number, CommentEdit> };
 
-export type Comparison = { behind: number; ahead: number; changes: string[] };
+type Comparison = { behind: number; ahead: number; changes: string[] };
 
-export type LabelSpec = { name: string; color: string; description: string };
+type LabelSpec = { name: string; color: string; description: string };
 
 export type OnboardingPull = { number: number; state: BotPull["state"]; closedAt: string | undefined };
 
@@ -36,6 +35,7 @@ export type RepoGitHub = {
   // refresh: a new token, for a push that comes long after the clone.
   token(refresh?: boolean): Promise<string>;
   defaultBranch(): Promise<string>;
+  isEmpty(): Promise<boolean>;
   lastUnlabeled(issue: number, label: string, actors: string[]): Promise<string | undefined>;
   userId(login: string): Promise<number>;
   botPulls(botLogin: string): Promise<BotPull[]>;
@@ -313,6 +313,16 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
     async defaultBranch() {
       const { data } = await octokit.repos.get({ owner, repo });
       return data.default_branch;
+    },
+    async isEmpty() {
+      try {
+        await octokit.repos.listCommits({ owner, repo, per_page: 1 });
+        return false;
+      } catch (error) {
+        // GitHub answers 409 "Git Repository is empty".
+        if (hasStatus(error, 409)) return true;
+        throw error;
+      }
     },
     async lastUnlabeled(issue, label, actors) {
       const events = await octokit.paginate(octokit.issues.listEvents, { ...issueParams(issue), per_page: 100 });

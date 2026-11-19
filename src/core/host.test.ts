@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultHostName, hostSecretFiles, loadHost, parseSource, type Host, type HostSecretFile, type Source } from "./host.ts";
+import { addApiKeys, defaultHostName, hostSecretFiles, loadHost, parseSource, type Host, type HostSecretFile, type Source } from "./host.ts";
 import { hostLayout, type Layout } from "./layout.ts";
 
 const SECRETS = `"secrets": { "app_key": "op://v/key/app.pem", "claude_token": "op://v/claude/credential" }`;
@@ -106,6 +106,27 @@ const secretFileCases: { name: string; secrets: Host["secrets"]; layout: Layout;
       { secret: "claude_token", path: "/etc/autopilot/secrets/claude-token" },
     ],
   },
+  {
+    name: "API keys: files only",
+    secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token", api_keys: { OPENAI_API_KEY: "file:openai_api_key", GEMINI_API_KEY: "op://v/gemini/credential" } },
+    layout: LINUX,
+    expected: [
+      { secret: "op_token", path: "/etc/autopilot/op-token" },
+      { secret: "app_key", path: "/etc/autopilot/secrets/app-key.pem" },
+      { secret: "claude_token", path: "/etc/autopilot/secrets/claude-token" },
+      { secret: "api_key:OPENAI_API_KEY", path: "/etc/autopilot/secrets/openai_api_key" },
+    ],
+  },
+  {
+    name: "an API key file with no 1Password",
+    secrets: { app_key: "file:app-key.pem", claude_token: "file:claude-token", api_keys: { OPENAI_API_KEY: "file:openai_api_key" } },
+    layout: MAC,
+    expected: [
+      { secret: "app_key", path: "/Users/me/.autopilot/secrets/app-key.pem" },
+      { secret: "claude_token", path: "/Users/me/.autopilot/secrets/claude-token" },
+      { secret: "api_key:OPENAI_API_KEY", path: "/Users/me/.autopilot/secrets/openai_api_key" },
+    ],
+  },
 ];
 
 for (const { name, secrets, layout, expected } of secretFileCases) {
@@ -127,5 +148,30 @@ for (const { name, apiKeys, valid } of apiKeyCases) {
     const path = writeHost(JSON.stringify({ app_id: 1, secrets, owners: ["me"], allow: [] }));
     if (valid) assert.deepEqual(loadHost(path).secrets.api_keys, apiKeys);
     else assert.throws(() => loadHost(path), /api_keys/);
+  });
+}
+
+const FILES = { app_key: "file:app-key.pem", claude_token: "file:claude-token" };
+
+const addApiKeysCases: { name: string; apiKeys?: Record<string, string>; names: string[]; changed: boolean; expected: Record<string, string> | undefined }[] = [
+  { name: "adds a key to a host with none", names: ["OPENAI_API_KEY"], changed: true, expected: { OPENAI_API_KEY: "file:openai_api_key" } },
+  {
+    name: "adds a key next to another",
+    apiKeys: { ANTHROPIC_API_KEY: "file:anthropic-api-key" },
+    names: ["OPENAI_API_KEY"],
+    changed: true,
+    expected: { ANTHROPIC_API_KEY: "file:anthropic-api-key", OPENAI_API_KEY: "file:openai_api_key" },
+  },
+  { name: "adds several keys", names: ["A_KEY", "B_KEY"], changed: true, expected: { A_KEY: "file:a_key", B_KEY: "file:b_key" } },
+  { name: "keeps a reference that exists", apiKeys: { OPENAI_API_KEY: "op://v/openai/credential" }, names: ["OPENAI_API_KEY"], changed: false, expected: { OPENAI_API_KEY: "op://v/openai/credential" } },
+  { name: "no name changes nothing", names: [], changed: false, expected: undefined },
+];
+
+for (const { name, apiKeys, names, changed, expected } of addApiKeysCases) {
+  test(`add API keys: ${name}`, () => {
+    const text = JSON.stringify({ app_id: 1, secrets: { ...FILES, ...(apiKeys && { api_keys: apiKeys }) }, owners: ["me"], allow: [] }, null, 2) + "\n";
+    const updated = addApiKeys(text, names);
+    assert.deepEqual(JSON.parse(updated).secrets.api_keys, expected);
+    assert.equal(updated !== text, changed);
   });
 }

@@ -9,7 +9,9 @@
     "types": "tsc",
     "lint": "oxlint",
     "test": "node --test",
-    "check": "pnpm types && pnpm lint && pnpm test"
+    "check": "pnpm types && pnpm lint && pnpm test",
+    "lint:unused": "pnpm dlx knip@6.45.1 --no-progress",
+    "lint:deps": "pnpm dlx --package dependency-cruiser@18.8.0 --package typescript@5 depcruise src --config .dependency-cruiser.cjs"
   },
   "dependencies": {
     "@clack/prompts": "1.8.1",

@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import schema from "../../schema/setup.schema.json" with { type: "json" };
-import { SECRET_LABELS, type HostSecret } from "./host.ts";
+import { secretLabel, type HostSecret } from "./host.ts";
 import type { Backend } from "./secrets.ts";
 
 export type SetupConfig = {
@@ -118,7 +118,7 @@ export function releaseId(link: string): string {
 export function planHostSetup(facts: HostFacts, request: { version?: string; fromCheckout: boolean }): HostPlan {
   const problems = [
     ...(["active", "running"].includes(facts.service) ? [] : [`service is ${facts.service}`]),
-    ...(facts.missingSecrets.length > 0 ? [`missing on the host: ${facts.missingSecrets.map((secret) => SECRET_LABELS[secret]).join(", ")}`] : []),
+    ...(facts.missingSecrets.length > 0 ? [`missing on the host: ${facts.missingSecrets.map((secret) => secretLabel(secret)).join(", ")}`] : []),
   ];
   if (facts.hasHost && facts.release !== undefined && problems.length === 0) return { kind: "ready" };
   if (!facts.hasHost || facts.release === undefined) return { kind: "run", ...request };

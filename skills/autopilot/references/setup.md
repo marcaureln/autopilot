@@ -165,15 +165,14 @@ The service is `active` (Linux) or `running` (macOS), and `watch` lists the repo
 
 A role can use OpenCode instead of Claude Code. OpenCode uses a provider API key. A Claude subscription does not work with OpenCode.
 
-1. Put the key in a file in the host's secrets folder (`/etc/autopilot/secrets` on Linux, `~/.autopilot/secrets` on macOS), or in 1Password.
-2. In `host.json`, add the reference to `secrets.api_keys`. The name is the env var that OpenCode reads:
+1. Add the key to the host. Use the name of the env var that OpenCode reads:
 
-   ```json
-   "api_keys": { "ANTHROPIC_API_KEY": "file:anthropic-api-key" }
+   ```sh
+   OPENAI_API_KEY=<key> autopilot hosts add <name> <ssh-target> --api-key OPENAI_API_KEY
    ```
 
-3. Restart the service: `autopilot stop`, then `autopilot start`. The service reads the keys when it starts.
-4. In `.github/autopilot.json`, set the harness of the role:
+   The command adds `"OPENAI_API_KEY": "file:openai_api_key"` to `secrets.api_keys` in `host.json`. It writes the key to the secrets folder of the host and restarts the service. If you do not set the env var, the command asks for the key with a hidden prompt. Repeat `--api-key` for more keys.
+2. In `.github/autopilot.json`, set the harness of the role:
 
    ```json
    "builder": { "harness": "opencode", "model": "anthropic/claude-sonnet-5-5", "effort": "high" }

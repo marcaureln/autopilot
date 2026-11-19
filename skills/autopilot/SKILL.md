@@ -225,7 +225,7 @@ autopilot update [--version vX.Y.Z]
 
 ## Agents and checks
 
-- Each role (`planner`, `builder`) uses Claude Code by default. To use OpenCode for a role, set `agents.<role>.harness` to `"opencode"` and the model to `<provider>/<model>` in `.github/autopilot.json`, and give the host a provider API key in `secrets.api_keys` of its `host.json`. See "Use OpenCode for a role" in references/setup.md.
+- Each role (`planner`, `builder`) uses Claude Code by default. To use OpenCode for a role, set `agents.<role>.harness` to `"opencode"` and the model to `<provider>/<model>` in `.github/autopilot.json`, and give the host a provider API key (`autopilot hosts add --api-key <NAME>`). See "Use OpenCode for a role" in references/setup.md.
 - By default the host runs the checks (`verify.mode` `host`). With `verify.mode` `ci`, the host waits for the repo's own GitHub Actions jobs, and each name in `verify.required` is a job name. Only a success passes.
 
 ## Secrets

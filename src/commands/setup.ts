@@ -6,15 +6,16 @@ import { WATCH_ENTRY } from "../core/allow.ts";
 import type { Audit } from "../core/audit.ts";
 import { CONFIG_PATH } from "../core/config.ts";
 import { readOptionFile } from "../core/option-file.ts";
-import { hostSecretFiles, parseHost, SECRET_LABELS, type Host, type HostSecret } from "../core/host.ts";
+import { hostSecretFiles, parseHost, secretLabel, type Host, type HostSecret } from "../core/host.ts";
 import type { HostRef } from "../core/hosts.ts";
-import { ONBOARDING_BRANCH, ownPull, type PullListing } from "../core/onboarding.ts";
+import { ownPull, type PullListing } from "../core/onboarding.ts";
+import { ONBOARDING_BRANCH } from "../core/repo.ts";
 import { SECRETS_VAULT } from "../core/repo-secrets.ts";
 import { readSecret, type Backend } from "../core/secrets.ts";
 import { checkResources, describeResources, installCommand, isRepoEntry, parseList, parseResources, parseSetupConfig, planHostSetup, repoFileStored, requiredTools, RESOURCES_PROBE, type HostFacts, type SetupConfig } from "../core/setup.ts";
 import { alias, AliasError, aliasFile, aliasNameProblem, shellOf, withoutAlias } from "./alias.ts";
 import { appCreate, githubLogin } from "./app.ts";
-import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, checkAppKey, CLAUDE_TOKEN_ITEM, clientClaudeToken, forward, found, HOST_SECRETS, hostSetup, missingSecrets, OP_TOKEN_ITEM, readAppKey, readKeyFile } from "./client.ts";
+import { APP_KEY_FILE, APP_KEY_ITEM, APP_KEY_PATH, checkAppKey, CLAUDE_TOKEN_ITEM, clientClaudeToken, forward, found, HOST_SECRETS, hostSetup, missingSecrets, OP_TOKEN_ITEM, readApiKey, readAppKey, readKeyFile } from "./client.ts";
 import { connect, SERVICE, type Connection } from "./host.ts";
 import { checkHostName, findHost, HOSTS_PATH, nameToSave, saveHost } from "./hosts.ts";
 import { init } from "./init.ts";
@@ -239,12 +240,12 @@ async function setUpHost(options: SetupOptions, config: SetupConfig, { target, r
       : await configOrAsk(options, config.owner ?? (options.yes ? login : undefined), "owner", () =>
           text({ message: "GitHub login that may start jobs (the owner)", initialValue: login, validate: (input) => (/^[A-Za-z0-9-]+$/.test(input ?? "") ? undefined : "A GitHub login") }),
         );
-    const sources = { app_key: () => readAppKey(app.keyFile, !options.yes), claude_token: claudeToken };
-    const pushed = await hostSetup(target, { owner, appId: app.id, version: plan.version, fromCheckout: plan.fromCheckout, backend, sources });
+    const sources = { app_key: () => readAppKey(app.keyFile, !options.yes), claude_token: claudeToken, api_key: (name: string) => readApiKey(name, !options.yes) };
+    const pushed = await hostSetup(target, { owner, appId: app.id, version: plan.version, fromCheckout: plan.fromCheckout, backend, apiKeys: [], sources });
     state = await hostState(remote);
     const after = planHostSetup(factsOf(state), options);
     if (after.kind !== "ready") throw new Error(`host setup ran, but the host is not ready: service ${state.service}`);
-    const secrets = pushed.length > 0 ? `, pushed ${pushed.map((secret) => SECRET_LABELS[secret]).join(", ")}` : "";
+    const secrets = pushed.length > 0 ? `, pushed ${pushed.map((secret) => secretLabel(secret)).join(", ")}` : "";
     record("Host setup", "done", `${state.release}, service ${state.service}${secrets}`);
   }
   const host = state.host;

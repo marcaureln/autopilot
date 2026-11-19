@@ -4,7 +4,7 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { unwatch, watch, watched } from "./commands/watch.ts";
 import { alias } from "./commands/alias.ts";
 import { appCreate } from "./commands/app.ts";
-import { clientClaudeToken, forward, readAppKey, readClaudeToken, selfUpdate, type HostSetupOptions } from "./commands/client.ts";
+import { clientClaudeToken, forward, readApiKey, readAppKey, readClaudeToken, selfUpdate, type HostSetupOptions } from "./commands/client.ts";
 import { doctor } from "./commands/doctor.ts";
 import { CHECKS_FAILED } from "./core/doctor.ts";
 import { doctorHost } from "./commands/doctor-host.ts";
@@ -20,7 +20,7 @@ import { grypeDbUpdater, runChecks } from "./core/checks.ts";
 import { cliDevcontainer } from "./core/devcontainer-cli.ts";
 import { createGitHub } from "./core/github.ts";
 import { runOnboarder } from "./core/onboarder.ts";
-import { HOST_FILE, loadHost } from "./core/host.ts";
+import { API_KEY_NAME, HOST_FILE, loadHost } from "./core/host.ts";
 import type { HostRef } from "./core/hosts.ts";
 import { runPlanner } from "./core/planner.ts";
 import { detectRepo, type Repo } from "./core/repo.ts";
@@ -55,11 +55,13 @@ Commands that run on the client:
                               it, or the --key-out path. With --backend op, it goes to 1Password (vault autopilot)
   hosts                       Show the hosts of the hosts file and which one is the default
   hosts add <name> <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]
-            [--version <tag> | --from-checkout]
+            [--api-key <NAME>]... [--version <tag> | --from-checkout]
                               Write host.json if it is missing, install a release (or the current commit),
                               and push each host secret that the host does not have: the App key (--app-key,
                               else the key that app create saved) and the Claude token ($CLAUDE_CODE_OAUTH_TOKEN,
-                              else a hidden prompt). Then save the host in the hosts file. The first host saved
+                              else a hidden prompt). --api-key adds a provider key for OpenCode to host.json (NAME is the env var,
+                              such as OPENAI_API_KEY) and pushes its value ($NAME, else a hidden prompt).
+                              Then save the host in the hosts file. The first host saved
                               becomes the default. A Linux host runs a systemd service. A macOS host runs a
                               launchd agent of the user. The SSH target can be a Host alias of ~/.ssh/config
   hosts rm <name>             Remove a host from the hosts file. It does not uninstall autopilot on the host
@@ -135,6 +137,7 @@ const { values, positionals } = parseCommandLine({
     remove: { type: "boolean", default: false },
     "key-out": { type: "string" },
     "app-key": { type: "string" },
+    "api-key": { type: "string", multiple: true, default: [] },
     yes: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
@@ -147,9 +150,16 @@ function selectedHost(): HostRef | undefined {
 function hostSetupOptions(): HostSetupOptions {
   const appId = values["app-id"] === undefined ? undefined : Number(values["app-id"]);
   if (appId !== undefined && !Number.isInteger(appId)) throw new Error(`--app-id "${values["app-id"]}" is not a number`);
+  for (const name of values["api-key"]) {
+    if (!API_KEY_NAME.test(name)) throw new Error(`--api-key "${name}" is not an env var name such as OPENAI_API_KEY`);
+  }
   const interactive = process.stdin.isTTY;
-  const sources = { app_key: () => readAppKey(values["app-key"], interactive), claude_token: () => readClaudeToken(interactive) };
-  return { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"], backend: secretsBackend(), sources };
+  const sources = {
+    app_key: () => readAppKey(values["app-key"], interactive),
+    claude_token: () => readClaudeToken(interactive),
+    api_key: (name: string) => readApiKey(name, interactive),
+  };
+  return { owner: values.owner, appId, version: values.version, fromCheckout: values["from-checkout"], backend: secretsBackend(), apiKeys: values["api-key"], sources };
 }
 
 function secretsBackend(): Backend {
@@ -270,7 +280,7 @@ async function main(): Promise<void> {
     }
     case "host": {
       const named = positionals[1] === "setup" ? selectedHost() : undefined;
-      if (!named) throw new Error("usage: autopilot hosts add <name> <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>]");
+      if (!named) throw new Error("usage: autopilot hosts add <name> <ssh-target | local> [--owner <login> --app-id <id>] [--app-key <pem file>] [--api-key <NAME>]...");
       const name = nameToSave(named, values.name);
       console.log(`note: autopilot hosts add ${name} ${named.target} replaces host setup`);
       await hostsAdd(name, named.target, hostSetupOptions());

@@ -1,5 +1,5 @@
 import type { Config } from "./config.ts";
-import type { PlannerResult } from "./planner.ts";
+import type { PlannerResult } from "./planner-result.ts";
 import { assessRisk, type FileChange, type Risk } from "./risk.ts";
 
 export type PlanGate = { event: "needs_info" | "approval_required" | "go"; risk: Risk; rulesRisk: Risk };

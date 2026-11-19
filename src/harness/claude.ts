@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import managedSettings from "../../docker/claude/managed-settings.json" with { type: "json" };
-import type { Harness } from "./harness.ts";
+import type { Harness } from "./types.ts";
 
 const DIR = new URL("../../docker/claude/", import.meta.url).pathname;
 

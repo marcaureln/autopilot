@@ -2,7 +2,7 @@ import { describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { RateLimited } from "../core/github.ts";
-import type { PlannerResult } from "../core/planner.ts";
+import type { PlannerResult } from "../core/planner-result.ts";
 import { SecretsMissing } from "../core/builder.ts";
 import type { FileChange } from "../core/risk.ts";
 import { BOT, FakeWorld, HOST, HOST_CONFIG, HOST_NAME, LOW_RISK_PLAN, OWNER } from "./fake-github.ts";
@@ -409,7 +409,7 @@ describe("a repo with no config", () => {
     assert.equal(world.repo.pulls[pull - 1]?.title, "Set up autopilot");
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:working"]);
     const [comment] = world.repo.commentBodies(issue);
-    assert.match(comment ?? "", new RegExp(`opened #${pull} to set it up`));
+    assert.match(comment ?? "", new RegExp(`Pull request #${pull} sets it up`));
     assert.deepEqual(world.planned, []);
   });
 
@@ -464,7 +464,42 @@ describe("a repo with no config", () => {
     await world.poll(2);
     assert.deepEqual(world.onboarded, [first]);
     assert.equal(world.repo.pulls.length, 1);
-    assert.deepEqual(world.repo.commentBodies(second), []);
+    assert.match(world.repo.commentBodies(second)[0] ?? "", /Pull request #1 sets it up/, "the second issue waits for the same pull request");
+    assert.equal(world.repo.commentBodies(second).length, 1);
+  });
+
+  test("after a crash between the pull request and its comment, the next poll posts the comment once", async () => {
+    const world = new FakeWorld();
+    world.repo.config = undefined;
+    world.repo.pushCommit("autopilot/onboarding", "sha-before-crash");
+    const pull = world.repo.openPullFor("autopilot/onboarding");
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll(3);
+    assert.deepEqual(world.onboarded, [], "no second onboarding");
+    assert.equal(world.repo.pulls.length, 1);
+    assert.equal(world.repo.commentBodies(issue).length, 1);
+    assert.match(world.repo.commentBodies(issue)[0] ?? "", new RegExp(`Pull request #${pull} sets it up`));
+  });
+
+  test("an issue that another host claimed is not onboarded by this host", async () => {
+    const world = new FakeWorld();
+    world.repo.config = undefined;
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER, claimed: false });
+    world.repo.addComment(issue, BOT, "<!-- autopilot:claim host=other -->\nautopilot host `other` works on this issue.");
+    await world.poll(2);
+    assert.deepEqual(world.onboarded, []);
+    assert.equal(world.repo.pulls.length, 0);
+  });
+
+  test("an empty repo blocks the issue and says to push a first commit", async () => {
+    const world = new FakeWorld();
+    world.repo.config = undefined;
+    world.repo.empty = true;
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll();
+    assert.deepEqual(world.onboarded, []);
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
+    assert.match(world.repo.commentBodies(issue)[0] ?? "", /^autopilot stopped: This repo has no commits.* Push one commit .* for example a README/);
   });
 
   test("when another host opens the onboarding pull request first, the issue waits for it", async () => {
@@ -476,7 +511,8 @@ describe("a repo with no config", () => {
     assert.deepEqual(world.onboarded, [issue]);
     assert.equal(world.repo.pulls.length, 1);
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:working"]);
-    assert.deepEqual(world.repo.commentBodies(issue), []);
+    assert.match(world.repo.commentBodies(issue)[0] ?? "", /Pull request #1 sets it up/, "the issue links the pull request of the other host");
+    assert.equal(world.repo.commentBodies(issue).length, 1);
   });
 
   test("an issue labeled by a non-owner is still ignored", async () => {
