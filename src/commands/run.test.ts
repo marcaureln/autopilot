@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FoundIssue, GitHub, Issue, RepoGitHub } from "../core/github.ts";
-import { changesOnly, drain, loopState, runOnce } from "./run.ts";
+import { changesOnly, drain, loopState, pollOnce } from "./run.ts";
 
 function unused(): never {
   throw new Error("not called for an issue in a builder state");
@@ -86,7 +86,7 @@ const host = {
 async function linesFor(allow: string[]): Promise<string[]> {
   const lines: string[] = [];
   const state = loopState();
-  await runOnce({ github, host: { ...host, allow }, plan: unused, build: unused, check: unused, onboard: unused, log: (_, line) => lines.push(line), audit: unused, idle: { due: () => false, run: unused } }, state);
+  await pollOnce({ github, host: { ...host, allow }, plan: unused, build: unused, check: unused, onboard: unused, log: (_, line) => lines.push(line), audit: unused, idle: { due: () => false, run: unused } }, state);
   await drain(state);
   return lines;
 }
@@ -129,8 +129,8 @@ async function startedWith(concurrency: number): Promise<number[]> {
   };
   const state = loopState();
   const loop = { github: { ...github, repo: () => repo }, host: { ...host, allow: ["owner/app-a"], concurrency }, plan: unused, build: unused, check: unused, onboard: unused, log: () => undefined, audit: unused, idle: { due: () => false, run: unused } };
-  await runOnce(loop, state);
-  await runOnce(loop, state);
+  await pollOnce(loop, state);
+  await pollOnce(loop, state);
   resolve();
   await drain(state);
   return started;
@@ -166,7 +166,7 @@ test("an error on one repo is logged and the other repos are still polled", asyn
     idle: { due: () => false, run: unused },
   };
   const state = loopState();
-  await runOnce(loop, state);
+  await pollOnce(loop, state);
   await drain(state);
   assert.deepEqual(lines, ["owner/app-a: error: HTTP 410: issues are off", "owner/app-b#9: blocked", "polled (open issues: 2, repos: 2)"]);
 });
