@@ -194,8 +194,16 @@ export function showLogs(since: string | undefined): void {
   journal(["--identifier", SERVICE, "--output", "short-iso", ...(since ? ["--since", journalSince(since)] : ["--lines", "100"])]);
 }
 
-export function showAudit(since: string | undefined): void {
+// The one reader of the audit trail: `logs --audit` prints it and `doctor` parses it.
+export function auditLines(since: string): string[] {
   const { logs } = LOCAL_LAYOUT;
-  if (logs.kind === "files") return logFile(logs.audit, since ?? "1d", 0);
-  journal(["--identifier", AUDIT_TAG, "--output", "cat", "--since", journalSince(since ?? "1d")]);
+  if (logs.kind === "files") return existsSync(logs.audit) ? linesSince(readFileSync(logs.audit, "utf8"), sinceDate(since, new Date())) : [];
+  const args = ["--identifier", AUDIT_TAG, "--output", "cat", "--since", journalSince(since), "--no-pager"];
+  const result = spawnSync("journalctl", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (result.status !== 0) throw new Error(`journalctl failed (exit ${result.status})`);
+  return result.stdout.split("\n").filter(Boolean);
+}
+
+export function showAudit(since: string | undefined): void {
+  for (const line of auditLines(since ?? "1d")) console.log(line);
 }

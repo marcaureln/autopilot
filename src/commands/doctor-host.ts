@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { parseWatchEntry } from "../core/allow.ts";
 import { GRYPE_DB_VOLUME, GRYPE_IMAGE } from "../core/checks.ts";
-import { diskVerdict, fail, memoryVerdict, ok, quotaVerdict, runDoctor, skipped, warn, workflowSecretsVerdict, type Check, type Verdict } from "../core/doctor.ts";
+import { diskVerdict, fail, grypeDbVerdict, memoryVerdict, ok, quotaVerdict, runDoctor, skipped, warn, workflowSecretsVerdict, type Check, type Verdict } from "../core/doctor.ts";
 import { createGitHub, type GitHub } from "../core/github.ts";
 import { hostSecretFiles, loadHost, secretLabel, type Host } from "../core/host.ts";
 import { LOCAL_LAYOUT } from "../core/layout.ts";
@@ -10,7 +10,7 @@ import type { Repo } from "../core/repo.ts";
 import { readSecret } from "../core/secrets.ts";
 import { parseResources, RESOURCES_PROBE } from "../core/setup.ts";
 import { checkAppKey, noAudit } from "./client.ts";
-import { serviceState } from "./host.ts";
+import { auditLines, serviceState } from "./host.ts";
 
 type State = { host?: Host; github?: GitHub; installation?: number; repoInstallation?: number };
 
@@ -140,9 +140,9 @@ function hostChecks(hostFile: string, repo: Repo | undefined, actionsSecrets: nu
     {
       name: "Grype database",
       run: async () => {
-        // docker run would create a missing volume, and the status command needs a container: doctor changes nothing.
+        // The age comes from the audit trail: reading the database needs a container, and doctor changes nothing.
         const present = dockerAnswers(["image", "inspect", GRYPE_IMAGE]).ok && dockerAnswers(["volume", "inspect", GRYPE_DB_VOLUME]).ok;
-        return present ? ok("image and database volume present, freshness not checked") : skipped("the host has no Grype image or database yet: the first dependency scan fetches them");
+        return present ? grypeDbVerdict(auditLines("7d"), Date.now()) : skipped("the host has no Grype image or database yet: the first dependency scan fetches them");
       },
     },
     {
