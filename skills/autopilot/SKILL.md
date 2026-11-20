@@ -22,7 +22,7 @@ Before any command, run `autopilot --help` and use only the commands that it lis
 
 To set up from nothing, read `references/setup.md` and follow it. In short:
 
-1. Install the client: `curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh`. It needs `mise`, `curl` and `tar`.
+1. Install the client: `curl -fsSL https://marcaureln.com/autopilot/install.sh | sh`. It needs `mise`, `curl` and `tar`.
 2. If `autopilot --help` lists `setup`, ask the user to run `autopilot setup` in their terminal. The wizard creates the GitHub App, the host with its secrets, the watched entries and the first onboarding PR. By default, the host keeps its secrets in files. With `--backend op`, they go to 1Password.
 3. If `setup` is not available, or it stops, do the steps one by one: `autopilot app create`, `autopilot hosts add`, `autopilot watch`, `autopilot init`. `references/setup.md` gives each step.
 4. Check the host with `autopilot status`. The service must be `active` (Linux) or `running` (macOS), and the watched entries must show the repo.
