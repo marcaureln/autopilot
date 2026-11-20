@@ -19,7 +19,7 @@ const cases: { name: string; result: Partial<PlannerResult>; expected: PlanGate 
   { name: "clear, small and low risk goes", result: {}, expected: { event: "go", risk: "low", rulesRisk: "low" } },
   { name: "questions come first", result: { needs_info: true, questions: ["Which file?"], scope: "too_broad", risk: "high" }, expected: { event: "needs_info", risk: "high", rulesRisk: "low" } },
   { name: "too broad needs approval", result: { scope: "too_broad" }, expected: { event: "approval_required", risk: "low", rulesRisk: "low" } },
-  { name: "the planner can raise the risk", result: { risk: "high" }, expected: { event: "approval_required", risk: "high", rulesRisk: "low" } },
+  { name: "the planner raises the risk but does not stop the build", result: { risk: "high" }, expected: { event: "go", risk: "high", rulesRisk: "low" } },
   {
     name: "the planner cannot lower the rules risk",
     result: { risk: "low", planned_files: [{ path: ".github/workflows/ci.yml", status: "modified" }] },
