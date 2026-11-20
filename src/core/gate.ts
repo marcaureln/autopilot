@@ -11,7 +11,8 @@ function toChange(file: PlannerResult["planned_files"][number]): FileChange {
 export function planGate(result: PlannerResult, risk: Config["risk"]): PlanGate {
   const rulesRisk = assessRisk(result.planned_files.map(toChange), risk);
   const finalRisk = result.risk === "high" || rulesRisk === "high" ? "high" : "low";
-  const event = result.needs_info ? "needs_info" : result.scope === "too_broad" || finalRisk === "high" ? "approval_required" : "go";
+  // Only the rules stop the build. The planner's rating goes to the merge gate, so a person looks once, at the pull request.
+  const event = result.needs_info ? "needs_info" : result.scope === "too_broad" || rulesRisk === "high" ? "approval_required" : "go";
   return { event, risk: finalRisk, rulesRisk };
 }
 

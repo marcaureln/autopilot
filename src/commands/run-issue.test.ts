@@ -60,7 +60,7 @@ describe("the claim", () => {
 describe("Plan gate, after the planner wrote the spec", () => {
   const rows: { name: string; plan: Partial<PlannerResult>; labels: string[]; gate: string; builds: boolean; checkbox: boolean }[] = [
     { name: "a low risk plan goes to the build", plan: {}, labels: ["autopilot", "autopilot:working"], gate: "go", builds: true, checkbox: false },
-    { name: "a plan the planner rates high waits for approval", plan: { risk: "high" }, labels: ["autopilot", "autopilot:awaiting-approval"], gate: "approval_required", builds: false, checkbox: true },
+    { name: "a plan the planner rates high goes to the build", plan: { risk: "high" }, labels: ["autopilot", "autopilot:working"], gate: "go", builds: true, checkbox: false },
     {
       name: "a plan that touches a high risk path waits for approval",
       plan: { planned_files: [{ path: ".github/workflows/ci.yml", status: "modified" }] },
@@ -107,7 +107,7 @@ describe("Plan gate, after the planner wrote the spec", () => {
   });
 });
 
-describe("approval of a high risk spec", () => {
+describe("approval of a spec", () => {
   const rows: { name: string; ticks: string[]; builds: boolean }[] = [
     { name: "a tick by an owner starts the build", ticks: [OWNER], builds: true },
     { name: "a tick by a non-owner does not", ticks: ["stranger"], builds: false },
@@ -116,7 +116,7 @@ describe("approval of a high risk spec", () => {
   for (const row of rows) {
     test(row.name, async () => {
       const world = new FakeWorld();
-      world.script.plan = { ...LOW_RISK_PLAN, risk: "high" };
+      world.script.plan = { ...LOW_RISK_PLAN, scope: "too_broad" };
       const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
       await world.poll(2);
       assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:awaiting-approval"]);
@@ -129,7 +129,7 @@ describe("approval of a high risk spec", () => {
 
   test("an unticked spec keeps waiting", async () => {
     const world = new FakeWorld();
-    world.script.plan = { ...LOW_RISK_PLAN, risk: "high" };
+    world.script.plan = { ...LOW_RISK_PLAN, scope: "too_broad" };
     const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
     await world.poll(4);
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:awaiting-approval"]);
