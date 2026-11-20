@@ -40,7 +40,7 @@ Then tell the user to review and merge the pull request. The host never merges i
 
 ## Write an issue that autopilot can build
 
-The planner reads the issue title, the body, and the comments of owners. It asks questions (`autopilot:needs-info`) when it must guess. It asks for approval (`autopilot:awaiting-approval`) when the scope is too broad or the risk is high. To go directly to the build, follow these rules:
+The planner reads the issue title, the body, and the comments of owners. It asks questions (`autopilot:needs-info`) when it must guess. It asks for approval (`autopilot:awaiting-approval`) when the scope is too broad or the risk rules rate a planned path high. When only the planner rates the risk high, the build starts, and the pull request waits for a review. To go directly to the build, follow these rules:
 
 - Ask for one small change. One focused pull request, below `risk.max_diff_lines` changed lines (default 500). Do not mix unrelated changes.
 - Say the goal in one or two sentences.
@@ -94,7 +94,7 @@ autopilot uses five labels. An issue has `autopilot` and at most one `autopilot:
 | `autopilot` | The user | Starts the job. It stays on the issue for the whole job. Remove it to stop the job. |
 | `autopilot:working` | The host | The host writes the spec, builds, runs the checks or runs a fix round. Wait. |
 | `autopilot:needs-info` | The user | The planner asks questions. Answer them in one comment. |
-| `autopilot:awaiting-approval` | The user | The plan gate found high risk or a broad scope. Read the spec, then tick `- [ ] Approve and build`. |
+| `autopilot:awaiting-approval` | The user | The plan gate found a high-risk path or a broad scope. Read the spec, then tick `- [ ] Approve and build`. |
 | `autopilot:blocked` | The user | autopilot stopped. Read the last comment, fix the cause, then remove the label to retry. |
 
 A pull request that waits for a review has no label. The issue keeps `autopilot:working`, the host comments "Pull request #N passed every check and waits for a review: <reasons>", and requests a review from the owners on the pull request.

@@ -127,7 +127,7 @@ export function renderConfig(existingText: string | undefined, commands: Record<
   } catch (error) {
     throw new Error(`${CONFIG_PATH} in the repo is not valid JSON: ${error instanceof Error ? error.message : error}. Fix it on the default branch, then run \`autopilot init\` again.`);
   }
-  const { stack: _, ...base }: ConfigObject = existing ?? { $schema: configSchema.$id, version: 1, merge: "manual" };
+  const { stack: _, ...base }: ConfigObject = existing ?? { $schema: configSchema.$id, version: 1, merge: "auto" };
   const planner = unique([...(base.skills?.planner ?? []), ...skills]);
   const builder = unique([...(base.skills?.builder ?? []), ...skills]);
   const config: ConfigObject = {

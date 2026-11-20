@@ -16,7 +16,7 @@ import {
 
 const base: Onboarding = {
   repo: "acme/app",
-  merge: "manual",
+  merge: "auto",
   generated: [".github/autopilot.json", ".devcontainer/devcontainer.json"],
   notes: [],
   environment: { existing: false, image: "node:26.13.1", services: ["postgres"], install: "npm ci", reason: "The app reads Postgres in src/db.ts." },
@@ -64,8 +64,8 @@ const variants: { name: string; change: Partial<Onboarding>; expected: RegExp }[
   },
   { name: "the host watches the repo", change: { host: { kind: "watched" } }, expected: /Check that the App is installed on the repo/ },
   { name: "the host opened it for an issue", change: { host: { kind: "issue", issue: 4 } }, expected: /autopilot opened it for #4\. The work on that issue starts when this pull request is merged\./ },
-  { name: "a manual merge", change: {}, expected: /`merge` is `manual`/ },
-  { name: "an existing auto merge", change: { merge: "auto" }, expected: /`merge` is `auto`/ },
+  { name: "an auto merge", change: {}, expected: /`merge` is `auto`/ },
+  { name: "an existing manual merge", change: { merge: "manual" }, expected: /`merge` is `manual`/ },
 ];
 
 for (const { name, change, expected } of variants) {
@@ -142,11 +142,11 @@ for (const { name, hasDevcontainer, result: input, expected } of filesCases) {
   });
 }
 
-test("config: a new repo gets the checks of the agent, the scanners, the skills and a manual merge", () => {
+test("config: a new repo gets the checks of the agent, the scanners, the skills and an auto merge", () => {
   const config = JSON.parse(renderConfig(undefined, { lint: "npm run lint", test: "npm test" }, ["github.com/example-org/skills//tdd#main"]));
   assert.deepEqual(config.verify, { required: ["lint", "test", "sast", "deps-scan", "secrets-scan"], commands: { lint: "npm run lint", test: "npm test" } });
   assert.deepEqual(config.skills, { planner: ["github.com/example-org/skills//tdd#main"], builder: ["github.com/example-org/skills//tdd#main"] });
-  assert.equal(config.merge, "manual");
+  assert.equal(config.merge, "auto");
   assert.equal(config.stack, undefined);
 });
 

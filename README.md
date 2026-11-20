@@ -64,7 +64,7 @@ flowchart TB
     A([autopilot label]) --> S[Planner writes a spec]
     S --> PG{Plan gate}
     PG -- unclear --> Q[Asks questions] --> S
-    PG -- risky --> P[Waits for your approval] --> B
+    PG -- risky by rule --> P[Waits for your approval] --> B
     PG -- ok --> B[Builder implements in a devcontainer]
     B --> C[Checks: lint, types, tests, scans]
     C -- fail, max 3 rounds --> B
@@ -80,7 +80,7 @@ Models propose and rules decide. The risk rules are deterministic, and a model c
 - **Secrets.** `autopilot secrets set <NAME>` keeps a value in a file on the host. Only the check commands get it, never the agent.
 - **Hosts.** A host is a systemd service (Linux) or a launchd agent (macOS). The client keeps their names in a hosts file. Several hosts can watch the same repos.
 
-Each repo is configured in `.github/autopilot.json` ([schema](schema/autopilot.schema.json)). Onboarding sets `"merge": "manual"`. Set `"merge": "auto"` to let the merge gate merge low-risk pull requests.
+Each repo is configured in `.github/autopilot.json` ([schema](schema/autopilot.schema.json)). Onboarding sets `"merge": "auto"`: the merge gate merges a low-risk pull request with no review. Set `"merge": "manual"` to review each pull request.
 
 | Block         | Today                                                                                                  | Possible later |
 | ------------- | ------------------------------------------------------------------------------------------------------ | -------------- |
