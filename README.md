@@ -36,7 +36,7 @@ The [skill](skills/autopilot/SKILL.md) also tells the agent how to write issues,
 ### By hand
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
+curl -fsSL https://marcaureln.com/autopilot/install.sh | sh
 autopilot setup
 ```
 

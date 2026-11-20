@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs the autopilot client for the current user, without root:
-#   curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
+#   curl -fsSL https://marcaureln.com/autopilot/install.sh | sh
 #   sh install.sh v1.2.3    # a given release instead of the latest
 set -eu
 

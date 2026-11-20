@@ -32,7 +32,7 @@ Setup checks these and prints an install link for each missing one. It does not 
 ## 2. Install the client
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marcaureln/autopilot/main/install.sh | sh
+curl -fsSL https://marcaureln.com/autopilot/install.sh | sh
 autopilot --help
 autopilot alias        # optional: adds "alias ap=autopilot" to the shell rc file
 ```
