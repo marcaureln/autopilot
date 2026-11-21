@@ -15,6 +15,7 @@ import { COMPOSE_OVERRIDE_FILE, OVERRIDE_FILE, startEnvironment, stopEnvironment
 import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
+import { workflowFiles } from "./risk.ts";
 import { repoSecretNames } from "./secrets.ts";
 import { prepareAgent } from "./skills.ts";
 import type { Comment } from "./spec.ts";
@@ -80,13 +81,9 @@ export function commitProblems(commits: Commit[], identity: Identity): string[] 
   });
 }
 
-export function workflowFiles(paths: string[]): string[] {
-  return [...new Set(paths.filter((path) => path.startsWith(".github/workflows/")))];
-}
-
 // Without the Workflows permission, GitHub refuses a push that adds, changes or deletes a workflow file.
 // With it, a changed workflow runs on the pull request, with the repo's Actions secrets, before anyone reviews it.
-// So a person approves each workflow file in the plan first (the plan gate rates `.github/` high), and the host
+// So a person approves each workflow file in the plan first (see planGate), and the host
 // pushes only the workflow files that the approved plan lists.
 export function workflowStop(paths: string[], canChangeWorkflows: boolean, plannedFiles: string[]): string | undefined {
   const workflows = workflowFiles(paths);

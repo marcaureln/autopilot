@@ -64,7 +64,8 @@ flowchart TB
     A([autopilot label]) --> S[Planner writes a spec]
     S --> PG{Plan gate}
     PG -- unclear --> Q[Asks questions] --> S
-    PG -- risky by rule --> P[Waits for your approval] --> B
+    PG -- changes a workflow --> P[Waits for your approval] --> B
+    PG -- nothing to change --> D([Closes the issue])
     PG -- ok --> B[Builder implements in a devcontainer]
     B --> C[Checks: lint, types, tests, scans]
     C -- fail, max 3 rounds --> B

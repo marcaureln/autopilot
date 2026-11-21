@@ -11,6 +11,7 @@ type AuditEvent =
   | { event: "secret.read"; reference: string; reason: string; result: "ok" | "failed" }
   | { event: "token.minted"; installation: number; repo: string; expires: string }
   | { event: "issue.claimed"; issue: string; host: string }
+  | { event: "issue.closed"; issue: string; reason: "nothing to change" }
   | { event: "state.changed"; issue: string; from: IssueState; to: State }
   | { event: "gate.decided"; issue: string; gate: "plan"; planner: Risk; rules: Risk; final: Risk; scope: "ok" | "too_broad"; decision: PlanGate["event"] }
   | { event: "gate.decided"; issue: string; gate: "merge"; pull: number; planner: Risk | undefined; rules: Risk; merge: "auto" | "manual"; decision: MergeGate["decision"] }

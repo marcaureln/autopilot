@@ -11,6 +11,7 @@ const CHECKBOX = "Approve and build";
 const NEXT_STEP: Record<PlanGate["event"], string> = {
   needs_info: "Answer the questions in a comment. autopilot then writes a new spec.",
   approval_required: "autopilot waits for approval. Tick the box below. Only a tick by an owner counts.",
+  done: "Nothing to change, so autopilot closes this issue. If something is still missing, say what in a comment, then reopen the issue and add the label again.",
   go: "The build starts now.",
 };
 
@@ -38,7 +39,7 @@ export function renderSpecComment(result: PlannerResult, gate: PlanGate): string
   return lines.join("\n");
 }
 
-const GATE_EVENTS: PlanGate["event"][] = ["needs_info", "approval_required", "go"];
+const GATE_EVENTS: PlanGate["event"][] = ["needs_info", "approval_required", "done", "go"];
 
 export function specGate(body: string): PlanGate["event"] | undefined {
   const event = MARKER.exec(body)?.[1];

@@ -164,6 +164,9 @@ export class FakeRepoGitHub implements RepoGitHub {
   async setLabels(issue: number, labels: string[]): Promise<void> {
     this.issue(issue).labels = [...labels];
   }
+  async closeIssue(issue: number): Promise<void> {
+    this.issue(issue).open = false;
+  }
   async ensureLabels(): Promise<void> {}
   async readFile(path: string): Promise<string | undefined> {
     return path === CONFIG_PATH && this.config ? JSON.stringify(this.config) : undefined;

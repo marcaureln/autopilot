@@ -62,7 +62,15 @@ describe("Plan gate, after the planner wrote the spec", () => {
     { name: "a low risk plan goes to the build", plan: {}, labels: ["autopilot", "autopilot:working"], gate: "go", builds: true, checkbox: false },
     { name: "a plan the planner rates high goes to the build", plan: { risk: "high" }, labels: ["autopilot", "autopilot:working"], gate: "go", builds: true, checkbox: false },
     {
-      name: "a plan that touches a high risk path waits for approval",
+      name: "a plan with a high risk path that is not a workflow goes to the build",
+      plan: { planned_files: [{ path: "package.json", status: "modified" }] },
+      labels: ["autopilot", "autopilot:working"],
+      gate: "go",
+      builds: true,
+      checkbox: false,
+    },
+    {
+      name: "a plan that touches a workflow waits for approval",
       plan: { planned_files: [{ path: ".github/workflows/ci.yml", status: "modified" }] },
       labels: ["autopilot", "autopilot:awaiting-approval"],
       gate: "approval_required",
@@ -95,6 +103,18 @@ describe("Plan gate, after the planner wrote the spec", () => {
       assert.deepEqual(specGates(world, issue), [row.gate]);
     });
   }
+
+  test("a plan with no file to change closes the issue, and the next poll removes the labels", async () => {
+    const world = new FakeWorld();
+    world.script.plan = { ...LOW_RISK_PLAN, planned_files: [] };
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll();
+    assert.deepEqual(specGates(world, issue), ["done"]);
+    assert.equal(world.repo.issues.get(issue)?.open, false);
+    await world.poll();
+    assert.deepEqual(world.repo.labelsOf(issue), []);
+    assert.deepEqual(world.builds, []);
+  });
 
   test("a failing planner blocks the issue and tells why", async () => {
     const world = new FakeWorld();

@@ -28,6 +28,7 @@ export type RepoGitHub = {
   postComment(issue: number, body: string): Promise<void>;
   deleteComment(id: number): Promise<void>;
   setLabels(issue: number, labels: string[]): Promise<void>;
+  closeIssue(issue: number): Promise<void>;
   ensureLabels(labels: LabelSpec[]): Promise<void>;
   readFile(path: string): Promise<string | undefined>;
   minimizeOutdated(commentNodeId: string): Promise<void>;
@@ -260,6 +261,9 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
     },
     async setLabels(issue, labels) {
       await octokit.issues.setLabels({ ...issueParams(issue), labels });
+    },
+    async closeIssue(issue) {
+      await octokit.issues.update({ ...issueParams(issue), state: "closed", state_reason: "completed" });
     },
     async ensureLabels(labels) {
       const existing = new Set((await octokit.paginate(octokit.issues.listLabelsForRepo, { owner, repo, per_page: 100 })).map((label) => label.name));

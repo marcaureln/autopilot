@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { botIdentity, builderPrompt, commitProblems, neutralize, parseBuilderResult, pullBody, workflowFiles, workflowStop, type Commit } from "./builder.ts";
+import { botIdentity, builderPrompt, commitProblems, neutralize, parseBuilderResult, pullBody, workflowStop, type Commit } from "./builder.ts";
+import { workflowFiles } from "./risk.ts";
 
 const bot = botIdentity("autopilot[bot]", 123456);
 

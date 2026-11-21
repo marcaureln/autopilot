@@ -36,15 +36,22 @@ const cases: { name: string; result: Partial<PlannerResult>; expected: PlanGate 
     expected: { event: "approval_required", risk: "high", rulesRisk: "high" },
   },
   {
-    name: "the repo's own high paths count",
+    name: "the repo's own high paths count, and go to the build",
     result: { planned_files: [{ path: "src/billing-v2/plan.ts", status: "modified" }] },
-    expected: { event: "approval_required", risk: "high", rulesRisk: "high" },
+    expected: { event: "go", risk: "high", rulesRisk: "high" },
   },
   {
-    name: "a planned deletion is high risk",
+    name: "a planned deletion is high risk, and goes to the build",
     result: { planned_files: [{ path: "docs/old.md", status: "deleted" }] },
-    expected: { event: "approval_required", risk: "high", rulesRisk: "high" },
+    expected: { event: "go", risk: "high", rulesRisk: "high" },
   },
+  {
+    name: "a lockfile is high risk, and goes to the build",
+    result: { planned_files: [{ path: "pnpm-lock.yaml", status: "modified" }] },
+    expected: { event: "go", risk: "high", rulesRisk: "high" },
+  },
+  { name: "no planned file: nothing to change", result: { planned_files: [] }, expected: { event: "done", risk: "low", rulesRisk: "low" } },
+  { name: "questions come before nothing to change", result: { planned_files: [], needs_info: true, questions: ["Which file?"] }, expected: { event: "needs_info", risk: "low", rulesRisk: "low" } },
   {
     name: "a plain rename is low risk",
     result: { planned_files: [{ path: "docs/new.md", status: "renamed", previous_path: "docs/old.md" }] },

@@ -15,6 +15,7 @@ function repoWith(issues: Issue[]): RepoGitHub {
     postComment: unused,
     deleteComment: unused,
     setLabels: unused,
+    closeIssue: unused,
     ensureLabels: async () => undefined,
     readFile: unused,
     minimizeOutdated: unused,

@@ -238,6 +238,8 @@ async function working(job: Working): Promise<void> {
       return (await repoGitHub.readFile(CONFIG_PATH)) === undefined ? onboard(job, retryAt) : writeSpec(job);
     case "plan":
       return move(phase.event);
+    case "done":
+      return closeDone(job);
     case "build":
       return build(job, currentSpec);
     case "merged":
@@ -275,7 +277,16 @@ async function writeSpec(job: Working): Promise<void> {
   const gate = planGate(result, config.risk);
   audit({ event: "gate.decided", issue: key, gate: "plan", planner: result.risk, rules: gate.rulesRisk, final: gate.risk, scope: result.scope, decision: gate.event });
   await ctx.repoGitHub.postComment(issue.number, renderSpecComment(result, gate));
+  if (gate.event === "done") return closeDone(job);
   if (gate.event !== "go") await move(gate.event);
+}
+
+// The spec says why there is nothing to change. A crash before the close leaves that spec, and the next poll closes the issue.
+async function closeDone(job: Working): Promise<void> {
+  const { loop, ctx, issue, key } = job;
+  await ctx.repoGitHub.closeIssue(issue.number);
+  loop.audit({ event: "issue.closed", issue: key, reason: "nothing to change" });
+  loop.log(key, `${key}: nothing to change, issue closed`);
 }
 
 // A plain build error becomes a block. Otherwise the job would run the agent again on each poll.
