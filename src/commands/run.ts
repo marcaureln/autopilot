@@ -38,6 +38,8 @@ export type Loop = {
   onboard: (job: Omit<OnboardJob, "credentials" | "devcontainer" | "audit" | "say">) => Promise<Onboarded>;
   log: Log;
   audit: Audit;
+  // The id of this host in its claim comments (see claimId).
+  claimId: string;
   // Host work that must not overlap a job, such as a scanner database update. When it is due, the
   // loop starts no new job, waits for the running ones, then runs it: a long queue cannot hold it back.
   idle: Idle;
@@ -108,20 +110,21 @@ function onboardingMarker(pull: number): string {
 
 async function claim(loop: Loop, repoGitHub: RepoGitHub, issue: Issue, key: string, bot: string, comments: Comment[]): Promise<Comment[] | undefined> {
   const { host, log, audit } = loop;
-  let current = claimOf(comments, bot, host.name);
+  const me = [loop.claimId, host.name];
+  let current = claimOf(comments, bot, me);
   if (current.kind === "mine") return comments;
   if (current.kind === "free") {
-    await repoGitHub.postComment(issue.number, claimComment(host.name));
+    await repoGitHub.postComment(issue.number, claimComment(loop.claimId));
     await sleep(CLAIM_SETTLE_MS);
     comments = await repoGitHub.listComments(issue.number);
-    current = claimOf(comments, bot, host.name);
+    current = claimOf(comments, bot, me);
     if (current.kind === "mine") {
       audit({ event: "issue.claimed", issue: key, host: host.name });
       log(key, `${key}: claimed by host ${host.name}`);
       return comments;
     }
   }
-  const lost = ownClaims(comments, bot, host.name);
+  const lost = ownClaims(comments, bot, me);
   for (const own of lost) await repoGitHub.deleteComment(own.id);
   const winner = current.kind === "theirs" ? current.host : "unknown";
   log(key, `${key}: claimed by host ${winner}, skipped${lost.length > 0 ? ` (lost the race, deleted ${lost.length} own claim)` : ""}`);

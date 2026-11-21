@@ -6,6 +6,7 @@ import { alias } from "./commands/alias.ts";
 import { appCreate } from "./commands/app.ts";
 import { clientClaudeToken, forward, readApiKey, readAppKey, readClaudeToken, selfUpdate, type HostSetupOptions } from "./commands/client.ts";
 import { doctor } from "./commands/doctor.ts";
+import { claimId } from "./core/claim.ts";
 import { CHECKS_FAILED } from "./core/doctor.ts";
 import { doctorHost } from "./commands/doctor-host.ts";
 import { init } from "./commands/init.ts";
@@ -223,6 +224,7 @@ async function main(): Promise<void> {
           github,
           host,
           audit: auditLog,
+          claimId: claimId(host.name, privateKey),
           idle: grypeDbUpdater(host.limits, auditLog),
           plan: (job) => runPlanner(job, { credentials, audit: auditLog }),
           build: (job) => runBuilder({ ...job, credentials, devcontainer: cliDevcontainer, audit: auditLog }),
