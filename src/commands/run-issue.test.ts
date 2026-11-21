@@ -5,7 +5,7 @@ import { RateLimited } from "../core/github.ts";
 import type { PlannerResult } from "../core/planner-result.ts";
 import { SecretsMissing } from "../core/builder.ts";
 import type { FileChange } from "../core/risk.ts";
-import { BOT, FakeWorld, HOST, HOST_CONFIG, HOST_NAME, LOW_RISK_PLAN, OWNER } from "./fake-github.ts";
+import { BOT, CLAIM_ID, FakeWorld, HOST, HOST_CONFIG, HOST_NAME, LOW_RISK_PLAN, OWNER } from "./fake-github.ts";
 
 const TITLE = "Add CONTRIBUTING.md";
 
@@ -42,8 +42,17 @@ describe("the claim", () => {
     const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER, claimed: false });
     await world.poll();
     const claims = world.repo.comments.filter((comment) => comment.issue === issue && comment.body.includes("autopilot:claim"));
-    assert.deepEqual(claims.map((comment) => [comment.author, comment.body.includes(`host=${HOST_NAME}`)]), [[BOT, true]]);
+    assert.deepEqual(claims.map((comment) => [comment.author, comment.body]), [[BOT, `<!-- autopilot:claim host=${CLAIM_ID} -->\nautopilot works on this issue.`]]);
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:working"]);
+  });
+
+  test("a claim that names this host, from an older version, is still this host's", async () => {
+    const world = new FakeWorld();
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER, claimed: false });
+    world.repo.addComment(issue, BOT, `<!-- autopilot:claim host=${HOST_NAME} -->\nautopilot host \`${HOST_NAME}\` works on this issue.`);
+    await world.poll();
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:working"]);
+    assert.deepEqual(world.planned, [issue]);
   });
 
   test("an issue that another host claimed first is left alone", async () => {

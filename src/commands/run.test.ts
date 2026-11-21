@@ -86,7 +86,7 @@ const host = {
 async function linesFor(allow: string[]): Promise<string[]> {
   const lines: string[] = [];
   const state = loopState();
-  await pollOnce({ github, host: { ...host, allow }, plan: unused, build: unused, check: unused, onboard: unused, log: (_, line) => lines.push(line), audit: unused, idle: { due: () => false, run: unused } }, state);
+  await pollOnce({ github, host: { ...host, allow }, plan: unused, build: unused, check: unused, onboard: unused, log: (_, line) => lines.push(line), audit: unused, claimId: "id", idle: { due: () => false, run: unused } }, state);
   await drain(state);
   return lines;
 }
@@ -128,7 +128,7 @@ async function startedWith(concurrency: number): Promise<number[]> {
     },
   };
   const state = loopState();
-  const loop = { github: { ...github, repo: () => repo }, host: { ...host, allow: ["owner/app-a"], concurrency }, plan: unused, build: unused, check: unused, onboard: unused, log: () => undefined, audit: unused, idle: { due: () => false, run: unused } };
+  const loop = { github: { ...github, repo: () => repo }, host: { ...host, allow: ["owner/app-a"], concurrency }, plan: unused, build: unused, check: unused, onboard: unused, log: () => undefined, audit: unused, claimId: "id", idle: { due: () => false, run: unused } };
   await pollOnce(loop, state);
   await pollOnce(loop, state);
   resolve();
@@ -163,6 +163,7 @@ test("an error on one repo is logged and the other repos are still polled", asyn
     onboard: unused,
     log: (_: string, line: string) => lines.push(line),
     audit: unused,
+    claimId: "id",
     idle: { due: () => false, run: unused },
   };
   const state = loopState();

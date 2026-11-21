@@ -21,6 +21,7 @@ import { loopState, pollOnce, drain, type Loop, type LoopState } from "./run.ts"
 export const BOT = "autopilot[bot]";
 export const OWNER = "owner";
 export const HOST_NAME = "pi";
+export const CLAIM_ID = "c1a1m0000001";
 const REPO: Repo = { owner: "owner", name: "app" };
 const FULL_QUOTA = { limit: 5000, remaining: 5000, resetAt: new Date("2026-01-01T01:00:00Z") };
 
@@ -64,7 +65,7 @@ export class FakeRepoGitHub implements RepoGitHub {
     const number = this.nextIssue++;
     const createdAt = this.now();
     this.issues.set(number, { number, title, body: `${title} body`, labels: [TRIGGER_LABEL], open: true, author: OWNER, createdAt, labeledBy, labeledAt: this.now() });
-    if (claimed) this.addComment(number, BOT, claimComment(HOST_NAME));
+    if (claimed) this.addComment(number, BOT, claimComment(CLAIM_ID));
     return number;
   }
 
@@ -346,6 +347,7 @@ export class FakeWorld {
       onboard: (job) => this.onboard(job),
       log: (_, line) => this.logs.push(line),
       audit: () => undefined,
+      claimId: CLAIM_ID,
       idle: { due: () => false, run: async () => undefined },
     };
   }

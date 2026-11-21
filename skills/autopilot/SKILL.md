@@ -197,7 +197,7 @@ Remove the trigger label: `gh issue edit <n> --repo example-org/app --remove-lab
 
 ### Move an issue to another host
 
-Each host posts a claim comment that starts with `<!-- autopilot:claim host=<name> -->` before it acts. The oldest claim wins, and the other hosts skip the issue. To move the issue, delete the claim comment:
+Each host posts a claim comment that starts with `<!-- autopilot:claim host=<id> -->` before it acts. The id is not the host name: issues can be public. The oldest claim wins, and the other hosts skip the issue. To move the issue, delete the claim comment:
 
 ```sh
 id=$(gh api "repos/$repo/issues/$n/comments" --paginate --jq '.[] | select(.body | startswith("<!-- autopilot:claim")) | .id' | head -1)

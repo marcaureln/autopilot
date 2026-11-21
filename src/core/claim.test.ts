@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { claimComment, claimOf, ownClaims, type Claim } from "./claim.ts";
+import { claimComment, claimId, claimOf, ownClaims, type Claim } from "./claim.ts";
 import type { Comment } from "./spec.ts";
 
 const BOT = "autopilot[bot]";
@@ -43,14 +43,24 @@ const cases: { name: string; comments: Comment[]; expected: Claim }[] = [
 
 for (const { name, comments, expected } of cases) {
   test(`claim for host pi: ${name}`, () => {
-    assert.deepEqual(claimOf(comments, BOT, "pi"), expected);
+    assert.deepEqual(claimOf(comments, BOT, ["pi"]), expected);
   });
 }
 
 test("a host that loses a race finds its own claim comments to delete", () => {
   const comments = [claimBy(2, "2026-11-15T10:00:00Z", "mac"), claimBy(3, "2026-11-15T10:00:00Z", "pi"), claimBy(4, "2026-11-15T10:00:00Z", "pi", "stranger")];
   assert.deepEqual(
-    ownClaims(comments, BOT, "pi").map((claim) => claim.id),
+    ownClaims(comments, BOT, ["pi"]).map((claim) => claim.id),
     [3],
   );
+});
+
+test("a claim id fits the claim marker, differs per host name and per App key, and hides the name", () => {
+  const id = claimId("raspberrypi", "key-a");
+  assert.match(id, /^[a-f0-9]{12}$/);
+  assert.equal(claimId("raspberrypi", "key-a"), id);
+  assert.notEqual(claimId("mac", "key-a"), id);
+  assert.notEqual(claimId("raspberrypi", "key-b"), id);
+  assert.deepEqual(claimOf([comment(1, "2026-11-15T10:00:00Z", claimComment(id))], BOT, [id, "raspberrypi"]), { kind: "mine" });
+  assert.ok(!claimComment(id).includes("raspberrypi"));
 });
