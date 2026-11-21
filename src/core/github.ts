@@ -28,6 +28,7 @@ export type RepoGitHub = {
   postComment(issue: number, body: string): Promise<void>;
   deleteComment(id: number): Promise<void>;
   setLabels(issue: number, labels: string[]): Promise<void>;
+  closeIssue(issue: number): Promise<void>;
   ensureLabels(labels: LabelSpec[]): Promise<void>;
   readFile(path: string): Promise<string | undefined>;
   minimizeOutdated(commentNodeId: string): Promise<void>;
@@ -57,6 +58,7 @@ export type RepoGitHub = {
   compare(base: string, head: string): Promise<Comparison>;
   // Returns the new head. GitHub does the rebase, so the host's checkout never runs the branch's code.
   rebasePull(pull: number, expectedHead: string): Promise<string>;
+  pullHead(pull: number): Promise<string>;
   openPull(pull: { head: string; base: string; title: string; body: string }): Promise<number>;
   requestReview(pull: number, reviewers: string[]): Promise<void>;
   mergePull(pull: number, sha: string, title: string, message: string): Promise<void>;
@@ -260,6 +262,9 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
     async setLabels(issue, labels) {
       await octokit.issues.setLabels({ ...issueParams(issue), labels });
     },
+    async closeIssue(issue) {
+      await octokit.issues.update({ ...issueParams(issue), state: "closed", state_reason: "completed" });
+    },
     async ensureLabels(labels) {
       const existing = new Set((await octokit.paginate(octokit.issues.listLabelsForRepo, { owner, repo, per_page: 100 })).map((label) => label.name));
       for (const label of labels.filter((label) => !existing.has(label.name))) {
@@ -446,6 +451,10 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
         if (now.head.sha !== expectedHead) return now.head.sha;
       }
       throw new Error(`the head of #${pull} is still ${expectedHead.slice(0, 7)} one minute after the rebase`);
+    },
+    async pullHead(pull) {
+      const { data } = await octokit.pulls.get({ owner, repo, pull_number: pull });
+      return data.head.sha;
     },
     async openPull({ head, base, title, body }) {
       const { data } = await octokit.pulls.create({ owner, repo, head, base, title, body });

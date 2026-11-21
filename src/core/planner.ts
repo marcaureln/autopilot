@@ -70,7 +70,8 @@ ${comments || "(no comments)"}
 
 # Your task
 
-1. Decide if the request has enough information to build it without guessing. If not, set \`needs_info\` to true and ask at most 5 short, specific questions. Do not ask what you can find in the code. If an earlier spec in the thread asked questions, use the answers.
+1. Decide if the request has enough information to build it without guessing. autopilot works without a person, so ask only what an owner alone can decide: what they want, when the issue and the code allow two different results. Never ask an owner to run a command, look something up or confirm a fact: read the code, or run the command yourself. When a sensible default exists, use it and say so in the spec. Only if you must ask, set \`needs_info\` to true and ask at most 3 short, specific questions. If an earlier spec in the thread asked questions, use the answers.
+   If the repo already does what the issue asks, or the issue asks for no change to the repo, leave \`planned_files\` empty and say why in the spec, with the evidence. autopilot then closes the issue.
 2. Write the spec in Markdown, in the language of the issue:
    - \`## Goal\`: one or two sentences.
    - \`## Plan\`: numbered steps for the builder.

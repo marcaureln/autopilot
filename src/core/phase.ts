@@ -12,6 +12,7 @@ export type BotPull = {
 export type Phase =
   | { kind: "spec" }
   | { kind: "plan"; event: "needs_info" | "approval_required" }
+  | { kind: "done" }
   | { kind: "build" }
   | { kind: "pull"; pull: BotPull }
   | { kind: "merged"; pull: BotPull }
@@ -43,6 +44,7 @@ export function issuePhase(spec: { gate: PlanGate["event"]; buildAllowed: boolea
   if (pull?.state === "open") return { kind: "pull", pull };
   if (pull?.closedAt && after(pull.closedAt, retryAt)) return pull.state === "merged" ? { kind: "merged", pull } : { kind: "closed", pull };
   if (!spec) return { kind: "spec" };
+  if (spec.gate === "done") return { kind: "done" };
   if (spec.buildAllowed) return { kind: "build" };
   return { kind: "plan", event: spec.gate === "needs_info" ? "needs_info" : "approval_required" };
 }

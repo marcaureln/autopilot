@@ -15,6 +15,7 @@ import { COMPOSE_OVERRIDE_FILE, OVERRIDE_FILE, startEnvironment, stopEnvironment
 import type { GitHub, RepoGitHub } from "./github.ts";
 import type { Host } from "./host.ts";
 import type { Repo } from "./repo.ts";
+import { workflowFiles } from "./risk.ts";
 import { repoSecretNames } from "./secrets.ts";
 import { prepareAgent } from "./skills.ts";
 import type { Comment } from "./spec.ts";
@@ -80,13 +81,9 @@ export function commitProblems(commits: Commit[], identity: Identity): string[] 
   });
 }
 
-export function workflowFiles(paths: string[]): string[] {
-  return [...new Set(paths.filter((path) => path.startsWith(".github/workflows/")))];
-}
-
 // Without the Workflows permission, GitHub refuses a push that adds, changes or deletes a workflow file.
 // With it, a changed workflow runs on the pull request, with the repo's Actions secrets, before anyone reviews it.
-// So a person approves each workflow file in the plan first (the plan gate rates `.github/` high), and the host
+// So a person approves each workflow file in the plan first (see planGate), and the host
 // pushes only the workflow files that the approved plan lists.
 export function workflowStop(paths: string[], canChangeWorkflows: boolean, plannedFiles: string[]): string | undefined {
   const workflows = workflowFiles(paths);
@@ -188,7 +185,8 @@ ${JSON.stringify(schema, null, 2)}
 `;
 }
 
-type BuildMode = { kind: "build"; base: string; branch: string } | { kind: "fix"; branch: string; head: string; failures: Failure[] };
+// `replaces`: the head of the open pull request that a build replaces. The push fails if someone moved it.
+type BuildMode = { kind: "build"; base: string; branch: string; replaces?: string } | { kind: "fix"; branch: string; head: string; failures: Failure[] };
 
 export type BuildJob = {
   github: GitHub;
@@ -353,7 +351,8 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     if (workflowProblem) throw new BuildStopped(workflowProblem);
 
     // A first build replaces what an earlier attempt left on the branch. A fix round only adds on top of the commit it checked out.
-    const lease = mode.kind === "build" ? "--force" : `--force-with-lease=refs/heads/${mode.branch}:${start}`;
+    const expected = mode.kind === "fix" ? start : mode.replaces;
+    const lease = expected === undefined ? "--force" : `--force-with-lease=refs/heads/${mode.branch}:${expected}`;
     const pushToken = await repoGitHub.token(true);
     await pushBranch(origin, repoUrl(repo), pushToken, lease, head, mode.branch).catch((error: unknown) => {
       const stderr = typeof error === "object" && error !== null && "stderr" in error ? String(error.stderr).trim() : String(error);

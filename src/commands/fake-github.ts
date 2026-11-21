@@ -45,6 +45,10 @@ export class FakeRepoGitHub implements RepoGitHub {
   ciRuns = new Map<string, Statuses>();
   merges: { pull: number; sha: string; title: string; message: string }[] = [];
   reviewRequests: { pull: number; reviewers: string[] }[] = [];
+  // Heads that the default branch moved past. GitHub cannot rebase any of them.
+  behind = new Set<string>();
+  // Runs when the host asks GitHub for a rebase, for example a person's push.
+  onRebase: () => void = () => undefined;
   private clock = Date.parse("2026-01-01T00:00:00Z");
   private nextId = 1;
   private nextIssue = 1;
@@ -160,6 +164,9 @@ export class FakeRepoGitHub implements RepoGitHub {
   async setLabels(issue: number, labels: string[]): Promise<void> {
     this.issue(issue).labels = [...labels];
   }
+  async closeIssue(issue: number): Promise<void> {
+    this.issue(issue).open = false;
+  }
   async ensureLabels(): Promise<void> {}
   async readFile(path: string): Promise<string | undefined> {
     return path === CONFIG_PATH && this.config ? JSON.stringify(this.config) : undefined;
@@ -230,10 +237,14 @@ export class FakeRepoGitHub implements RepoGitHub {
     return this.pushed.get(sha);
   }
   async compare(_base: string, head: string) {
-    return { behind: 0, ahead: 1, changes: [head] };
+    return { behind: this.behind.has(head) ? 1 : 0, ahead: 1, changes: [head] };
   }
   async rebasePull(): Promise<string> {
-    throw new Error("the fake does not rebase");
+    this.onRebase();
+    throw new Error("merge conflict");
+  }
+  async pullHead(pull: number): Promise<string> {
+    return this.pulls.find((candidate) => candidate.number === pull)?.head.sha ?? "";
   }
   async openPull(pull: { head: string; base: string; title: string; body: string }): Promise<number> {
     if (!this.branches.has(pull.head)) throw new Error(`the branch ${pull.head} was not pushed`);

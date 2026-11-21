@@ -89,6 +89,10 @@ function isHighPath(path: string, highPaths: string[]): boolean {
   return ALWAYS_HIGH.some((rule) => rule(path, name)) || highPaths.some((glob) => matchesGlob(path, glob));
 }
 
+export function workflowFiles(paths: string[]): string[] {
+  return [...new Set(paths.filter((path) => path.startsWith(".github/workflows/")))];
+}
+
 export function assessRisk(changes: FileChange[], risk: Config["risk"]): Risk {
   const lines = changes.reduce((sum, change) => sum + (change.additions ?? 0) + (change.deletions ?? 0), 0);
   const high =

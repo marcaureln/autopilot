@@ -1,18 +1,27 @@
 import type { Config } from "./config.ts";
 import type { PlannerResult } from "./planner-result.ts";
-import { assessRisk, type FileChange, type Risk } from "./risk.ts";
+import { assessRisk, workflowFiles, type FileChange, type Risk } from "./risk.ts";
 
-export type PlanGate = { event: "needs_info" | "approval_required" | "go"; risk: Risk; rulesRisk: Risk };
+export type PlanGate = { event: "needs_info" | "approval_required" | "done" | "go"; risk: Risk; rulesRisk: Risk };
 
 function toChange(file: PlannerResult["planned_files"][number]): FileChange {
   return file.status === "renamed" ? { status: "renamed", path: file.path, previousPath: file.previous_path } : { status: file.status, path: file.path };
 }
 
 export function planGate(result: PlannerResult, risk: Config["risk"]): PlanGate {
-  const rulesRisk = assessRisk(result.planned_files.map(toChange), risk);
+  const changes = result.planned_files.map(toChange);
+  const rulesRisk = assessRisk(changes, risk);
   const finalRisk = result.risk === "high" || rulesRisk === "high" ? "high" : "low";
-  // Only the rules stop the build. The planner's rating goes to the merge gate, so a person looks once, at the pull request.
-  const event = result.needs_info ? "needs_info" : result.scope === "too_broad" || rulesRisk === "high" ? "approval_required" : "go";
+  // A pushed workflow runs with the repo's Actions secrets before anyone reviews it, so a person approves it first.
+  // Any other high risk goes to the build: the merge gate sends its pull request to a review, so a person looks once.
+  const workflows = workflowFiles(changes.flatMap((change) => (change.status === "renamed" ? [change.path, change.previousPath] : [change.path])));
+  const event = result.needs_info
+    ? "needs_info"
+    : result.scope === "too_broad" || workflows.length > 0
+      ? "approval_required"
+      : result.planned_files.length === 0
+        ? "done"
+        : "go";
   return { event, risk: finalRisk, rulesRisk };
 }
 
