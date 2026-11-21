@@ -287,6 +287,27 @@ describe("from the builder's pull request to the merge", () => {
     assert.deepEqual(world.builds.map((mode) => mode.kind), ["build"]);
   });
 
+  for (const { by, rebuilds } of [
+    { by: OWNER, rebuilds: true },
+    { by: "stranger", rebuilds: false },
+  ]) {
+    test(`a comment by ${by} on an issue whose pull request waits for a review ${rebuilds ? "builds it again on main" : "does nothing"}`, async () => {
+      const world = new FakeWorld({ ...HOST_CONFIG, merge: "manual" });
+      const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+      const pull = await buildPull(world, issue);
+      await world.poll();
+      assert.equal(world.repo.reviewRequests.length, 1);
+      world.repo.addComment(issue, by, "Resolve the conflicts.");
+      await world.poll(2);
+      assert.equal(world.repo.headOf(pull), rebuilds ? "sha-2" : "sha-1");
+      assert.deepEqual(world.builds.map((mode) => mode.kind), rebuilds ? ["build", "build"] : ["build"]);
+      assert.equal(world.repo.commentBodies(issue).filter((body) => body.includes("built pull request")).length, rebuilds ? 1 : 0);
+      assert.equal(world.repo.reviewRequests.length, rebuilds ? 2 : 1, "the new head goes through the merge gate again");
+      await world.poll();
+      assert.equal(world.builds.length, rebuilds ? 2 : 1);
+    });
+  }
+
   test("a review that waits is requested once, not on each poll", async () => {
     const world = new FakeWorld({ ...HOST_CONFIG, merge: "manual" });
     const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });

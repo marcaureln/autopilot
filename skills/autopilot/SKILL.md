@@ -140,7 +140,7 @@ gh pr merge <pr> --repo example-org/app --squash --delete-branch
 
 The pull request body has `Fixes #<n>`, so the merge closes the issue. At its next loop, the host removes the autopilot labels from a closed issue.
 
-To ask for changes, do not comment on the pull request. autopilot does not read pull request comments. Close the pull request, then write the correction as a comment on the issue. The host labels the issue `autopilot:blocked` because the pull request closed without a merge. Tick **Try again** in that comment, and the planner writes a new spec that uses the comment.
+To ask for changes, write them as a comment on the issue, not on the pull request: autopilot does not read pull request comments. The builder builds the pull request again on the default branch, with the comment, and the checks and the merge gate run again. "Resolve the conflicts" works the same way. To change the plan itself, close the pull request, comment on the issue, then tick **Try again** in the blocked comment: the planner writes a new spec that uses the comment.
 
 ### The issue has `autopilot:blocked`
 
