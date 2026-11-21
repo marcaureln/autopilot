@@ -11,7 +11,7 @@ function repoWith(issues: Issue[]): RepoGitHub {
   return {
     listOpenIssues: async () => issues,
     lastLabeled: unused,
-    listComments: unused,
+    listComments: async () => [],
     postComment: unused,
     deleteComment: unused,
     setLabels: unused,

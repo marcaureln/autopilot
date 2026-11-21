@@ -17,9 +17,13 @@ function realEdits(editors: string[]): string[] {
 }
 
 // GitHub has no record of who ticked a box, only of who edited the comment.
-export function isOwnerTick(body: string, editors: string[], owners: string[]): boolean {
+export function onlyOwnersEdited(editors: string[], owners: string[]): boolean {
   const edits = realEdits(editors);
-  return isApproved(body) && edits.length > 0 && edits.every((editor) => owners.includes(editor));
+  return edits.length > 0 && edits.every((editor) => owners.includes(editor));
+}
+
+export function isOwnerTick(body: string, editors: string[], owners: string[]): boolean {
+  return isApproved(body) && onlyOwnersEdited(editors, owners);
 }
 
 export type TrustedSpec = { gate: PlanGate["event"]; plannerRisk: Risk | undefined; buildAllowed: boolean; plannedFiles: string[]; forAPerson: string | undefined };
