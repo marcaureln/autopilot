@@ -67,6 +67,6 @@ for (const { workflows, forAPerson } of promptCases) {
   test(`the planner prompt ${forAPerson ? "has" : "has no"} "For a person" section when the Workflows permission is ${workflows ? "there" : "missing"}`, () => {
     const prompt = plannerPrompt({ repo: "o/r", issue: { number: 7, title: "t", body: "" }, thread: [], risk: { max_diff_lines: 400, high_paths: [] }, canChangeWorkflows: workflows });
     assert.equal(prompt.includes("## For a person"), forAPerson);
-    assert.match(prompt, /one line on why\.\n   - A Mermaid diagram only when it makes the flow clearer\.\n(   - .*\n)?   When `needs_info` is true/);
+    assert.match(prompt, /one line on why\.\n   - A Mermaid diagram only when it makes the flow clearer\.\n   - Other `##` sections.*\n(   - .*\n)?   When `needs_info` is true/);
   });
 }

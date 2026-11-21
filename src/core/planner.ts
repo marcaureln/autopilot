@@ -76,6 +76,7 @@ ${comments || "(no comments)"}
    - \`## Plan\`: numbered steps for the builder.
    - \`## Files\`: each file to add, change, delete or rename, with one line on why.
    - A Mermaid diagram only when it makes the flow clearer.
+   - Other \`##\` sections, such as what you found, only when a reviewer needs them. autopilot folds every section except Goal, Plan and For a person, so keep those short: a person reviews them in one minute.
 ${forAPerson}   When \`needs_info\` is true, the spec says what you understood and what is missing.
 3. Assess the work:
    - \`scope\`: \`too_broad\` when the work is more than one focused pull request (about ${risk.max_diff_lines} changed lines) or mixes unrelated changes; otherwise \`ok\`.
