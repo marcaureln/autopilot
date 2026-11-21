@@ -197,6 +197,30 @@ describe("from the builder's pull request to the merge", () => {
     });
   }
 
+  test("a head that GitHub cannot rebase on the default branch is built again on it, then checked and merged", async () => {
+    const world = new FakeWorld();
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    const pull = await buildPull(world, issue);
+    world.repo.behind.add("sha-1");
+    await world.poll();
+    assert.equal(world.repo.headOf(pull), "sha-2");
+    assert.deepEqual(world.builds.map((mode) => mode.kind), ["build", "build"]);
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:working"]);
+    await world.poll();
+    assert.deepEqual(world.repo.merges.map(({ sha }) => sha), ["sha-2"]);
+  });
+
+  test("a head that a person moves during the rebase is not built again", async () => {
+    const world = new FakeWorld();
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    const pull = await buildPull(world, issue);
+    world.repo.behind.add("sha-1");
+    world.repo.onRebase = () => world.repo.pushCommit("autopilot/1-add-contributing-md", "sha-human");
+    await world.poll();
+    assert.equal(world.repo.headOf(pull), "sha-human");
+    assert.deepEqual(world.builds.map((mode) => mode.kind), ["build"]);
+  });
+
   test("a review that waits is requested once, not on each poll", async () => {
     const world = new FakeWorld({ ...HOST_CONFIG, merge: "manual" });
     const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });

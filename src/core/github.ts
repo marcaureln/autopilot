@@ -57,6 +57,7 @@ export type RepoGitHub = {
   compare(base: string, head: string): Promise<Comparison>;
   // Returns the new head. GitHub does the rebase, so the host's checkout never runs the branch's code.
   rebasePull(pull: number, expectedHead: string): Promise<string>;
+  pullHead(pull: number): Promise<string>;
   openPull(pull: { head: string; base: string; title: string; body: string }): Promise<number>;
   requestReview(pull: number, reviewers: string[]): Promise<void>;
   mergePull(pull: number, sha: string, title: string, message: string): Promise<void>;
@@ -446,6 +447,10 @@ function repoGitHub(octokit: Octokit, installationId: number, { owner, name: rep
         if (now.head.sha !== expectedHead) return now.head.sha;
       }
       throw new Error(`the head of #${pull} is still ${expectedHead.slice(0, 7)} one minute after the rebase`);
+    },
+    async pullHead(pull) {
+      const { data } = await octokit.pulls.get({ owner, repo, pull_number: pull });
+      return data.head.sha;
     },
     async openPull({ head, base, title, body }) {
       const { data } = await octokit.pulls.create({ owner, repo, head, base, title, body });

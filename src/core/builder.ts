@@ -188,7 +188,8 @@ ${JSON.stringify(schema, null, 2)}
 `;
 }
 
-type BuildMode = { kind: "build"; base: string; branch: string } | { kind: "fix"; branch: string; head: string; failures: Failure[] };
+// `replaces`: the head of the open pull request that a build replaces. The push fails if someone moved it.
+type BuildMode = { kind: "build"; base: string; branch: string; replaces?: string } | { kind: "fix"; branch: string; head: string; failures: Failure[] };
 
 export type BuildJob = {
   github: GitHub;
@@ -353,7 +354,8 @@ export async function runBuilder(job: BuildJob): Promise<Built> {
     if (workflowProblem) throw new BuildStopped(workflowProblem);
 
     // A first build replaces what an earlier attempt left on the branch. A fix round only adds on top of the commit it checked out.
-    const lease = mode.kind === "build" ? "--force" : `--force-with-lease=refs/heads/${mode.branch}:${start}`;
+    const expected = mode.kind === "fix" ? start : mode.replaces;
+    const lease = expected === undefined ? "--force" : `--force-with-lease=refs/heads/${mode.branch}:${expected}`;
     const pushToken = await repoGitHub.token(true);
     await pushBranch(origin, repoUrl(repo), pushToken, lease, head, mode.branch).catch((error: unknown) => {
       const stderr = typeof error === "object" && error !== null && "stderr" in error ? String(error.stderr).trim() : String(error);

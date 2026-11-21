@@ -458,20 +458,50 @@ function verifySource(job: Working, config: Config, pull: BotPull, retryAt: stri
 
 // The checks read the config of the default branch, so they run on a branch that has its latest commits.
 // The result is marked as pushed by the host, so the host rebases only its own head onto the default
-// branch, and marks the result only when it brings exactly the same changes. Returns whether it rebased.
-async function rebaseWhenBehind(job: Working, pull: BotPull, defaultBranch: string, pushedByAutopilot: boolean): Promise<boolean> {
+// branch, and marks the result only when it brings exactly the same changes. Otherwise, as when the
+// default branch changed the same files, the builder builds the spec again on the default branch.
+// Returns whether the head changed.
+async function rebaseWhenBehind(job: Working, config: Config, pull: BotPull, defaultBranch: string, pushedByAutopilot: boolean, currentSpec: () => Promise<TrustedSpec | undefined>): Promise<boolean> {
   const { loop, ctx, issue, key } = job;
   const { repoGitHub } = ctx;
   const sha = pull.head.sha;
   if (!pushedByAutopilot || pull.base !== defaultBranch) return false;
   const before = await repoGitHub.compare(defaultBranch, sha);
   if (before.behind === 0) return false;
-  const head = await repoGitHub.rebasePull(pull.number, sha).catch((error: unknown) => {
-    throw new Blocked(`autopilot could not rebase pull request #${pull.number} on \`${pull.base}\`: ${messageOf(error)}. Close the pull request, then remove the label to build again.`);
-  });
+
+  // The head is read again: a person may have pushed, and the rebase error may come from that.
+  async function rebuild(replaces: string, why: string): Promise<true> {
+    if ((await repoGitHub.pullHead(pull.number)) !== replaces) {
+      loop.log(key, `${key}: the head of #${pull.number} moved, the next poll decides`);
+      return true;
+    }
+    loop.log(key, `${key}: ${why}, builds #${pull.number} again on ${defaultBranch}`);
+    const built = await buildOrBlock(loop, {
+      github: loop.github,
+      repoGitHub,
+      repo: ctx.repo,
+      host: loop.host,
+      config,
+      issue,
+      thread: await vouchedThread(job),
+      plannedFiles: (await currentSpec())?.plannedFiles ?? [],
+      identity: await identityOf(ctx),
+      mode: { kind: "build", base: defaultBranch, branch: pull.head.ref, replaces },
+    });
+    await repoGitHub.markPushed(built.head, issue.number);
+    loop.log(key, `${key}: built #${pull.number} again at ${built.head.slice(0, 7)}, the checks run next`);
+    return true;
+  }
+
+  let head: string;
+  try {
+    head = await repoGitHub.rebasePull(pull.number, sha);
+  } catch (error) {
+    return rebuild(sha, `GitHub could not rebase #${pull.number} on ${defaultBranch} (${messageOf(error)})`);
+  }
   const after = await repoGitHub.compare(defaultBranch, head);
   if (head === sha || after.behind > 0 || after.ahead !== before.ahead || after.changes.join("\n") !== before.changes.join("\n")) {
-    throw new Blocked(`The rebase of pull request #${pull.number} on \`${pull.base}\` gave ${head.slice(0, 7)}, which does not bring the same changes as ${sha.slice(0, 7)}. Close the pull request, then remove the label to build again.`);
+    return rebuild(head, `the rebase of #${pull.number} on ${defaultBranch} gave ${head.slice(0, 7)}, which does not bring the same changes as ${sha.slice(0, 7)}`);
   }
   await repoGitHub.markPushed(head, issue.number);
   loop.audit({ event: "pr.rebased", repo: `${ctx.repo.owner}/${ctx.repo.name}`, pull: pull.number, issue: issue.number, from: sha, to: head });
@@ -501,7 +531,7 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
 
   const head = headVerdict(await verify.results(sha), required, verify.since);
   const defaultBranch = await repoGitHub.defaultBranch();
-  if (head.kind === "run" && (await rebaseWhenBehind(job, pull, defaultBranch, pushedByAutopilot))) return;
+  if (head.kind === "run" && (await rebaseWhenBehind(job, config, pull, defaultBranch, pushedByAutopilot, currentSpec))) return;
   const verdict = await verify.settle(head);
   if (verdict === undefined) return;
 

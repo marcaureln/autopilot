@@ -38,6 +38,7 @@ function repoWith(issues: Issue[]): RepoGitHub {
     pushedFor: unused,
     compare: unused,
     rebasePull: unused,
+    pullHead: unused,
     openPull: unused,
     requestReview: unused,
     mergePull: unused,
