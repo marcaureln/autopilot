@@ -15,6 +15,32 @@ const NEXT_STEP: Record<PlanGate["event"], string> = {
   go: "The build starts now.",
 };
 
+// A reviewer reads these sections first. Every other section of the spec is folded.
+const OPEN_SECTIONS = new Set(["goal", "plan", "for a person"]);
+
+function escapeHtml(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+export function foldSections(markdown: string): string {
+  const sections: { title: string | undefined; lines: string[] }[] = [{ title: undefined, lines: [] }];
+  let fence: string | undefined;
+  for (const line of markdown.split("\n")) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker && (fence === undefined || marker.startsWith(fence))) fence = fence === undefined ? marker : undefined;
+    if (fence === undefined && line.startsWith("## ")) sections.push({ title: line.slice(3).trim(), lines: [line] });
+    else sections.at(-1)?.lines.push(line);
+  }
+  return sections
+    .map(({ title, lines }) => {
+      const text = lines.join("\n").trim();
+      if (title === undefined || OPEN_SECTIONS.has(title.toLowerCase())) return text;
+      return `<details><summary>${escapeHtml(title)}</summary>\n\n${lines.slice(1).join("\n").trim()}\n\n</details>`;
+    })
+    .filter((text) => text !== "")
+    .join("\n\n");
+}
+
 function fileLine(file: PlannerResult["planned_files"][number]): string {
   return file.status === "renamed" ? `\`${file.previous_path}\` → \`${file.path}\` (renamed)` : `\`${file.path}\` (${file.status})`;
 }
@@ -23,7 +49,7 @@ export function renderSpecComment(result: PlannerResult, gate: PlanGate): string
   const riskLine = gate.risk === result.risk && gate.risk === gate.rulesRisk ? gate.risk : `${gate.risk} (planner: ${result.risk}, rules: ${gate.rulesRisk})`;
   const lines = [
     `<!-- autopilot:spec gate=${gate.event} planner=${result.risk} -->`,
-    result.spec.trim(),
+    foldSections(result.spec),
     "",
     "## Assessment",
     "",
@@ -92,7 +118,7 @@ export function forAPerson(body: string): string | undefined {
   const start = lines.indexOf("## For a person");
   if (start === -1) return undefined;
   const rest = lines.slice(start + 1);
-  const next = rest.findIndex((line) => line.startsWith("## "));
+  const next = rest.findIndex((line) => line.startsWith("## ") || line.startsWith("<details>"));
   const section = (next === -1 ? rest : rest.slice(0, next)).join("\n").trim();
   return section === "" ? undefined : section;
 }

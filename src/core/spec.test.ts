@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { forAPerson, isApproved, latestSpec, ownerReplyAfter, plannedPaths, renderSpecComment, specGate, specMissingLabel, specPlannerRisk, type Comment } from "./spec.ts";
+import { foldSections, forAPerson, isApproved, latestSpec, ownerReplyAfter, plannedPaths, renderSpecComment, specGate, specMissingLabel, specPlannerRisk, type Comment } from "./spec.ts";
 import type { PlannerResult } from "./planner-result.ts";
 
 const BOT = "autopilot[bot]";
@@ -139,3 +139,19 @@ for (const { name, spec, expected } of forAPersonCases) {
     assert.equal(forAPerson(renderSpecComment({ ...result, spec }, { event: "go", risk: "low", rulesRisk: "low" })), expected);
   });
 }
+
+test("the spec folds every section but Goal, Plan and For a person", () => {
+  const spec = ["Intro.", "## Goal", "Do X.", "## What I found", "A <b> tag.", "```md", "## Not a heading", "```", "## Plan", "1. Step.", "## Files", "- `a.ts`", "## For a person", "Edit ci.yml."].join("\n");
+  assert.equal(
+    foldSections(spec),
+    [
+      "Intro.",
+      "## Goal\nDo X.",
+      "<details><summary>What I found</summary>\n\nA <b> tag.\n```md\n## Not a heading\n```\n\n</details>",
+      "## Plan\n1. Step.",
+      "<details><summary>Files</summary>\n\n- `a.ts`\n\n</details>",
+      "## For a person\nEdit ci.yml.",
+    ].join("\n\n"),
+  );
+  assert.equal(forAPerson(renderSpecComment({ ...result, spec }, { event: "go", risk: "low", rulesRisk: "low" })), "Edit ci.yml.");
+});
