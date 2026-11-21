@@ -95,7 +95,7 @@ autopilot uses five labels. An issue has `autopilot` and at most one `autopilot:
 | `autopilot:working` | The host | The host writes the spec, builds, runs the checks or runs a fix round. Wait. |
 | `autopilot:needs-info` | The user | The planner asks questions. Answer them in one comment. |
 | `autopilot:awaiting-approval` | The user | The plan changes a workflow file, or its scope is too broad. Read the spec, then tick `- [ ] Approve and build`. |
-| `autopilot:blocked` | The user | autopilot stopped. Read the last comment, fix the cause, then remove the label to retry. |
+| `autopilot:blocked` | The user | autopilot stopped. Read the last comment, fix the cause, then tick `- [ ] Try again` at its end to retry. |
 
 A pull request that waits for a review has no label. The issue keeps `autopilot:working`, the host comments "Pull request #N passed every check and waits for a review: <reasons>", and requests a review from the owners on the pull request.
 
@@ -140,7 +140,7 @@ gh pr merge <pr> --repo example-org/app --squash --delete-branch
 
 The pull request body has `Fixes #<n>`, so the merge closes the issue. At its next loop, the host removes the autopilot labels from a closed issue.
 
-To ask for changes, do not comment on the pull request. autopilot does not read pull request comments. Close the pull request, then write the correction as a comment on the issue. The host labels the issue `autopilot:blocked` because the pull request closed without a merge. Remove `autopilot:blocked`, and the planner writes a new spec that uses the comment.
+To ask for changes, do not comment on the pull request. autopilot does not read pull request comments. Close the pull request, then write the correction as a comment on the issue. The host labels the issue `autopilot:blocked` because the pull request closed without a merge. Tick **Try again** in that comment, and the planner writes a new spec that uses the comment.
 
 ### The issue has `autopilot:blocked`
 
@@ -168,7 +168,7 @@ To ask for changes, do not comment on the pull request. autopilot does not read 
    - "rate limit reached, waiting until HH:MM" or "GitHub rate limit reached": the host made too many GitHub requests. It sends no request until that time, then continues. If this occurs frequently, raise `poll_interval_seconds` in its `host.json`, or lower `concurrency`.
    - "The App has no permission for ... (403)": accept the App's new permissions on its installation page.
    - "sudo on <host> asks for a password": let the host user run sudo without a password.
-4. Retry: an owner removes the label. `gh issue edit <n> --repo example-org/app --remove-label autopilot:blocked`. Checks and pull requests from before the retry do not count.
+4. Retry: an owner ticks `- [ ] Try again` at the end of the blocked comment, or removes the label: `gh issue edit <n> --repo example-org/app --remove-label autopilot:blocked`. The host accepts the tick only when every edit of the comment is by an owner. Checks and pull requests from before the retry do not count.
 
 ### Debug the dev container
 

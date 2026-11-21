@@ -77,9 +77,14 @@ export function specPlannerRisk(body: string): Risk | undefined {
   return risk === "low" || risk === "high" ? risk : undefined;
 }
 
-export function isApproved(body: string): boolean {
+// Only the last line counts: a box inside the text above it cannot pass for the real one.
+export function isTicked(body: string, checkbox: string): boolean {
   const lastLine = body.trimEnd().split("\n").at(-1) ?? "";
-  return new RegExp(`^- \\[[xX]\\] ${CHECKBOX}$`).test(lastLine.trim());
+  return new RegExp(`^- \\[[xX]\\] ${checkbox}$`).test(lastLine.trim());
+}
+
+export function isApproved(body: string): boolean {
+  return isTicked(body, CHECKBOX);
 }
 
 export function latestSpec(comments: Comment[], botLogin: string): Comment | undefined {

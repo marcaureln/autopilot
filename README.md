@@ -51,7 +51,7 @@ Write an issue that asks for one small change, with acceptance criteria. Add the
 | `autopilot:working`           | Nothing. Wait.                                                            |
 | `autopilot:needs-info`        | Answer the questions of the spec in one comment.                          |
 | `autopilot:awaiting-approval` | Read the spec, then tick **Approve and build**.                           |
-| `autopilot:blocked`           | Read the last comment, fix the cause, then remove the label to try again. |
+| `autopilot:blocked`           | Read the last comment, fix the cause, then tick **Try again**.            |
 
 A repo with no `.github/autopilot.json` is onboarded first: the host opens a "Set up autopilot" pull request with a dev container, the check commands and an `AGENTS.md`. Review it and merge it, then the issue continues. For an empty repo, write in the issue what to build, for example "A 2D platformer in Godot 4". `autopilot init` does the same from a checkout.
 

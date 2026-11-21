@@ -16,8 +16,8 @@ import type { PlannerJob } from "../core/planner.ts";
 import type { PlannerResult } from "../core/planner-result.ts";
 import { ONBOARDING_BRANCH, type Repo } from "../core/repo.ts";
 import { refusedSecrets } from "../core/repo-secrets.ts";
-import { isApproved, latestSpec, type Comment, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
-import { isOwnerTick, isVouched, trustedSpec, trustedThread, type TrustedSpec } from "../core/trust.ts";
+import { isApproved, isTicked, latestSpec, type Comment, ownerReplyAfter, renderSpecComment, specMissingLabel } from "../core/spec.ts";
+import { isOwnerTick, isVouched, onlyOwnersEdited, trustedSpec, trustedThread, type TrustedSpec } from "../core/trust.ts";
 import { doneLabels, LABELS, labelsFor, migrateLabels, stateLabel, stateOf, transition, TRIGGER_LABEL, type Event, type IssueState, type State } from "../core/state.ts";
 
 const CLAIM_SETTLE_MS = 3000;
@@ -108,6 +108,32 @@ function onboardingMarker(pull: number): string {
   return `<!-- autopilot:onboarding pr=${pull} -->`;
 }
 
+const BLOCKED_MARKER = "<!-- autopilot:blocked -->";
+const RETRY_CHECKBOX = "Try again";
+
+function blockedComment(message: string): string {
+  return `${BLOCKED_MARKER}\nautopilot stopped: ${message}\n\nFix the cause, then tick the box to try again.\n\n- [ ] ${RETRY_CHECKBOX}`;
+}
+
+// An owner's tick on the last blocked comment. A ticked comment from before the last retry does not
+// count: that block is over, and its comment only stays because the new one failed to post. GitHub
+// times have whole seconds, so a comment from the same second as the retry is the new one.
+async function retryTicked(loop: Loop, repoGitHub: RepoGitHub, issue: Issue, key: string, bot: string): Promise<boolean> {
+  const comments = await repoGitHub.listComments(issue.number);
+  const blocked = comments.findLast((comment) => comment.author === bot && comment.body.startsWith(BLOCKED_MARKER));
+  if (!blocked || !isTicked(blocked.body, RETRY_CHECKBOX)) return false;
+  const lastRetry = await repoGitHub.lastUnlabeled(issue.number, stateLabel("blocked"), [...loop.host.owners, bot]);
+  if (lastRetry !== undefined && Date.parse(blocked.createdAt) < Date.parse(lastRetry)) return false;
+  const editors = await repoGitHub.commentEditors(blocked.nodeId);
+  if (!onlyOwnersEdited(editors, loop.host.owners)) {
+    loop.audit({ event: "retry.refused", issue: key, editors });
+    loop.log(key, `${key}: blocked, ticked but edited by a non-owner (${editors.join(", ")}); an owner removes ${stateLabel("blocked")} to try again`);
+    return false;
+  }
+  loop.audit({ event: "retry.accepted", issue: key, editors });
+  return true;
+}
+
 async function claim(loop: Loop, repoGitHub: RepoGitHub, issue: Issue, key: string, bot: string, comments: Comment[]): Promise<Comment[] | undefined> {
   const { host, log, audit } = loop;
   const me = [loop.claimId, host.name];
@@ -137,9 +163,16 @@ async function reconcile(loop: Loop, ctx: RepoContext, issue: Issue): Promise<vo
   const key = `${repo.owner}/${repo.name}#${issue.number}`;
   const migrated = migrateLabels(issue.labels);
   let labels = migrated ?? issue.labels;
-  const state = stateOf(labels);
+  let state = stateOf(labels);
   if (state === "ambiguous") return log(key, `${key}: more than one autopilot:* label, skipped`);
-  if (state === "blocked") return log(key, `${key}: ${state}`);
+  if (state === "blocked") {
+    if (!(await retryTicked(loop, repoGitHub, issue, key, bot))) return log(key, `${key}: ${state}`);
+    // The host removes the label, as an owner would: that removal is the time of the retry (see working).
+    labels = labels.filter((label) => label !== stateLabel("blocked"));
+    await repoGitHub.setLabels(issue.number, labels);
+    log(key, `${key}: an owner ticked Try again`);
+    state = "new";
+  }
 
   const labeled = await repoGitHub.lastLabeled(issue.number, TRIGGER_LABEL);
   if (!labeled || !host.owners.includes(labeled.actor)) {
@@ -207,7 +240,7 @@ async function reconcile(loop: Loop, ctx: RepoContext, issue: Issue): Promise<vo
     await move("fail");
     // The message can carry agent text.
     const message = neutralize(error.message).slice(0, MAX_COMMENT_CHARS);
-    await repoGitHub.postComment(issue.number, `autopilot stopped: ${message}\n\nFix it, then remove the \`${stateLabel("blocked")}\` label to try again.`);
+    await repoGitHub.postComment(issue.number, blockedComment(message));
   }
 }
 
@@ -231,8 +264,9 @@ async function working(job: Working): Promise<void> {
     return comment && trustedSpec(comment.body, await repoGitHub.commentEditors(comment.nodeId), host.owners);
   }
 
-  // Removing autopilot:blocked restarts the job: pull requests and statuses from before do not count.
-  const retryAt = later(labeledAt, await repoGitHub.lastUnlabeled(issue.number, stateLabel("blocked"), host.owners));
+  // A retry restarts the job: pull requests and statuses from before do not count. The host removes
+  // autopilot:blocked after an owner's tick, and an owner can also remove it.
+  const retryAt = later(labeledAt, await repoGitHub.lastUnlabeled(issue.number, stateLabel("blocked"), [...host.owners, bot]));
   const pull = latestPull(ctx.pulls, issue.number);
   const phase = issuePhase(pull?.state === "open" ? undefined : await currentSpec(), pull, retryAt);
 
@@ -248,7 +282,7 @@ async function working(job: Working): Promise<void> {
     case "merged":
       return log(key, `${key}: pull request #${phase.pull.number} is merged`);
     case "closed":
-      throw new Blocked(`Pull request #${phase.pull.number} was closed without a merge. To build again, remove the label. To change the plan first, comment on the issue.`);
+      throw new Blocked(`Pull request #${phase.pull.number} was closed without a merge. To build again, tick the box. To change the plan first, comment on the issue, then tick the box.`);
     case "pull": {
       const config = await readConfig(repoGitHub);
       return checksAndMergeGate(job, config, phase.pull, retryAt, currentSpec);

@@ -132,7 +132,44 @@ describe("Plan gate, after the planner wrote the spec", () => {
     await world.poll();
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
     const [message] = world.repo.commentBodies(issue);
-    assert.match(message ?? "", /^autopilot stopped: .*the model is down/);
+    assert.match(message ?? "", /^<!-- autopilot:blocked -->\nautopilot stopped: .*the model is down[^]*\n- \[ \] Try again$/);
+  });
+
+});
+
+describe("Try again on a blocked issue", () => {
+  const rows: { name: string; ticks: string[]; retries: boolean }[] = [
+    { name: "a tick by an owner starts the job again", ticks: [OWNER], retries: true },
+    { name: "a tick by a non-owner does not", ticks: ["stranger"], retries: false },
+    { name: "a tick by an owner after an edit by a non-owner does not", ticks: ["stranger", OWNER], retries: false },
+  ];
+  for (const row of rows) {
+    test(row.name, async () => {
+      const world = new FakeWorld();
+      world.script.planError = new Error("the model is down");
+      const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+      await world.poll(2);
+      assert.deepEqual(world.planned, [issue]);
+      world.script.planError = undefined;
+      for (const by of row.ticks) world.repo.tickRetry(issue, by);
+      await world.poll();
+      assert.deepEqual(world.planned, row.retries ? [issue, issue] : [issue]);
+      assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", row.retries ? "autopilot:working" : "autopilot:blocked"]);
+    });
+  }
+
+  test("a tick on the comment of an earlier block does not start the job again", async () => {
+    const world = new FakeWorld();
+    world.script.planError = new Error("the model is down");
+    const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
+    await world.poll();
+    world.repo.tickRetry(issue, OWNER);
+    await world.poll();
+    assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
+    // The second block posted no comment, so the newest blocked comment is the ticked one.
+    world.repo.comments = world.repo.comments.filter((comment) => comment.body !== world.repo.commentBodies(issue).at(-1));
+    await world.poll(2);
+    assert.deepEqual(world.planned, [issue, issue]);
   });
 });
 
@@ -301,7 +338,7 @@ describe("failing checks", () => {
     await world.poll(2);
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
     const [message] = world.repo.commentBodies(issue).slice(-1);
-    assert.match(message ?? "", /^autopilot stopped: .*`test`.*boom in test/s);
+    assert.match(message ?? "", /^<!-- autopilot:blocked -->\nautopilot stopped: .*`test`.*boom in test/s);
     assert.equal(world.repo.merges.length, 0);
     assert.equal(world.builds.filter((mode) => mode.kind === "fix").length, 1);
     await world.poll(2);
@@ -328,7 +365,7 @@ describe("failing checks", () => {
     world.repo.openPullFor("autopilot/1-add-contributing-md");
     await world.poll();
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
-    assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^autopilot stopped: Someone else pushed/);
+    assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^<!-- autopilot:blocked -->\nautopilot stopped: Someone else pushed/);
     assert.deepEqual(world.builds, []);
     assert.equal(world.repo.merges.length, 0);
   });
@@ -350,7 +387,7 @@ describe("a repo with 1Password references", () => {
       await world.poll();
       assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", row.blocked ? "autopilot:blocked" : "autopilot:working"]);
       assert.equal(world.checkRuns, row.blocked ? 0 : 1);
-      if (row.blocked) assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^autopilot stopped: .*no 1Password.*autopilot secrets set/s);
+      if (row.blocked) assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^<!-- autopilot:blocked -->\nautopilot stopped: .*no 1Password.*autopilot secrets set/s);
     });
   }
 });
@@ -387,7 +424,7 @@ describe("verify.mode ci", () => {
       mock.timers.tick(2 * 60 * 1000);
       await world.poll();
       assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
-      assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^autopilot stopped: .*`build`.*10 minutes/s);
+      assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^<!-- autopilot:blocked -->\nautopilot stopped: .*`build`.*10 minutes/s);
       assert.equal(world.repo.merges.length, 0);
     } finally {
       mock.timers.reset();
@@ -414,7 +451,7 @@ describe("a builder that fails", () => {
     const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
     await world.poll(3);
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
-    assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^autopilot stopped: The build failed: the container did not start\./);
+    assert.match(world.repo.commentBodies(issue).at(-1) ?? "", /^<!-- autopilot:blocked -->\nautopilot stopped: The build failed: the container did not start\./);
     assert.equal(world.builds.length, 1);
   });
 });
@@ -494,7 +531,7 @@ describe("a repo with no config", () => {
     world.repo.finishPull(pull, "closed");
     await world.poll(2);
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
-    assert.match(world.repo.commentBodies(issue).at(-1) ?? "", new RegExp(`^autopilot stopped: The onboarding pull request #${pull} was cl\u200bosed without a merge`), "the comment breaks the closing keyword");
+    assert.match(world.repo.commentBodies(issue).at(-1) ?? "", new RegExp(`^<!-- autopilot:blocked -->\nautopilot stopped: The onboarding pull request #${pull} was cl\u200bosed without a merge`), "the comment breaks the closing keyword");
     assert.deepEqual(world.onboarded, [issue]);
   });
 
@@ -505,7 +542,7 @@ describe("a repo with no config", () => {
     const issue = world.repo.openIssue({ title: TITLE, labeledBy: OWNER });
     await world.poll();
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
-    assert.match(world.repo.commentBodies(issue)[0] ?? "", /^autopilot stopped: The onboarding failed: the onboarding agent wrote no/);
+    assert.match(world.repo.commentBodies(issue)[0] ?? "", /^<!-- autopilot:blocked -->\nautopilot stopped: The onboarding failed: the onboarding agent wrote no/);
     assert.equal(world.repo.pulls.length, 0);
   });
 
@@ -552,7 +589,7 @@ describe("a repo with no config", () => {
     await world.poll();
     assert.deepEqual(world.onboarded, []);
     assert.deepEqual(world.repo.labelsOf(issue), ["autopilot", "autopilot:blocked"]);
-    assert.match(world.repo.commentBodies(issue)[0] ?? "", /^autopilot stopped: This repo has no commits.* Push one commit .* for example a README/);
+    assert.match(world.repo.commentBodies(issue)[0] ?? "", /^<!-- autopilot:blocked -->\nautopilot stopped: This repo has no commits.* Push one commit .* for example a README/);
   });
 
   test("when another host opens the onboarding pull request first, the issue waits for it", async () => {

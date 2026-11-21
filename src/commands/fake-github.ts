@@ -46,6 +46,8 @@ export class FakeRepoGitHub implements RepoGitHub {
   ciRuns = new Map<string, Statuses>();
   merges: { pull: number; sha: string; title: string; message: string }[] = [];
   reviewRequests: { pull: number; reviewers: string[] }[] = [];
+  // Labels the bot removed: only the bot calls setLabels.
+  unlabeled: { issue: number; label: string; at: string }[] = [];
   // Heads that the default branch moved past. GitHub cannot rebase any of them.
   behind = new Set<string>();
   // Runs when the host asks GitHub for a rebase, for example a person's push.
@@ -91,6 +93,13 @@ export class FakeRepoGitHub implements RepoGitHub {
     const spec = this.comments.findLast((comment) => comment.issue === issue && comment.author === BOT && comment.body.startsWith("<!-- autopilot:spec"));
     if (!spec) throw new Error(`no spec comment on #${issue}`);
     this.editComment(spec.id, by, spec.body.replace("- [ ] Approve and build", "- [x] Approve and build"));
+  }
+
+  // Ticks Try again on the newest blocked comment, as `by`.
+  tickRetry(issue: number, by: string): void {
+    const blocked = this.comments.findLast((comment) => comment.issue === issue && comment.author === BOT && comment.body.startsWith("<!-- autopilot:blocked"));
+    if (!blocked) throw new Error(`no blocked comment on #${issue}`);
+    this.editComment(blocked.id, by, blocked.body.replace("- [ ] Try again", "- [x] Try again"));
   }
 
   // A commit on a branch that the host did not push: anyone with write access can do this.
@@ -163,7 +172,10 @@ export class FakeRepoGitHub implements RepoGitHub {
     this.comments = this.comments.filter((comment) => comment.id !== id);
   }
   async setLabels(issue: number, labels: string[]): Promise<void> {
-    this.issue(issue).labels = [...labels];
+    const found = this.issue(issue);
+    const at = this.now();
+    for (const label of found.labels.filter((label) => !labels.includes(label))) this.unlabeled.push({ issue, label, at });
+    found.labels = [...labels];
   }
   async closeIssue(issue: number): Promise<void> {
     this.issue(issue).open = false;
@@ -199,8 +211,8 @@ export class FakeRepoGitHub implements RepoGitHub {
   async isEmpty(): Promise<boolean> {
     return this.empty;
   }
-  async lastUnlabeled(): Promise<string | undefined> {
-    return undefined;
+  async lastUnlabeled(issue: number, label: string, actors: string[]): Promise<string | undefined> {
+    return actors.includes(BOT) ? this.unlabeled.findLast((event) => event.issue === issue && event.label === label)?.at : undefined;
   }
   async userId(): Promise<number> {
     return 1;
