@@ -591,8 +591,9 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
   const sha = pull.head.sha;
   // An owner's comment after the last comment of the bot asks for a change, for example "resolve the
   // conflicts". The builder builds the spec again on the base branch, with the comment in its thread.
+  // Only on the default branch: anyone with write access can change the base of a pull request.
   const lastOfBot = job.comments.findLast((comment) => comment.author === ctx.bot);
-  if (lastOfBot && ownerReplyAfter(job.comments, loop.host.owners, lastOfBot)) {
+  if (lastOfBot && ownerReplyAfter(job.comments, loop.host.owners, lastOfBot) && pull.base === (await repoGitHub.defaultBranch())) {
     if (await rebuildPull(job, config, pull, sha, (await currentSpec())?.plannedFiles ?? [], "an owner commented")) {
       await repoGitHub.postComment(issue.number, `autopilot built pull request #${pull.number} again on \`${pull.base}\`, with the comments above.`);
     }
