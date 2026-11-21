@@ -7,10 +7,10 @@ const RETRY_AT = "2026-11-15T10:00:00Z";
 const BEFORE = "2026-11-15T09:00:00Z";
 const AFTER = "2026-11-15T11:00:00Z";
 
-const go: TrustedSpec = { gate: "go", plannerRisk: "low", buildAllowed: true };
-const approval: TrustedSpec = { gate: "approval_required", plannerRisk: "high", buildAllowed: false };
-const ticked: TrustedSpec = { ...approval, buildAllowed: true };
-const questions: TrustedSpec = { gate: "needs_info", plannerRisk: "low", buildAllowed: false };
+const go: TrustedSpec = { gate: "go", plannerRisk: "low", buildAllowed: true, plannedFiles: ["a.ts"] };
+const approval: TrustedSpec = { gate: "approval_required", plannerRisk: "high", buildAllowed: false, plannedFiles: [] };
+const ticked: TrustedSpec = { ...approval, buildAllowed: true, plannedFiles: ["a.ts"] };
+const questions: TrustedSpec = { gate: "needs_info", plannerRisk: "low", buildAllowed: false, plannedFiles: [] };
 
 function pull(state: BotPull["state"], closedAt?: string): BotPull {
   return { number: 12, issue: 7, state, base: "main", head: { ref: "autopilot/7-x", sha: "abc" }, closedAt };
@@ -18,6 +18,7 @@ function pull(state: BotPull["state"], closedAt?: string): BotPull {
 
 const phaseCases: { name: string; spec?: TrustedSpec; pull?: BotPull; expected: Phase["kind"] | Phase }[] = [
   { name: "no spec yet", expected: "spec" },
+  { name: "an older go spec with no planned file has nothing to change", spec: { ...go, plannedFiles: [] }, expected: "done" },
   { name: "a go spec and no pull request", spec: go, expected: "build" },
   { name: "an approval spec ticked by an owner", spec: ticked, expected: "build" },
   { name: "an approval spec not ticked", spec: approval, expected: { kind: "plan", event: "approval_required" } },

@@ -40,11 +40,12 @@ function after(a: string, b: string): boolean {
   return Date.parse(a) > Date.parse(b);
 }
 
-export function issuePhase(spec: { gate: PlanGate["event"]; buildAllowed: boolean } | undefined, pull: BotPull | undefined, retryAt: string): Phase {
+export function issuePhase(spec: { gate: PlanGate["event"]; buildAllowed: boolean; plannedFiles: string[] } | undefined, pull: BotPull | undefined, retryAt: string): Phase {
   if (pull?.state === "open") return { kind: "pull", pull };
   if (pull?.closedAt && after(pull.closedAt, retryAt)) return pull.state === "merged" ? { kind: "merged", pull } : { kind: "closed", pull };
   if (!spec) return { kind: "spec" };
-  if (spec.gate === "done") return { kind: "done" };
+  // Specs from before the `done` gate say `go` with no planned file.
+  if (spec.gate === "done" || (spec.gate === "go" && spec.plannedFiles.length === 0)) return { kind: "done" };
   if (spec.buildAllowed) return { kind: "build" };
   return { kind: "plan", event: spec.gate === "needs_info" ? "needs_info" : "approval_required" };
 }

@@ -100,8 +100,9 @@ function codeBlock(text: string): string {
   return `\`\`\`\n${cut.replaceAll("```", "'''") || "(no output)"}\n\`\`\``;
 }
 
-function reviewMarker(pull: number): string {
-  return `<!-- autopilot:review pr=${pull} -->`;
+// Per head: a head built again after an owner's comment goes through the merge gate again.
+function reviewMarker(pull: number, sha: string): string {
+  return `<!-- autopilot:review pr=${pull} sha=${sha} -->`;
 }
 
 function onboardingMarker(pull: number): string {
@@ -264,6 +265,13 @@ async function working(job: Working): Promise<void> {
     return comment && trustedSpec(comment.body, await repoGitHub.commentEditors(comment.nodeId), host.owners);
   }
 
+  // While a pull request is open, an owner's comment asks for a change to it, not for a new spec.
+  async function pullSpec(): Promise<TrustedSpec | undefined> {
+    const comment = latestSpec(comments, bot);
+    if (!comment || Date.parse(comment.createdAt) <= Date.parse(labeledAt)) return undefined;
+    return trustedSpec(comment.body, await repoGitHub.commentEditors(comment.nodeId), host.owners);
+  }
+
   // A retry restarts the job: pull requests and statuses from before do not count. The host removes
   // autopilot:blocked after an owner's tick, and an owner can also remove it.
   const retryAt = later(labeledAt, await repoGitHub.lastUnlabeled(issue.number, stateLabel("blocked"), [...host.owners, bot]));
@@ -285,7 +293,7 @@ async function working(job: Working): Promise<void> {
       throw new Blocked(`Pull request #${phase.pull.number} was closed without a merge. To build again, tick the box. To change the plan first, comment on the issue, then tick the box.`);
     case "pull": {
       const config = await readConfig(repoGitHub);
-      return checksAndMergeGate(job, config, phase.pull, retryAt, currentSpec);
+      return checksAndMergeGate(job, config, phase.pull, retryAt, pullSpec);
     }
   }
 }
@@ -517,29 +525,10 @@ async function rebaseWhenBehind(job: Working, config: Config, pull: BotPull, def
   const before = await repoGitHub.compare(defaultBranch, sha);
   if (before.behind === 0) return false;
 
-  // The head is read again: a person may have pushed, and the rebase error may come from that.
-  async function rebuild(replaces: string, why: string): Promise<true> {
-    if ((await repoGitHub.pullHead(pull.number)) !== replaces) {
-      loop.log(key, `${key}: the head of #${pull.number} moved, the next poll decides`);
-      return true;
-    }
-    loop.log(key, `${key}: ${why}, builds #${pull.number} again on ${defaultBranch}`);
-    const built = await buildOrBlock(loop, {
-      github: loop.github,
-      repoGitHub,
-      repo: ctx.repo,
-      host: loop.host,
-      config,
-      issue,
-      thread: await vouchedThread(job),
-      plannedFiles: (await currentSpec())?.plannedFiles ?? [],
-      identity: await identityOf(ctx),
-      mode: { kind: "build", base: defaultBranch, branch: pull.head.ref, replaces },
-    });
-    await repoGitHub.markPushed(built.head, issue.number);
-    loop.log(key, `${key}: built #${pull.number} again at ${built.head.slice(0, 7)}, the checks run next`);
+  const rebuild = async (replaces: string, why: string): Promise<true> => {
+    await rebuildPull(job, config, pull, replaces, (await currentSpec())?.plannedFiles ?? [], why);
     return true;
-  }
+  };
 
   let head: string;
   try {
@@ -554,6 +543,33 @@ async function rebaseWhenBehind(job: Working, config: Config, pull: BotPull, def
   await repoGitHub.markPushed(head, issue.number);
   loop.audit({ event: "pr.rebased", repo: `${ctx.repo.owner}/${ctx.repo.name}`, pull: pull.number, issue: issue.number, from: sha, to: head });
   loop.log(key, `${key}: rebased #${pull.number} on ${pull.base} to ${head.slice(0, 7)}, the checks run next`);
+  return true;
+}
+
+// Builds the spec again on the base branch and pushes it to the open pull request. The head is read
+// again first, and the push fails if it moved: a person may have pushed. Returns whether it built.
+async function rebuildPull(job: Working, config: Config, pull: BotPull, replaces: string, plannedFiles: string[], why: string): Promise<boolean> {
+  const { loop, ctx, issue, key } = job;
+  const { repoGitHub } = ctx;
+  if ((await repoGitHub.pullHead(pull.number)) !== replaces) {
+    loop.log(key, `${key}: the head of #${pull.number} moved, the next poll decides`);
+    return false;
+  }
+  loop.log(key, `${key}: ${why}, builds #${pull.number} again on ${pull.base}`);
+  const built = await buildOrBlock(loop, {
+    github: loop.github,
+    repoGitHub,
+    repo: ctx.repo,
+    host: loop.host,
+    config,
+    issue,
+    thread: await vouchedThread(job),
+    plannedFiles,
+    identity: await identityOf(ctx),
+    mode: { kind: "build", base: pull.base, branch: pull.head.ref, replaces },
+  });
+  await repoGitHub.markPushed(built.head, issue.number);
+  loop.log(key, `${key}: built #${pull.number} again at ${built.head.slice(0, 7)}, the checks run next`);
   return true;
 }
 
@@ -573,6 +589,15 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
     );
   }
   const sha = pull.head.sha;
+  // An owner's comment after the last comment of the bot asks for a change, for example "resolve the
+  // conflicts". The builder builds the spec again on the base branch, with the comment in its thread.
+  const lastOfBot = job.comments.findLast((comment) => comment.author === ctx.bot);
+  if (lastOfBot && ownerReplyAfter(job.comments, loop.host.owners, lastOfBot)) {
+    if (await rebuildPull(job, config, pull, sha, (await currentSpec())?.plannedFiles ?? [], "an owner commented")) {
+      await repoGitHub.postComment(issue.number, `autopilot built pull request #${pull.number} again on \`${pull.base}\`, with the comments above.`);
+    }
+    return;
+  }
   // Someone with write access can push to the bot's branch. Only a head the host pushed for this
   // issue is fixed or merged; its ancestors are then the host's commits too.
   const pushedByAutopilot = (await repoGitHub.pushedFor(sha, ctx.bot)) === issue.number;
@@ -616,7 +641,7 @@ async function checksAndMergeGate(job: Working, config: Config, pull: BotPull, r
     return loop.log(key, `${key}: fix round ${fix.round} pushed ${built.head.slice(0, 7)} to #${pull.number}`);
   }
 
-  const marker = reviewMarker(pull.number);
+  const marker = reviewMarker(pull.number, sha);
   if (job.comments.some((comment) => comment.author === ctx.bot && comment.body.startsWith(marker))) {
     return loop.log(key, `${key}: pull request #${pull.number} waits for a review`);
   }
